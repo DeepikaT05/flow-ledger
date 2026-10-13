@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flow Ledger</title>
+<link rel="icon" type="image/png" href="logo.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="titlebar"></div>
+<div id="menubar" role="menubar"></div>
+<div id="desktop">
+  <aside id="leftpanel">
+    <div class="lp-lists">
+      <div class="lp-head">Most viewed reports</div>
+      <ul id="most-viewed"></ul>
+      <div class="lp-head">Recently viewed reports</div>
+      <ul id="recent-viewed"></ul>
+    </div>
+    <div class="lp-links">
+      <button class="lp-btn" data-label="Digital Entry"><span class="lp-ico">🧺</span>Digital Entry</button>
+      <button class="lp-btn" data-label="Digital Delivery"><span class="lp-ico">✉</span>Digital Delivery</button>
+      <button class="lp-btn" data-label="Flow Ledger Mart"><span class="lp-ico">🏪</span>Flow Ledger Mart<span class="lp-new">NEW</span></button>
+      <button class="lp-btn lp-help" data-label="Pharmanxt Free Drug Helpline">Pharmanxt Free Drug Helpline<span class="lp-search">🔍</span></button>
+    </div>
+  </aside>
+  <main id="center">
+    <div id="splash">
+      <div class="splash-logo">
+        <img class="brand-logo" src="logo.gif" alt="Flow Ledger">
+        <div class="band">Flow Ledger</div>
+      </div>
+      <div class="splash-sub">Web Edition &middot; Keyboard First</div>
+    </div>
+    <div id="toolstrip">
+      <span class="ts red">Wallet</span><span class="ts">Message</span><span class="ts">Ticket</span>
+      <span class="ts">Training</span><span class="ts">Search</span>
+    </div>
+    <div id="banner">
+      <div class="logo"><img src="logo.gif" alt=""><span class="fl-flow">FLOW</span><span class="fl-ledger">LEDGER</span></div>
+      <div class="tag">Web Edition &middot; Keyboard First</div>
+      <table class="keys">
+        <tr><td>Alt+N</td><td>Sale Bill</td><td>Alt+V</td><td>Voucher Entry</td></tr>
+        <tr><td>Alt+C</td><td>Sale Challan</td><td>Alt+I</td><td>Single Entry</td></tr>
+        <tr><td>Alt+A</td><td>Counter Sale</td><td>Alt+U</td><td>Cheques/Cash</td></tr>
+        <tr><td>Alt+M</td><td>Modify Bill</td><td>Alt+L</td><td>All Ledgers</td></tr>
+        <tr><td>Alt+P</td><td>Purchase Bill</td><td>Ctrl+L / Ctrl+I</td><td>Ledger / Item List</td></tr>
+        <tr><td>F12</td><td>Calculator</td><td>Shift+F12</td><td>Calendar</td></tr>
+        <tr><td>F10 / Alt</td><td>Go to Menu</td><td>Alt+X</td><td>Change Company</td></tr>
+        <tr><td>Ctrl+U</td><td>Change User</td><td>Ctrl+Q</td><td>Quit</td></tr>
+      </table>
+    </div>
+  </main>
+  <nav id="rightpanel"></nav>
+</div>
+<footer id="infobar">
+  <div id="companyinfo"></div>
+  <div id="dateinfo"></div>
+</footer>
+<div id="hintbar">F1-Company Ctrl+I-Item Ctrl+L-Party Ctrl+U-User F12-Calculator Shift+F12-Calendar Ctrl+F11-Printer</div>
+<div id="bootfoot"><div><small>FLOW LEDGER</small><b>WEB EDITION</b></div><div class="mini-logo"><img src="logo.png" alt=""><span class="fl-flow">Flow</span> <span class="fl-ledger">Ledger</span></div><div><small>Authorised User :</small><b id="boot-user"></b></div></div>
+<div id="windows"></div>
+<div id="toast"></div>
+<script src="app.js"></script>
+</body>
+</html>

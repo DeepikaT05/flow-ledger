@@ -1,0 +1,326 @@
+import { api, openWin, GridList, money, drcr, esc, today, fmtDate, fyStart, h, formWin, reloadOnClose, type Col } from './ui.ts';
+import { pickLedger, itemRegister, type Ledger } from './masters.ts';
+import { BILL_TITLE } from './billing.ts';
+import { saleEntry as billEntry } from './sale.ts';
+import { V_TITLE } from './vouchers.ts';
+import { seeCost } from './session.ts';
+
+/** Cost / profit cell: masked as **** for roles without the cost power (server sends null). */
+const cm = (v: number | null | undefined) => (v == null || !seeCost() ? '****' : money(v));
+const cmTotal = (n: number) => (seeCost() ? money(n) : '****');
+
+const vtypeLabel = (t: string) => BILL_TITLE[t] ?? V_TITLE[t] ?? t;
+
+/** Ask for a date range (Marg's F2 period box). */
+async function askPeriod(from: string, to: string): Promise<{ from: string; to: string } | null> {
+  return formWin('Select Period', [
+    { name: 'from', label: 'From', type: 'date' },
+    { name: 'to', label: 'To', type: 'date' },
+  ], { from, to }, async () => ({}));
+}
+
+/** A read-only report window with a keyboard grid, period selection (F2) and print (F10). */
+async function reportWin<T extends Record<string, any>>(opts: {
+  title: string; cols: Col<T>[]; load: (p: { from: string; to: string }) => Promise<T[]>; search?: (r: T) => string;
+  footer?: (rows: T[]) => string; period?: boolean; from?: string; to?: string; header?: (p: { from: string; to: string }) => string;
+  onEnter?: (r: T) => void; extraKeys?: Record<string, (r: T | undefined) => void>; extraFoot?: string;
+}) {
+  const p = { from: opts.from ?? fyStart(), to: opts.to ?? today() };
+  const w = openWin(opts.title, 'wide', (opts.period ? '<span><b>F2</b> Change Period</span>' : '') + (opts.onEnter ? '<span><b>Enter</b> Open</span>' : '') +
+    (opts.extraFoot ?? '') + '<span><b>F10</b> Print</span><span><b>Esc</b> Close</span>');
+  w.body.style.height = '100%';
+  const head = h('div', { class: 'party-info', style: 'font-size:14px;margin-bottom:4px' });
+  w.body.append(head);
+  const g = new GridList<T>(w.body, opts.cols, opts.search, 'calc(100% - 64px)');
+  if (!opts.search) g.wrap.style.height = 'calc(100% - 24px)';
+  g.footerRow = opts.footer;
+  const load = async () => {
+    head.innerHTML = (opts.period ? `Period: <b>${fmtDate(p.from)}</b> to <b>${fmtDate(p.to)}</b> &nbsp; ` : '') + (opts.header?.(p) ?? '');
+    g.setRows(await opts.load(p), true);
+  };
+  await load();
+  g.focus();
+  w.onKey = (_e, k) => {
+    if (g.nav(k)) return true;
+    if (k === 'F2' && opts.period) { askPeriod(p.from, p.to).then((r) => { if (r) { p.from = r.from; p.to = r.to; load(); } }); return true; }
+    if (k === 'F10') { window.print(); return true; }
+    if (k === 'Enter' && opts.onEnter && g.current) { opts.onEnter(g.current); reloadOnClose(load); return true; }
+    if (opts.extraKeys?.[k]) { opts.extraKeys[k](g.current); return true; }
+    return false;
+  };
+  return { w, load };
+}
+
+// ------------------------------------------------------------------ ledger
+/** All Ledgers (Alt+L) opens MARG's LEDGER ACCOUNTS; with a ledger, its LEDGER DISPLAY box. */
+export async function ledgerStatement(l?: Ledger) {
+  const m = await import('./ledgers.ts');
+  return l ? m.ledgerDisplay(l) : m.allLedgers();
+}
+
+// ------------------------------------------------------------------ books
+export function billBook(type: string) {
+  const types = type.split(',');
+  return reportWin<any>({
+    title: `${types.map((t) => BILL_TITLE[t]).join(' + ')} Book`, period: true, search: (r) => `${r.no} ${r.party}`,
+    cols: [
+      { title: 'Date', get: (r) => fmtDate(r.date) }, { title: 'Bill No.', get: (r) => r.no }, { title: 'Party', get: (r) => r.party },
+      { title: 'Gross', get: (r) => r.gross, money: true }, { title: 'Disc', get: (r) => r.discount, money: true },
+      { title: 'Taxable', get: (r) => r.taxable, money: true }, { title: 'CGST', get: (r) => r.tax / 2, money: true },
+      { title: 'SGST', get: (r) => r.tax / 2, money: true }, { title: 'Net', get: (r) => r.net, money: true },
+    ],
+    load: (p) => api(`/bills?type=${type}&from=${p.from}&to=${p.to}`),
+    footer: (rows) => {
+      const s = (k: string) => rows.reduce((a, r) => a + r[k], 0);
+      return `<tr class="total"><td colspan="3">Total (${rows.length})</td><td class="n">${money(s('gross'))}</td><td class="n">${money(s('discount'))}</td><td class="n">${money(s('taxable'))}</td>
+        <td class="n">${money(s('tax') / 2)}</td><td class="n">${money(s('tax') / 2)}</td><td class="n">${money(s('net'))}</td></tr>`;
+    },
+    onEnter: (r) => billEntry(r.type, r.id),
+  });
+}
+
+export async function cashBankBook() {
+  const l = await pickLedger('Cash & Bank Book - Select Account', 'Cash-in-hand,Bank Accounts');
+  if (l) ledgerStatement(l);
+}
+
+// ------------------------------------------------------------------ final reports
+const balCols: Col<Ledger>[] = [
+  { title: 'Ledger', get: (r) => r.name }, { title: 'Group', get: (r) => r.group_name },
+  { title: 'Debit', get: (r) => (r.balance > 0 ? money(r.balance) : ''), num: true },
+  { title: 'Credit', get: (r) => (r.balance < 0 ? money(-r.balance) : ''), num: true },
+];
+export function trialBalance() {
+  return reportWin<Ledger>({
+    title: 'Trial Balance', cols: balCols, search: (r) => `${r.name} ${r.group_name}`,
+    load: () => api('/reports/trial-balance'),
+    footer: (rows) => {
+      const dr = rows.filter((r) => r.balance > 0).reduce((s, r) => s + r.balance, 0);
+      const cr = rows.filter((r) => r.balance < 0).reduce((s, r) => s - r.balance, 0);
+      return `<tr class="total"><td colspan="2">Total ${Math.abs(dr - cr) > 0.01 ? `(Difference ${money(dr - cr)} = opening mismatch)` : ''}</td><td class="n">${money(dr)}</td><td class="n">${money(cr)}</td></tr>`;
+    },
+    onEnter: (r) => ledgerStatement(r),
+  });
+}
+
+export async function profitLoss() {
+  const [tb, sv] = await Promise.all([api<Ledger[]>('/reports/trial-balance'), api<{ opening: number; closing: number }>('/reports/stock-value')]);
+  const opening = sv.opening, stock = sv.closing;
+  const exp = tb.filter((r) => r.nature === 'EXPENSE');
+  const inc = tb.filter((r) => r.nature === 'INCOME');
+  const totExp = exp.reduce((s, r) => s + r.balance, 0) + opening;
+  const totInc = inc.reduce((s, r) => s - r.balance, 0) + stock;
+  const profit = totInc - totExp;
+  const w = openWin('Profit & Loss A/c', 'wide', '<span><b>F10</b> Print</span><span><b>Esc</b> Close</span>');
+  const side = (rows: [string, number][]) => rows.map(([n, v]) => `<tr><td>${esc(n)}</td><td class="n">${money(v)}</td></tr>`).join('');
+  const left: [string, number][] = [['Opening Stock', opening], ...exp.map((r) => [r.name, r.balance] as [string, number])];
+  const right: [string, number][] = [...inc.map((r) => [r.name, -r.balance] as [string, number]), ['Closing Stock', stock]];
+  if (profit >= 0) left.push(['Net Profit', profit]); else right.push(['Net Loss', -profit]);
+  const total = Math.max(totExp, totInc);
+  w.body.innerHTML = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+    <table class="grid"><tr><th>Expenses / Debit</th><th class="n">Amount</th></tr>${side(left)}<tr class="total"><td>Total</td><td class="n">${money(total)}</td></tr></table>
+    <table class="grid"><tr><th>Income / Credit</th><th class="n">Amount</th></tr>${side(right)}<tr class="total"><td>Total</td><td class="n">${money(total)}</td></tr></table></div>`;
+  w.onKey = (_e, k) => { if (k === 'F10') { window.print(); return true; } return false; };
+}
+
+export async function balanceSheet() {
+  const [tb, sv] = await Promise.all([api<Ledger[]>('/reports/trial-balance'), api<{ opening: number; closing: number }>('/reports/stock-value')]);
+  const opening = sv.opening, stock = sv.closing;
+  const pl = tb.filter((r) => r.nature === 'INCOME' || r.nature === 'EXPENSE').reduce((s, r) => s - r.balance, 0) + stock - opening;
+  const bs = tb.filter((r) => r.nature === 'ASSET' || r.nature === 'LIABILITY');
+  const liab: [string, number][] = bs.filter((r) => r.balance < 0).map((r) => [r.name, -r.balance]);
+  const asset: [string, number][] = bs.filter((r) => r.balance > 0).map((r) => [r.name, r.balance]);
+  asset.push(['Closing Stock', stock]);
+  // Opening stock is carried in as capital so the sheet balances without an explicit stock journal.
+  liab.push(['Opening Stock (Capital)', opening]);
+  if (pl >= 0) liab.push(['Profit & Loss A/c', pl]); else asset.push(['Profit & Loss A/c (Loss)', -pl]);
+  const tl = liab.reduce((s, x) => s + x[1], 0), ta = asset.reduce((s, x) => s + x[1], 0);
+  const w = openWin('Balance Sheet', 'wide', '<span><b>F10</b> Print</span><span><b>Esc</b> Close</span>');
+  const side = (rows: [string, number][]) => rows.map(([n, v]) => `<tr><td>${esc(n)}</td><td class="n">${money(v)}</td></tr>`).join('');
+  w.body.innerHTML = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+    <table class="grid"><tr><th>Liabilities</th><th class="n">Amount</th></tr>${side(liab)}<tr class="total"><td>Total</td><td class="n">${money(tl)}</td></tr></table>
+    <table class="grid"><tr><th>Assets</th><th class="n">Amount</th></tr>${side(asset)}<tr class="total"><td>Total</td><td class="n">${money(ta)}</td></tr></table></div>
+    ${Math.abs(tl - ta) > 0.01 ? `<p class="cr">Difference in opening balances: ${money(tl - ta)}</p>` : ''}`;
+  w.onKey = (_e, k) => { if (k === 'F10') { window.print(); return true; } return false; };
+}
+
+// ------------------------------------------------------------------ outstanding / stock
+export function outstanding(kind: string) {
+  const payable = kind === 'payable';
+  return reportWin<Ledger>({
+    title: `Outstanding - ${payable ? 'Payable (Creditors)' : 'Receivable (Debtors)'}`, search: (r) => r.name,
+    cols: [
+      { title: 'Party', get: (r) => r.name }, { title: 'Station', get: (r) => r.city }, { title: 'Phone', get: (r) => r.phone },
+      { title: 'Credit Limit', get: (r) => r.credit_limit, money: true }, { title: 'Balance', get: (r) => drcr(r.balance), num: true },
+    ],
+    load: () => api(`/reports/outstanding?kind=${kind}`),
+    footer: (rows) => `<tr class="total"><td colspan="4">Total</td><td class="n">${drcr(rows.reduce((s, r) => s + r.balance, 0))}</td></tr>`,
+    onEnter: (r) => ledgerStatement(r),
+  });
+}
+
+const stockCols: Col<any>[] = [
+  { title: 'Item', get: (r) => r.name }, { title: 'Company', get: (r) => r.company }, { title: 'Pack', get: (r) => r.pack },
+  { title: 'Stock', get: (r) => r.stock, num: true }, { title: 'Min', get: (r) => r.min_stock, num: true },
+  { title: 'P.Rate', get: (r) => cm(r.purchase_rate), num: true }, { title: 'Value', get: (r) => cm(r.purchase_rate == null ? null : r.stock * r.purchase_rate), num: true },
+];
+export function reorder() {
+  return reportWin<any>({
+    title: 'Re-Order / Shortage', search: (r) => r.name, load: () => api('/reports/reorder'),
+    cols: [...stockCols.slice(0, 5), { title: 'Order Qty', get: (r) => Math.max(r.reorder_qty, r.min_stock - r.stock), num: true }],
+    onEnter: (r) => itemRegister(r),
+  });
+}
+
+// ------------------------------------------------------------------ daily
+export function grossProfit() {
+  const d = today();
+  return reportWin<any>({
+    title: 'Gross Profit (Bill-wise)', period: true, from: d, to: d, search: (r) => `${r.no} ${r.party}`,
+    cols: [
+      { title: 'Date', get: (r) => fmtDate(r.date) }, { title: 'Bill No.', get: (r) => r.no }, { title: 'Party', get: (r) => r.party },
+      { title: 'Sale (Taxable)', get: (r) => r.sale, money: true }, { title: 'Cost', get: (r) => cm(r.cost), num: true },
+      { title: 'Profit', get: (r) => cm(r.profit), num: true }, { title: '%', get: (r) => (r.profit == null || !seeCost() ? '****' : r.sale ? ((r.profit / r.sale) * 100).toFixed(2) : '0'), num: true },
+    ],
+    load: (p) => api(`/reports/gross-profit?from=${p.from}&to=${p.to}`),
+    footer: (rows) => {
+      const s = rows.reduce((a, r) => a + r.sale, 0), c = rows.reduce((a, r) => a + r.cost, 0);
+      return `<tr class="total"><td colspan="3">Total</td><td class="n">${money(s)}</td><td class="n">${cmTotal(c)}</td><td class="n">${cmTotal(s - c)}</td><td class="n">${!seeCost() ? '****' : s ? (((s - c) / s) * 100).toFixed(2) : ''}</td></tr>`;
+    },
+  });
+}
+
+export async function mis() {
+  const p = { from: today(), to: today() };
+  const w = openWin('Daily Analysis (MIS)', 'mid', '<span><b>F2</b> Change Period</span><span><b>Esc</b> Close</span>');
+  const load = async () => {
+    const m = await api(`/reports/mis?from=${p.from}&to=${p.to}`);
+    const box = (t: string, v: string) => `<div><span>${t}</span><b>${v}</b></div>`;
+    w.body.innerHTML = `<div class="party-info" style="margin-bottom:6px">Period: <b>${fmtDate(p.from)}</b> to <b>${fmtDate(p.to)}</b></div><div class="mis">
+      ${box(`Sales (${m.sales.c} bills)`, money(m.sales.s))}${box(`Purchase (${m.purchase.c} bills)`, money(m.purchase.s))}
+      ${box(`Sale Return (${m.saleReturn.c})`, money(m.saleReturn.s))}${box(`Purchase Return (${m.purchaseReturn.c})`, money(m.purchaseReturn.s))}
+      ${box(`Receipts (${m.receipt.c})`, money(m.receipt.s))}${box(`Payments (${m.payment.c})`, money(m.payment.s))}
+      ${box('Cash in Hand', drcr(m.cash))}${box('Bank Balance', drcr(m.bank))}
+      ${box('Total Receivable', money(m.receivable))}${box('Total Payable', money(m.payable))}</div>`;
+  };
+  await load();
+  w.onKey = (_e, k) => {
+    if (k === 'F2') { askPeriod(p.from, p.to).then((r) => { if (r) { p.from = r.from; p.to = r.to; load(); } }); return true; }
+    return false;
+  };
+}
+
+export function partyTransactions() {
+  return pickLedger('Party Transaction - Select Party', 'Sundry Debtors,Sundry Creditors').then((l) => {
+    if (!l) return;
+    return reportWin<any>({
+      title: `Party Transactions : ${l.name}`, period: true, search: (r) => r.no,
+      cols: [
+        { title: 'Date', get: (r) => fmtDate(r.date) }, { title: 'Type', get: (r) => BILL_TITLE[r.type] }, { title: 'No.', get: (r) => r.no },
+        { title: 'Taxable', get: (r) => r.taxable, money: true }, { title: 'Net', get: (r) => r.net, money: true },
+      ],
+      load: (p) => api(`/bills?party=${l.id}&from=${p.from}&to=${p.to}`),
+      onEnter: (r) => billEntry(r.type, r.id),
+    });
+  });
+}
+
+// ------------------------------------------------------------------ stocks (batch / expiry)
+interface BatchRow { item_name: string; pack: string; batch: string; expiry: string; stock: number; mrp: number; rate: number; purchase_rate: number; supplier: string }
+const expMY = (e: string) => (e ? `${e.slice(5, 7)}/${e.slice(0, 4)}` : '');
+const batchCols: Col<BatchRow>[] = [
+  { title: 'Item', get: (r) => r.item_name }, { title: 'Pack', get: (r) => r.pack }, { title: 'Batch', get: (r) => r.batch },
+  { title: 'Expiry', get: (r) => expMY(r.expiry) }, { title: 'Stock', get: (r) => r.stock, num: true },
+  { title: 'MRP', get: (r) => r.mrp, money: true }, { title: 'Rate', get: (r) => r.rate, money: true },
+  { title: 'Value', get: (r) => cm(r.purchase_rate == null ? null : r.stock * r.purchase_rate), num: true }, { title: 'Supplier', get: (r) => r.supplier },
+];
+const valueFooter = (span: number) => (rows: BatchRow[]) =>
+  `<tr class="total"><td colspan="${span}">Total (${rows.length} batches)</td><td class="n">${cmTotal(rows.reduce((s, r) => s + r.stock * (r.purchase_rate ?? 0), 0))}</td><td></td></tr>`;
+
+export function batchStock() {
+  return reportWin<BatchRow>({
+    title: 'Batch wise Stock', cols: batchCols, search: (r) => `${r.item_name} ${r.batch}`,
+    load: () => api('/reports/batch-stock'), footer: valueFooter(7),
+  });
+}
+
+export function expiryStock() {
+  const days = 90;
+  const limit = new Date(Date.now() + days * 864e5).toISOString().slice(0, 10);
+  return reportWin<BatchRow>({
+    title: `Expiry Stock (expired or expiring within ${days} days)`, cols: batchCols, search: (r) => `${r.item_name} ${r.batch}`,
+    load: async () => (await api<BatchRow[]>('/reports/batch-stock')).filter((b) => b.stock > 0 && b.expiry && b.expiry <= limit)
+      .sort((a, b) => a.expiry.localeCompare(b.expiry)),
+    footer: valueFooter(7),
+  });
+}
+
+// ------------------------------------------------------------------ daily working
+export function modeOfPayment() {
+  const d = today();
+  return reportWin<{ mode: string; bills: number; amount: number }>({
+    title: 'Mode of Payment Report', period: true, from: d, to: d,
+    cols: [{ title: 'Mode of Payment', get: (r) => r.mode }, { title: 'Bills', get: (r) => r.bills, num: true }, { title: 'Amount', get: (r) => r.amount, money: true }],
+    load: (p) => api(`/reports/mode-of-payment?from=${p.from}&to=${p.to}`),
+    footer: (rows) => `<tr class="total"><td>Total</td><td></td><td class="n">${money(rows.reduce((s, r) => s + r.amount, 0))}</td></tr>`,
+  });
+}
+
+// ------------------------------------------------------------------ final reports / analysis
+export function groupSummary() {
+  return reportWin<{ group_name: string; nature: string; debit: number; credit: number; count: number }>({
+    title: 'Group Summary',
+    cols: [
+      { title: 'Group', get: (r) => r.group_name }, { title: 'Nature', get: (r) => r.nature }, { title: 'Ledgers', get: (r) => r.count, num: true },
+      { title: 'Debit', get: (r) => (r.debit ? money(r.debit) : ''), num: true }, { title: 'Credit', get: (r) => (r.credit ? money(r.credit) : ''), num: true },
+    ],
+    load: async () => {
+      const by = new Map<string, { group_name: string; nature: string; debit: number; credit: number; count: number }>();
+      for (const l of await api<Ledger[]>('/reports/trial-balance')) {
+        const g = by.get(l.group_name) ?? { group_name: l.group_name, nature: l.nature, debit: 0, credit: 0, count: 0 };
+        if (l.balance > 0) g.debit += l.balance; else g.credit -= l.balance;
+        g.count++;
+        by.set(l.group_name, g);
+      }
+      return [...by.values()].sort((a, b) => a.group_name.localeCompare(b.group_name));
+    },
+    footer: (rows) => `<tr class="total"><td colspan="3">Total</td><td class="n">${money(rows.reduce((s, r) => s + r.debit, 0))}</td><td class="n">${money(rows.reduce((s, r) => s + r.credit, 0))}</td></tr>`,
+    onEnter: (r) => { import('./masters.ts').then((m) => m.ledgerList(r.group_name)); },
+  });
+}
+
+export function itemWiseSale() {
+  return reportWin<{ name: string; pack: string; company: string; qty: number; taxable: number; tax: number; cost: number }>({
+    title: 'Item Wise Sale', period: true, search: (r) => `${r.name} ${r.company}`,
+    cols: [
+      { title: 'Item', get: (r) => r.name }, { title: 'Pack', get: (r) => r.pack }, { title: 'Company', get: (r) => r.company },
+      { title: 'Qty', get: (r) => r.qty, num: true }, { title: 'Sale Value', get: (r) => r.taxable, money: true },
+      { title: 'GST', get: (r) => r.tax, money: true }, { title: 'Profit', get: (r) => cm(r.cost == null ? null : r.taxable - r.cost), num: true },
+    ],
+    load: (p) => api(`/reports/item-sale?from=${p.from}&to=${p.to}`),
+    footer: (rows) => `<tr class="total"><td colspan="3">Total</td><td class="n">${rows.reduce((s, r) => s + r.qty, 0)}</td>
+      <td class="n">${money(rows.reduce((s, r) => s + r.taxable, 0))}</td><td class="n">${money(rows.reduce((s, r) => s + r.tax, 0))}</td>
+      <td class="n">${cmTotal(rows.reduce((s, r) => s + r.taxable - (r.cost ?? 0), 0))}</td></tr>`,
+  });
+}
+
+export function gstr3b() {
+  type Line = { head: string; taxable: number; cgst: number; sgst: number; total: number };
+  let payable = 0;
+  return reportWin<Line>({
+    title: 'GSTR-3B — Monthly Tax Summary', period: true, from: `${today().slice(0, 8)}01`, to: today(),
+    cols: [
+      { title: 'Particulars', get: (r) => r.head }, { title: 'Taxable Value', get: (r) => r.taxable, money: true },
+      { title: 'CGST', get: (r) => r.cgst, money: true }, { title: 'SGST', get: (r) => r.sgst, money: true },
+      { title: 'Total Tax', get: (r) => r.total, money: true },
+    ],
+    load: async (p) => {
+      const g = await api(`/reports/gstr3b?from=${p.from}&to=${p.to}`);
+      payable = g.payable;
+      const line = (head: string, x: { taxable: number; tax: number }): Line => ({ head, taxable: x.taxable, cgst: x.tax / 2, sgst: x.tax / 2, total: x.tax });
+      return [line(`3.1 Outward taxable supplies (${g.outward.bills} bills, ${g.outward.returns} returns)`, g.outward),
+        line(`4 Eligible ITC — inward supplies (${g.inward.bills} bills, ${g.inward.returns} returns)`, g.inward)];
+    },
+    footer: () => `<tr class="total"><td colspan="4">${payable >= 0 ? 'Net GST Payable in cash' : 'Excess ITC carried forward'}</td><td class="n">${money(Math.abs(payable))}</td></tr>`,
+  });
+}

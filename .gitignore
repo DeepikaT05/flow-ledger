@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# App data: users, roles, every company's books and backups (SQLite files).
+# Never commit this — it holds password hashes and business data.
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Build output (made by `npm run build` / `npm start`)
+public/app.js
+public/app.js.map
+admin-public/admin.js
+admin-public/admin.js.map
+
+# Environment and secrets
+.env
+.env.*
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor / tool settings
+.claude/
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
