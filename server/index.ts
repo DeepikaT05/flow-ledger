@@ -2,7 +2,7 @@ import express, { type Request, type Response, type NextFunction } from 'express
 import { join } from 'node:path';
 import { mkdirSync } from 'node:fs';
 import type { SQLInputValue } from 'node:sqlite';
-import { db, sysDb, tx, sysLedger, SYS, dataDir, companyRow, companyDb, currentFy, type Row } from './db.ts';
+import { db, sysDb, tx, sysLedger, SYS, dataDir, companyRow, companyDb, currentFy, hashPassword, type Row } from './db.ts';
 import { authMiddleware, registerAuthRoutes, maskCost, authOf, can, bindCompany, setSessionCompany, setSessionYear } from './auth.ts';
 
 const app = express();
@@ -40,7 +40,11 @@ const STOCK_SQL = `
 app.get('/api/company', h((req) => {
   const c = db.prepare('SELECT * FROM company WHERE id=1').get() as Row;
   const y = db.prepare('SELECT * FROM company_years WHERE id=?').get(authOf(req).yearId ?? -1) as Row | undefined;
-  return { ...c, company_id: authOf(req).companyId, ...(y ? { fy_start: y.fy_start, fy_end: y.fy_end, year_code: y.code } : {}) };
+  // COMPANY CREATION's Working Style / Selection decide how batches are taken in bills.
+  const det = JSON.parse(String((companyRow(authOf(req).companyId) as { details?: string } | undefined)?.details ?? '{}')) as Record<string, string>;
+  const style = det.style_alt || 'Self-Secondary';
+  return { ...c, company_id: authOf(req).companyId, working_style: style, business_type: det.business ?? '',
+    ...(y ? { fy_start: y.fy_start, fy_end: y.fy_end, year_code: y.code } : {}) };
 }));
 app.put('/api/company', h((req) => {
   const c = req.body;
@@ -54,37 +58,61 @@ app.put('/api/company', h((req) => {
 // ---------------------------------------------------------------- LIST OF COMPANIES
 /** Licence holder shown on the login screen (before anyone has logged in). */
 app.get('/api/licence', h(() => {
-  const c = sysDb.prepare("SELECT name FROM companies WHERE file='marg.db'").get() as { name: string } | undefined;
+  const c = sysDb.prepare('SELECT name FROM companies ORDER BY id LIMIT 1').get() as { name: string } | undefined;
   return { user: c?.name ?? '' };
 }));
-app.get('/api/companies', h(() => sysDb.prepare('SELECT * FROM companies ORDER BY name').all()));
+app.get('/api/companies', h(() => (sysDb.prepare('SELECT * FROM companies ORDER BY name').all() as Row[]).map((c) => {
+  const { pw_salt: _s, pw_hash: _h, ...det } = JSON.parse(String(c.details ?? '{}')) as Record<string, string>;
+  return { ...c, details: JSON.stringify({ ...det, has_password: _h ? '1' : '' }) };
+})));
 const companyFields = (b: Record<string, unknown>) => {
   const name = String(b.name ?? '').trim().toUpperCase();
   if (!name) throw new Error('Company name is required');
   return [name, String(b.station ?? '').trim().toUpperCase(), String(b.address1 ?? ''), String(b.address2 ?? ''),
     String(b.gstin ?? ''), String(b.state ?? '')];
 };
+/** COMPANY CREATION's extra fields: a flat object of short strings, merged over what is stored. */
+const companyDetails = (b: Record<string, unknown>, old = '{}') => {
+  const out: Record<string, string> = JSON.parse(old || '{}');
+  const d = b.details;
+  if (d && typeof d === 'object') {
+    for (const [k, v] of Object.entries(d as Record<string, unknown>).slice(0, 60)) {
+      if (k.startsWith('pw_') || k === 'has_password' || !/^[a-z_0-9]{1,30}$/.test(k) || (typeof v !== 'string' && typeof v !== 'number')) continue;
+      if (k === 'password') {   // kept only as a hash; blank leaves the old one
+        if (String(v)) { const p = hashPassword(String(v)); out.pw_salt = p.salt; out.pw_hash = p.hash; }
+        continue;
+      }
+      out[k] = String(v).slice(0, 200);
+    }
+  }
+  return out;
+};
+const isDate = (s: unknown) => /^\d{4}-\d{2}-\d{2}$/.test(String(s)) && !Number.isNaN(Date.parse(String(s)));
 app.post('/api/companies', h((req) => {
   const f = companyFields(req.body ?? {});
-  const fy = /^\d{4}-04-01$/.test(String(req.body?.fy_start)) ? String(req.body.fy_start) : currentFy();
+  const det = companyDetails(req.body ?? {});
+  let fy = currentFy();
+  let fyEnd = `${Number(fy.slice(0, 4)) + 1}-03-31`;
+  if (isDate(req.body?.fy_start)) {
+    fy = String(req.body.fy_start);
+    fyEnd = isDate(req.body?.fy_end) && String(req.body.fy_end) > fy ? String(req.body.fy_end) : `${Number(fy.slice(0, 4)) + 1}-03-31`;
+  }
   const file = `companies/c${Date.now().toString(36)}.db`;
-  const r = sysDb.prepare('INSERT INTO companies (name,station,address1,address2,gstin,state,file) VALUES (?,?,?,?,?,?,?)').run(...f, file);
+  const r = sysDb.prepare('INSERT INTO companies (name,station,address1,address2,gstin,state,file,details) VALUES (?,?,?,?,?,?,?,?)').run(...f, file, JSON.stringify(det));
   const c = companyRow(r.lastInsertRowid)!;
   const d = companyDb(c);   // creates the file: groups, system ledgers, first year
-  if (fy !== currentFy()) {
-    const y = Number(fy.slice(0, 4));
-    d.prepare('UPDATE company SET fy_start=?, fy_end=? WHERE id=1').run(fy, `${y + 1}-03-31`);
-    d.prepare("UPDATE company_years SET fy_start=?, fy_end=? WHERE code='A01'").run(fy, `${y + 1}-03-31`);
-  }
+  d.prepare('UPDATE company SET fy_start=?, fy_end=?, email=?, phone=? WHERE id=1').run(fy, fyEnd, det.email ?? '', det.phone ?? '');
+  d.prepare("UPDATE company_years SET fy_start=?, fy_end=? WHERE code='A01'").run(fy, fyEnd);
   return { id: c.id };
 }));
 app.put('/api/companies/:id', h((req) => {
   const c = companyRow(req.params.id);
   if (!c) throw new Error('Company not found');
   const f = companyFields(req.body ?? {});
-  sysDb.prepare('UPDATE companies SET name=?,station=?,address1=?,address2=?,gstin=?,state=? WHERE id=?').run(...f, c.id);
-  companyDb(c).prepare('UPDATE company SET name=?,address1=?,address2=?,gstin=?,state=? WHERE id=1')
-    .run(f[1] ? `${f[0]}-${f[1]}` : f[0], f[2], f[3], f[4], f[5]);
+  const det = companyDetails(req.body ?? {}, (c as { details?: string }).details);
+  sysDb.prepare('UPDATE companies SET name=?,station=?,address1=?,address2=?,gstin=?,state=?,details=? WHERE id=?').run(...f, JSON.stringify(det), c.id);
+  companyDb(c).prepare('UPDATE company SET name=?,address1=?,address2=?,gstin=?,state=?,email=?,phone=? WHERE id=1')
+    .run(f[1] ? `${f[0]}-${f[1]}` : f[0], f[2], f[3], f[4], f[5], det.email ?? '', det.phone ?? '');
   return { ok: true };
 }));
 /** C — BACKUP OF FINANCIAL YEAR: a full copy of the company file in data/backup/. */
@@ -215,22 +243,43 @@ app.get('/api/items/:id/stock-register', h((req) => {
 }));
 app.get('/api/items/:id', h((req) => db.prepare(`${STOCK_SQL} WHERE i.id=?`).get(req.params.id)));
 function itemArgs(b: Row): SQLInputValue[] {
-  return [b.name, b.company ?? '', b.unit || 'PCS', b.pack ?? '', b.hsn ?? '', num(b.gst_rate), num(b.mrp),
+  return [String(b.name ?? '').trim(), b.company ?? '', b.unit || 'PCS', String(b.pack ?? '').trim(), b.hsn ?? '', num(b.gst_rate), num(b.mrp),
     num(b.sale_rate), num(b.purchase_rate), num(b.opening_stock), num(b.min_stock), num(b.reorder_qty)] as SQLInputValue[];
 }
+/** NEW PRODUCT's extra fields: short strings merged over the stored ones. */
+function itemDetails(b: Row, old = '{}'): string {
+  const out: Record<string, string> = JSON.parse(old || '{}');
+  if (b.details && typeof b.details === 'object') {
+    for (const [k, v] of Object.entries(b.details as Record<string, unknown>).slice(0, 80)) {
+      if (/^[a-z_0-9]{1,30}$/.test(k) && (typeof v === 'string' || typeof v === 'number')) out[k] = String(v).slice(0, 200);
+    }
+  }
+  return JSON.stringify(out);
+}
+/** Same NAME + PACKING as another product → say which one, instead of the generic duplicate message. */
+function checkItemUnique(b: Row, id?: unknown) {
+  const name = String(b.name ?? '').trim();
+  if (!name) throw new Error('Enter the Product name');
+  const pack = String(b.pack ?? '').trim();
+  const dup = db.prepare('SELECT name, pack FROM items WHERE name=? COLLATE NOCASE AND pack=? COLLATE NOCASE AND id<>?').get(name, pack, Number(id ?? 0)) as Row | undefined;
+  if (dup) throw new Error(`Product "${dup.name}${dup.pack ? ` ${dup.pack}` : ''}" already exists — change the Product name or Packing`);
+}
 app.post('/api/items', h((req) => {
-  const r = db.prepare(`INSERT INTO items (name,company,unit,pack,hsn,gst_rate,mrp,sale_rate,purchase_rate,opening_stock,min_stock,reorder_qty)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(...itemArgs(req.body));
+  checkItemUnique(req.body ?? {});
+  const r = db.prepare(`INSERT INTO items (name,company,unit,pack,hsn,gst_rate,mrp,sale_rate,purchase_rate,opening_stock,min_stock,reorder_qty,details)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(...itemArgs(req.body), itemDetails(req.body));
   return { id: Number(r.lastInsertRowid) };
 }));
 app.put('/api/items/:id', h((req) => {
   const body = { ...req.body };
+  checkItemUnique(body, req.params.id);
   // The form showed a masked purchase rate to this role — keep the stored one.
   if (!can(authOf(req), 'feature.view_cost')) {
     body.purchase_rate = (db.prepare('SELECT purchase_rate FROM items WHERE id=?').get(req.params.id) as { purchase_rate: number } | undefined)?.purchase_rate ?? 0;
   }
+  const old = (db.prepare('SELECT details FROM items WHERE id=?').get(req.params.id) as { details: string } | undefined)?.details;
   db.prepare(`UPDATE items SET name=?,company=?,unit=?,pack=?,hsn=?,gst_rate=?,mrp=?,sale_rate=?,purchase_rate=?,
-    opening_stock=?,min_stock=?,reorder_qty=? WHERE id=?`).run(...itemArgs(body), req.params.id);
+    opening_stock=?,min_stock=?,reorder_qty=?,details=? WHERE id=?`).run(...itemArgs(body), itemDetails(body, old), req.params.id);
   return { ok: true };
 }));
 app.delete('/api/items/:id', h((req) => {
@@ -364,6 +413,24 @@ function saveBill(body: BillIn, id?: number) {
     }
     const insL = db.prepare(`INSERT INTO bill_items (bill_id,item_id,batch_id,batch,expiry,qty,free,rate,disc_pct,gst_rate,mrp,taxable,tax,amount)
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+    // Purchase / purchase challan / sale return: a batch typed on the bill becomes a batch of the item
+    // (the same batch + M.R.P. is reused), so it shows in the BATCH window at sale time.
+    if (IN_TYPES.includes(`'${body.type}'`)) {
+      const supplier = (db.prepare('SELECT name FROM ledgers WHERE id=?').get(body.party_id) as { name: string } | undefined)?.name ?? '';
+      const findB = db.prepare('SELECT id FROM batches WHERE item_id=? AND batch=? COLLATE NOCASE AND ABS(mrp-?)<0.005');
+      const insB = db.prepare(`INSERT INTO batches (item_id,batch,expiry,mrp,rate,f_rate,purchase_rate,opening_qty,supplier,invoice_no,invoice_date)
+        VALUES (?,?,?,?,?,?,?,0,?,?,?)`);
+      for (const l of c.lines) {
+        const batch = String(l.batch ?? '').trim().toUpperCase();
+        if (l.batch_id || !batch) continue;
+        const found = findB.get(l.item_id, batch, num(l.mrp)) as { id: number } | undefined;
+        if (found) { l.batch_id = found.id; continue; }
+        const it = db.prepare('SELECT sale_rate FROM items WHERE id=?').get(l.item_id) as { sale_rate: number } | undefined;
+        const sale = num(it?.sale_rate);
+        l.batch_id = Number(insB.run(l.item_id, batch, l.expiry ?? '', num(l.mrp), sale, sale, body.type === 'SALE_RETURN' ? 0 : l.rate,
+          supplier, body.type === 'SALE_RETURN' ? '' : (body.ref_no || no), body.date).lastInsertRowid);
+      }
+    }
     for (const l of c.lines) {
       insL.run(billId, l.item_id, l.batch_id ?? null, l.batch ?? '', l.expiry ?? '', l.qty, l.free, l.rate, l.disc_pct, l.gst_rate, num(l.mrp), l.taxable, l.tax, l.amount);
     }
@@ -710,7 +777,7 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 });
 
 const PORT = Number(process.env.PORT) || 3000;
-app.listen(PORT, () => console.log(`Marg ERP web running at http://localhost:${PORT}`));
+app.listen(PORT, () => console.log(`Flow Ledger ERP running at http://localhost:${PORT}`));
 
 // ---------------------------------------------------------------- admin panel
 // A separate page on its own port for companies, users and roles. It serves only
@@ -728,4 +795,4 @@ admin.use('/api', (req, res, next) => {
 });
 admin.use(express.static(join(process.cwd(), 'admin-public')));
 admin.use((req, res, next) => (req.path.startsWith('/api/') ? app(req, res, next) : next()));
-admin.listen(ADMIN_PORT, () => console.log(`Marg Admin Panel running at http://localhost:${ADMIN_PORT}`));
+admin.listen(ADMIN_PORT, () => console.log(`Flow Ledger SuperAdmin running at http://localhost:${ADMIN_PORT}`));

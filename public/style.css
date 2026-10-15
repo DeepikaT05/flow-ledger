@@ -664,7 +664,64 @@ table.marg-grid tr.sel td input::placeholder { color: rgba(255, 255, 255, .78); 
 .login-logo img, #banner .logo img, #bootfoot .mini-logo img, .splash-logo .brand-logo { mix-blend-mode: multiply; }
 
 /* ---------- right-click menu (add / remove shortcut) */
-.rp-btn { min-height: 24px; }
+.rp-btn { min-height: 24px; position: relative; }
+.rp-btn .rp-no { position: absolute; left: 6px; top: 50%; transform: translateY(-50%); font-size: 11px; color: #555; min-width: 16px; text-align: left; }
+.rp-btn.focus .rp-no { color: inherit; }
 #ctxmenu { position: fixed; z-index: 10000; background: #fff; border: 1px solid #888; box-shadow: 3px 3px 8px rgba(0,0,0,.3); padding: 2px 0; min-width: 200px; font-size: 13px; }
 #ctxmenu .ctx-item { padding: 5px 16px; cursor: default; white-space: nowrap; color: #111; }
 #ctxmenu .ctx-item:hover { background: var(--menu-hi); color: #fff; }
+
+/* ---------- COMPANY CREATION / ALTERATION (F2 / F3 on LIST OF COMPANIES) */
+.win.marg.marg-coform { border: 2px solid #555; }
+.win.marg.marg-coform .win-body { display: flex; background: #f1f7ea; }
+.marg-coform .cf-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.marg-coform .marg-bar { font-size: 17px; padding: 4px 12px; }
+.marg-coform .cf-grid { flex: 1; overflow: auto; padding: 4px 26px; }
+.marg-coform .cf-row { display: grid; grid-template-columns: 210px 30px minmax(0, 1fr) 145px 20px minmax(0, 260px); align-items: center; min-height: 23px; }
+.marg-coform .cf-l, .marg-coform .cf-c { font-family: "Courier New", Courier, monospace; font-weight: bold; font-size: 19px; color: var(--marg-lbl); letter-spacing: .5px; white-space: nowrap; }
+.marg-coform .cf-c { text-align: right; padding-right: 6px; }
+.marg-coform .cf-val { min-width: 0; }
+.win.marg.marg-coform .cf-val input { font-family: "Courier New", Courier, monospace; font-weight: bold; font-size: 18px; color: #1d2f4f; width: 100%; padding: 0 4px; }
+.win.marg.marg-coform .cf-val input.cf-date { width: 150px; }
+.win.marg.marg-coform .cf-val input:focus { background: #1c4f9c; color: #fff; }
+.win.marg.marg-coform .cf-val select { font-family: Segoe UI, Tahoma, sans-serif; font-size: 14px; background: #fff; color: #000; border: 1px solid #888; height: 21px; max-width: 100%; }
+.win.marg.marg-coform .cf-val select:focus { background: #1c4f9c; color: #fff; }
+.marg-coform .cf-fy { display: inline-flex; align-items: center; font-family: "Courier New", monospace; font-weight: bold; font-size: 20px; color: #000; }
+.win.marg.marg-coform .cf-fy input { width: 140px; font-size: 20px; color: #000; }
+.marg-coform .cf-ro { font-family: "Courier New", monospace; font-weight: bold; font-size: 19px; color: #1d2f4f; padding: 0 4px; }
+.marg-coform .cf-states { width: 240px; border-left: 1px solid #999; display: flex; flex-direction: column; background: #fff; }
+.marg-coform .cf-states-head { background: var(--marg-bar); color: #fff; font-family: "Courier New", monospace; font-size: 13px; padding: 5px 8px; }
+.marg-coform .cf-states-list { flex: 1; overflow: auto; font-family: "Courier New", monospace; font-size: 12px; }
+.marg-coform .cf-states-list div { padding: 0 6px; line-height: 15px; cursor: default; white-space: nowrap; }
+.marg-coform .cf-states-list div:nth-child(even) { background: #eeeeee; }
+.marg-coform .cf-states-list div.sel { background: #1c4f9c; color: #fff; }
+
+/* ---------- NEW PRODUCT / MODIFY PRODUCT (F2 / F3 on the item list) */
+.win.marg.marg-prod { max-width: calc(100vw - 20px); }
+.win.marg.marg-prod .win-body { background: #e6eff8; overflow: auto; }
+.marg-prod .marg-bar { font-size: 15px; padding: 4px 12px; }
+.marg-prod .win-foot { justify-content: center; }
+.marg-prod .pf-top { display: grid; grid-template-columns: 310px 300px 1fr; padding: 8px 0 10px 26px; row-gap: 0; }
+.marg-prod .pf-bottom { display: grid; grid-template-columns: 318px 300px 1fr; border-top: 1px solid #6c7a86; }
+.marg-prod .pf-col { padding: 6px 0 8px 26px; border-right: 1px solid #6c7a86; }
+.marg-prod .pf-col:first-child { padding-left: 26px; }
+.marg-prod .pf-col + .pf-col { padding-left: 18px; }
+.marg-prod .pf-col:last-child { border-right: none; }
+.marg-prod .pf-cell { display: flex; align-items: center; min-height: 23px; white-space: nowrap; }
+.marg-prod .pf-cell.wide { grid-column: 1 / span 2; }
+.marg-prod .pf-l { font-family: "Courier New", Courier, monospace; font-weight: bold; font-size: 19px; color: #10203f; letter-spacing: .5px; width: 150px; flex: none; }
+.marg-prod .pf-l.sm { font-family: Arial, Helvetica, sans-serif; font-size: 14px; letter-spacing: 0; }
+.marg-prod .pf-cell.mid .pf-l { width: auto; margin-right: 8px; }
+.marg-prod .pf-cell.right .pf-l, .marg-prod .pf-col + .pf-col .pf-l { width: 108px; }
+.marg-prod .pf-l.in { width: auto !important; margin: 0 6px 0 8px; }
+.marg-prod .pf-c { font-family: "Courier New", monospace; font-weight: bold; font-size: 19px; color: #10203f; width: 20px; flex: none; }
+.marg-prod .pf-v { display: flex; align-items: center; min-width: 0; }
+.win.marg.marg-prod .pf-v input { font-family: "Courier New", Courier, monospace; font-weight: bold; font-size: 19px; color: #2a5291; border: none; background: transparent; padding: 0 3px; }
+.win.marg.marg-prod .pf-v input.pf-num { width: 100px; text-align: right; }
+.win.marg.marg-prod .pf-v input:focus { background: #1c4f9c; color: #fff; outline: none; }
+.win.marg.marg-prod .pf-v input[readonly] { color: #2a5291; }
+.win.marg.marg-prod .pf-v select { font-family: Tahoma, "Segoe UI", sans-serif; font-size: 13px; background: #fff; color: #000; border: 1px solid #8a8a8a; height: 20px; padding: 0 2px; }
+.win.marg.marg-prod .pf-v select:focus { background: #1c4f9c; color: #fff; outline: none; }
+.win.marg.marg-prod .win-body { overflow-x: hidden; }
+.marg-prod .pf-col, .marg-prod .pf-cell { min-width: 0; overflow: hidden; }
+.marg-prod .pf-c { width: 22px; }

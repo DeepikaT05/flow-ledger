@@ -12,7 +12,7 @@ import { boot, login, changeCompany, isBooting } from './startup.ts';
 import { usersWindow, rolesWindow } from './admin.ts';
 import { session, canAction, isSuper, menuTickedFor } from './session.ts';
 import { menuKeyOf, leavesForAction, leavesForLabel } from '../shared/menuPerms.ts';
-import { notExist } from './margui.ts';
+import { notExist, margNumber } from './margui.ts';
 
 // ------------------------------------------------------------------ actions
 const ACTIONS: Record<string, (arg?: string) => unknown> = {
@@ -422,7 +422,33 @@ function renderQuick() {
   const all = savedQuick();
   quick = session() ? all.filter((q) => shortcutAllowed(q.label, q.action)) : all;
   rpSel = Math.max(0, Math.min(rpSel, quick.length - 1));
-  rp.innerHTML = quick.map((q, i) => `<div class="rp-btn${i === rpSel ? ' focus' : ''}" data-i="${i}">${esc(q.label)}</div>`).join('');
+  rp.innerHTML = quick.map((q, i) => `<div class="rp-btn${i === rpSel ? ' focus' : ''}" data-i="${i}"><span class="rp-no">${i + 1}</span>${esc(q.label)}</div>`).join('');
+}
+
+/** Ask for a shortcut number 1..max; null when cancelled or out of range. */
+async function askQuickNo(label: string, max: number, def: number): Promise<number | null> {
+  const n = await margNumber(`${label} (1-${max})`, def);
+  if (n === null) return null;
+  if (n < 1 || n > max) { toast(`Enter a number from 1 to ${max}`, true); return null; }
+  return n;
+}
+/** Put `item` at shortcut number `no` (1-based, as numbered on screen), removing any old copy. */
+function placeQuick(item: Quick, no: number) {
+  const list = savedQuick().filter((x) => !sameQuick(x, item));
+  // Numbers on screen count only the visible buttons; map to the saved list's index.
+  const anchor = quick.filter((x) => !sameQuick(x, item))[no - 1];
+  const at = anchor ? list.findIndex((x) => sameQuick(x, anchor)) : list.length;
+  list.splice(at < 0 ? list.length : at, 0, item);
+  saveQuick(list);
+  toast(`"${item.label}" set at No. ${no}`);
+}
+async function removeQuickByNo() {
+  if (!quick.length) return;
+  const no = await askQuickNo('Remove Shortcut No.', quick.length, rpSel + 1);
+  if (no === null) return;
+  const q = quick[no - 1];
+  saveQuick(savedQuick().filter((x) => !sameQuick(x, q)));
+  toast(`No. ${no} "${q.label}" removed from shortcuts`);
 }
 rp.addEventListener('click', (e) => {
   const b = (e.target as HTMLElement).closest('.rp-btn') as HTMLElement | null;
@@ -433,7 +459,11 @@ rp.addEventListener('contextmenu', (e) => {
   const b = (e.target as HTMLElement).closest('.rp-btn') as HTMLElement | null;
   const q = b ? quick[Number(b.dataset.i)] : null;
   ctxMenu(e.clientX, e.clientY, [
-    ...(q ? [{ label: `Remove "${q.label}" from Shortcut`, fn: () => { saveQuick(savedQuick().filter((x) => !sameQuick(x, q))); toast(`"${q.label}" removed from shortcuts`); } }] : []),
+    ...(q ? [
+      { label: `Remove "${q.label}" from Shortcut`, fn: () => { saveQuick(savedQuick().filter((x) => !sameQuick(x, q))); toast(`"${q.label}" removed from shortcuts`); } },
+      { label: `Move "${q.label}" to No. …`, fn: async () => { const no = await askQuickNo('Move to Shortcut No.', quick.length, quick.indexOf(q) + 1); if (no !== null) placeQuick(q, no); } },
+    ] : []),
+    { label: 'Remove Shortcut by No. …', fn: removeQuickByNo },
     { label: 'Reset Shortcuts to Default', fn: () => { saveQuick(QUICK); toast('Shortcuts reset'); } },
   ]);
 });
@@ -452,9 +482,18 @@ bar.addEventListener('contextmenu', (e) => {
   const have = list.find((x) => sameQuick(x, item));
   // "Bill" under Sale and under Purchase: name the second one by its menu.
   if (!have && list.some((x) => x.label === item.label)) item.label = `${parent.label} ${m.label}`;
-  ctxMenu(e.clientX, e.clientY, [have
-    ? { label: `Remove "${have.label}" from Shortcut`, fn: () => { saveQuick(list.filter((x) => x !== have)); toast(`"${have.label}" removed from shortcuts`); } }
-    : { label: `Add "${item.label}" to Shortcut`, fn: () => { saveQuick([...list, item]); toast(`"${item.label}" added to shortcuts`); } }]);
+  const shownNo = have ? quick.findIndex((x) => sameQuick(x, have)) + 1 : 0;
+  ctxMenu(e.clientX, e.clientY, have
+    ? [
+      { label: `Remove "${have.label}" from Shortcut${shownNo ? ` (No. ${shownNo})` : ''}`, fn: () => { saveQuick(list.filter((x) => x !== have)); toast(`"${have.label}" removed from shortcuts`); } },
+      { label: `Move "${have.label}" to Shortcut No. …`, fn: async () => { const no = await askQuickNo('Move to Shortcut No.', Math.max(quick.length, 1), shownNo || quick.length); if (no !== null) placeQuick(have, no); } },
+      { label: 'Remove Shortcut by No. …', fn: removeQuickByNo },
+    ]
+    : [
+      { label: `Add "${item.label}" to Shortcut`, fn: () => { saveQuick([...list, item]); toast(`"${item.label}" added to shortcuts`); } },
+      { label: `Add "${item.label}" at Shortcut No. …`, fn: async () => { const no = await askQuickNo('Add at Shortcut No.', quick.length + 1, quick.length + 1); if (no !== null) placeQuick(item, no); } },
+      { label: 'Remove Shortcut by No. …', fn: removeQuickByNo },
+    ]);
 });
 
 /** Small right-click menu. Closes on any click elsewhere, Esc, or after a choice. */

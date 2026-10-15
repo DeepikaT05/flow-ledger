@@ -224,7 +224,7 @@ function loginView() {
   return h('div', { class: 'login-wrap' },
     h('form', { class: 'login-card', onsubmit: submit },
       h('div', { class: 'brand-mark' }, h('img', { src: 'logo.png', alt: '' })),
-      h('h1', {}, 'Flow Ledger Admin Panel'),
+      h('h1', {}, 'Flow Ledger SuperAdmin Panel'),
       h('p', { class: 'muted' }, 'Companies, users and access. SuperAdmin only.'),
       h('label', { class: 'field', for: 'l-user' }, h('span', { class: 'field-label' }, 'User Id'), user),
       h('label', { class: 'field', for: 'l-pass' }, h('span', { class: 'field-label' }, 'Password'), pass),
@@ -259,7 +259,7 @@ function shellView() {
       h('button', { type: 'button', class: 'danger-text', onclick: () => logout() }, 'Sign out')));
   const shell = h('div', { class: 'shell' },
     h('header', { class: 'topbar' },
-      h('div', { class: 'brand' }, h('span', { class: 'brand-mark small' }, h('img', { src: 'logo.png', alt: '' })), h('span', {}, 'Flow Ledger ', h('b', {}, 'Admin'))),
+      h('div', { class: 'brand' }, h('span', { class: 'brand-mark small' }, h('img', { src: 'logo.png', alt: '' })), h('span', {}, 'Flow Ledger ', h('b', {}, 'SuperAdmin'))),
       menu),
     h('nav', { class: 'nav', 'aria-label': 'Sections' },
       tabs.map(([k, label, icon]) => h('button', {

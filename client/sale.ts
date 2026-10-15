@@ -204,12 +204,19 @@ async function pickProduct(initial: string): Promise<Item | null> {
   });
 }
 
-/** BATCH window for the chosen item. */
-async function pickBatch(item: Item): Promise<Batch | null> {
+/** Returned by pickBatch when the user asks for a new batch (F2), or the item has none yet on a purchase. */
+const NEW_BATCH = { id: -1 } as Batch;
+/** BATCH window for the chosen item. `allowNew`: purchase-side entries, where new batches come in (F2-New Batch). */
+async function pickBatch(item: Item, allowNew = false): Promise<Batch | null> {
   const rows = await api<Batch[]>(`/items/${item.id}/batches`);
   const total = rows.reduce((s, b) => s + b.stock, 0);
-  if (!rows.length) { toast('No batch found — press F2 in the item list to add one', true); return null; }
+  if (!rows.length) {
+    if (allowNew) return NEW_BATCH;
+    toast('No batch found — purchase this item first (Purchase → Batch)', true);
+    return null;
+  }
   return popList<Batch>({
+    onKey: (k, _cur, pop) => { if (allowNew && (k === 'F2' || k === 'Insert')) { pop.close(NEW_BATCH); return true; } },
     title: `${item.name.toUpperCase()} ${item.pack ?? ''}`, rows, search: (r) => r.batch, width: '1020px',
     findLabel: 'Find ? >>', extra: `Total : ${total}`, detailCols: 3,
     cols: [
@@ -231,8 +238,33 @@ async function pickBatch(item: Item): Promise<Batch | null> {
       <div>W/oDeal: <b>${c2(r.purchase_rate)}</b></div><div>F.Rate&nbsp;: <b>${f2(r.f_rate)}</b></div><div>Packin&nbsp;: <b>${esc(r.pack ?? '')}</b></div>
       <div>PurDeal:</div><div>Deal[F]:</div><div>Conv. &nbsp;: 0</div>
       <div>PurDisc:</div><div>Scheme&nbsp;: 0</div><div>Barcode:</div>`,
-    foot: '<span><b>F3</b>-Edit</span><span><b>F5</b>-Register</span><span><b>Ins</b>-Balance</span><span><b>F10</b>-All</span><span><b>Alt+~</b>-Rates</span>',
+    foot: (allowNew ? '<span><b>F2</b>-New Batch</span>' : '') + '<span><b>F3</b>-Edit</span><span><b>F5</b>-Register</span><span><b>Ins</b>-Balance</span><span><b>F10</b>-All</span><span><b>Alt+~</b>-Rates</span>',
   });
+}
+
+/**
+ * Sale side batch, by the company's Selection (as in MARG):
+ * Self — the BATCH window; Fifo — the earliest-expiring batch in stock, no window;
+ * Manual — type the batch number (the BATCH window opens if it isn't found).
+ */
+async function chooseBatch(item: Item, style: string): Promise<Batch | null> {
+  if (style.startsWith('Fifo')) {
+    const rows = await api<Batch[]>(`/items/${item.id}/batches`);
+    const first = rows.filter((b) => b.stock > 0).sort((a, b) => (a.expiry || '9999').localeCompare(b.expiry || '9999') || a.id - b.id)[0];
+    if (first) return first;
+    toast('No batch in stock — choose from the list', true);
+  } else if (style.startsWith('Manual')) {
+    const rows = await api<Batch[]>(`/items/${item.id}/batches`);
+    for (;;) {
+      const t = await margAsk('Batch', '');
+      if (t == null) return null;
+      const hit = rows.find((b) => b.batch.toUpperCase() === t.trim().toUpperCase());
+      if (hit) return hit;
+      toast(`Batch "${t.toUpperCase()}" not found — choose from the list`, true);
+      break;
+    }
+  }
+  return pickBatch(item);
 }
 
 // ------------------------------------------------------------------ the screen
@@ -430,15 +462,42 @@ export async function saleEntry(type = 'SALE', billId?: number) {
       }
       const it = await pickProduct(typed);
       if (!it) { focusCell(rowIdx, 'name'); return; }
-      const b = await pickBatch(it);
-      if (!b && refEntry) {
-        // Manual batch: type the batch received / returned, then "MRP for Search" (as in MARG).
+      // Purchase / purchase challan / sale return bring stock in: a new batch can be typed here.
+      const inward = isPurchase(type) && type !== 'PURCHASE_RETURN' || refEntry;
+      // Working Style (company): "Normal W/o Secondary" keeps no batches; otherwise Self / Fifo / Manual.
+      const style = String(company.working_style || 'Self-Secondary');
+      if (style.startsWith('Normal')) {
+        rows[rowIdx] = {
+          item_id: it.id, name: it.name.toUpperCase(), pack: (it.pack ?? '').toUpperCase(), batch: '', expiry: '',
+          qty: 1, free: 0, rate: isPurchase(type) ? (it.purchase_rate ?? 0) : netRate(it.sale_rate, it.gst_rate), disc: 0, gst: it.gst_rate,
+          mrp: it.mrp, cost: it.purchase_rate, stock: it.stock, unit: it.unit,
+        };
+        dirty = true; renderRows(); focusCell(rowIdx, 'qty');
+        return;
+      }
+      const b = inward ? await pickBatch(it, true) : await chooseBatch(it, style);
+      if (b === NEW_BATCH) {
+        // New batch (as in MARG): Batch, Expiry (MM/YY), then M.R.P.
         const batch = await margAsk('Batch', '');
-        if (batch == null) { focusCell(rowIdx, 'name'); return; }
-        const mrpS = await margAsk('MRP for Search', f2(it.mrp));
+        if (batch == null || !batch) { focusCell(rowIdx, 'name'); return; }
+        let expiry = '';
+        for (;;) {
+          const e = await margAsk('Expiry (MM/YY)', '');
+          if (e == null) { focusCell(rowIdx, 'name'); return; }
+          if (!e) break;
+          const m = e.match(/^(\d{1,2})[/-](\d{2}|\d{4})$/);
+          const mm = m ? Number(m[1]) : 0;
+          if (m && mm >= 1 && mm <= 12) {
+            const yy = m[2].length === 2 ? 2000 + Number(m[2]) : Number(m[2]);
+            expiry = `${yy}-${String(mm).padStart(2, '0')}-${String(new Date(yy, mm, 0).getDate()).padStart(2, '0')}`;
+            break;
+          }
+          toast('Enter the expiry as MM/YY, e.g. 03/27', true);
+        }
+        const mrpS = await margAsk(isPurchase(type) ? 'M.R.P.' : 'MRP for Search', f2(it.mrp));
         if (mrpS == null) { focusCell(rowIdx, 'name'); return; }
         rows[rowIdx] = {
-          item_id: it.id, name: it.name.toUpperCase(), pack: (it.pack ?? '').toUpperCase(), batch: batch.toUpperCase(), expiry: '',
+          item_id: it.id, name: it.name.toUpperCase(), pack: (it.pack ?? '').toUpperCase(), batch: batch.toUpperCase(), expiry,
           qty: 1, free: 0, rate: isPurchase(type) ? (it.purchase_rate ?? 0) : netRate(it.sale_rate, it.gst_rate), disc: 0, gst: it.gst_rate, mrp: Number(mrpS) || it.mrp, unit: it.unit,
         };
         dirty = true; renderRows(); focusCell(rowIdx, 'qty');

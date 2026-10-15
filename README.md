@@ -56,6 +56,8 @@ A file-by-file guide is in [Layout](#layout) below.
 
 Start-up order: **User Id / User Password** → **LIST OF COMPANIES** → the company's menu (**A FLOW LEDGER GATEWAY**, B FILES MAINTENANCE, C BACKUP OF FINANCIAL YEAR, D RESTORE BACKUP, E NEW FINANCIAL YEAR, F DELETE FINANCIAL YEAR, G ERROR CHECKINGS & REWRITING) → **SELECT TO EXECUTE** (financial year) → main screen. A wrong User Id is reported straight away, before the password is asked. Quit (Ctrl+Q) logs out and returns to the login box.
 
+On LIST OF COMPANIES, **F2** opens **COMPANY CREATION** and **F3** opens **COMPANY ALTERATION** (SuperAdmin only), laid out as in MARG with the State Code's list on the right. Type a state code (e.g. `22`) in State; Enter / ↓ moves to the next field and Enter on the last field asks **Save ?**. The extra fields (phone, licences and expiry dates, working style, date type, valuation …) are kept in the `details` column of `companies`; the company password is stored only as a hash.
+
 **USER role:** anyone whose role is named `USER` gets MARG's short menu bar instead of the full one — **My Menu** (Bill, Receipt, Contra, Day Book, Sale Book, All Ledgers, Current Stock, SALE RTN, Challan), **Links** and **Exit**. An item shows only while the role may open it, so unticking it in Roles & Permissions hides it. The bar is `USER_MENU` in `client/menu.ts`.
 
 ## Users, roles & permissions
@@ -87,7 +89,7 @@ It runs in the same server process. Data, sessions and every server-side permiss
 - **F1** or **Alt+X** (Hot Keys → Change Company) reopens the list from the main screen without logging out; Esc there keeps the company you had. Each logged-in user has their own open company, and Ctrl+U keeps it.
 
 ## Shortcut panel (right side)
-Right-click a button → **Remove from Shortcut** (or **Reset Shortcuts to Default**). Right-click any item in the menus → **Add to Shortcut** (or Remove, if it is already there). Each user has their own list, saved in that browser (`localStorage`, key `quick:<USER>`); the default list is `QUICK` in `client/menu.ts`.
+The buttons are numbered 1, 2, 3 … n. Right-click a button → **Remove from Shortcut**, **Move to No. …**, **Remove Shortcut by No. …** or **Reset Shortcuts to Default**. Right-click any item in the menus → **Add to Shortcut**, **Add at Shortcut No. …** (or Remove / Move to No., if it is already there). Each user has their own list, saved in that browser (`localStorage`, key `quick:<USER>`); the default list is `QUICK` in `client/menu.ts`.
 
 ## Most viewed / Recently viewed (left side)
 **Recently viewed** puts the screen opened last at the top; **Most viewed** lists the screens opened most often (ties go to the one opened last). Menus, the shortcut panel, hotkeys (Alt+N, Alt+P …) and the lists themselves all count, and one screen is one entry however it was opened. Exit, change user / company / password are not counted. Each user has their own lists in that browser (`localStorage`, key `seen:<USER>`).
@@ -158,3 +160,7 @@ The menu tree follows Marg's Level 1 → 2 → 3 → 4 layout (e.g. Masters → 
 **Voucher entry:** F2 Payment · F3 Receipt · F4 Journal · F5 Debit Note · F6 Credit Note · F7 Contra · F11 last narration · Ctrl+W save. In journal entries, type D or C (or press Space) to switch between Dr and Cr.
 
 **Reports:** F2 changes the period, Enter drills down to the bill or voucher, and F10 prints.
+
+**Batches in bills.** COMPANY CREATION's Working Style decides batches: *Normal W/o Secondary* keeps none; *Secondary* keeps them, and Selection picks them at sale time — **Self** opens the BATCH window, **Fifo** takes the earliest-expiring batch in stock, **Manual** asks for the batch number. On Purchase / Purchase Challan / Sale Return, **F2** in the BATCH window (or straight away, for an item with no batches yet) asks Batch → Expiry (MM/YY) → M.R.P.; saving the bill creates that batch.
+
+**Deleting entries.** Day Book: **Del** deletes the highlighted bill or voucher (after Yes). Receipt / Payment Book: **Del**. A voucher opened for modify: **Ctrl+D**.

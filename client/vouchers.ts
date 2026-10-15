@@ -31,7 +31,7 @@ export async function voucherEntry(initialType: string, voucherId?: number) {
   const setTitle = () => {
     (w.el.querySelector('.win-title span') as HTMLElement).textContent = `${V_TITLE[type]} Voucher${voucherId ? ' - Modify' : ''}`;
     w.setFoot('<span><b>Enter</b> Next</span><span><b>Ctrl+W</b> Save</span><span><b>Ctrl+Del</b> Delete Row</span>' +
-      (voucherId ? '' : '<span><b>F2</b> Payment <b>F3</b> Receipt <b>F4</b> Journal <b>F5</b> Debit Note <b>F6</b> Credit Note <b>F7</b> Contra</span>') +
+      (voucherId ? '<span><b>Ctrl+D</b> Delete Voucher</span>' : '<span><b>F2</b> Payment <b>F3</b> Receipt <b>F4</b> Journal <b>F5</b> Debit Note <b>F6</b> Credit Note <b>F7</b> Contra</span>') +
       '<span><b>F11</b> Last Narration</span><span><b>Esc</b> Exit</span>');
   };
 
@@ -142,6 +142,15 @@ export async function voucherEntry(initialType: string, voucherId?: number) {
   w.onKey = (e, k) => {
     const t = e.target as HTMLInputElement;
     if (k === 'Ctrl+W') { save(); return true; }
+    // Modify mode: delete this voucher.
+    if (k === 'Ctrl+D' && voucherId) {
+      confirmBox(`Delete ${V_TITLE[type]} Voucher ${$('[data-h=no]').value} ?`, false).then(async (y) => {
+        if (!y) return;
+        try { await api(`/vouchers/${voucherId}`, { method: 'DELETE' }); toast('Voucher deleted'); dirty = false; w.close(); }
+        catch (err) { toast((err as Error).message, true); }
+      });
+      return true;
+    }
     if (SWITCH[k] && !voucherId) {
       if (!canAction(`voucher.new:${SWITCH[k]}`)) { toast(`Access denied — role ${session()?.role ?? ''} cannot enter ${V_TITLE[SWITCH[k]]}`, true); return true; }
       type = SWITCH[k]; reset(); return true;
@@ -251,7 +260,10 @@ export async function voucherList(type: string) {
     if ((k === 'Enter' || k === 'F3') && cur) { voucherEntry(cur.type, cur.id); reloadOnClose(load); return true; }
     if (k === 'F2') { voucherEntry(type); reloadOnClose(load); return true; }
     if (k === 'Delete' && cur) {
-      confirmBox(`Delete ${V_TITLE[type]} ${cur.no} ?`, false).then(async (y) => { if (y) { await api(`/vouchers/${cur.id}`, { method: 'DELETE' }); toast('Deleted'); load(); } });
+      confirmBox(`Delete ${V_TITLE[cur.type] ?? V_TITLE[type]} ${cur.no} ?`, false).then(async (y) => {
+        if (!y) return;
+        try { await api(`/vouchers/${cur.id}`, { method: 'DELETE' }); toast('Deleted'); load(); } catch (err) { toast((err as Error).message, true); }
+      });
       return true;
     }
     return false;

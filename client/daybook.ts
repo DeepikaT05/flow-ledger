@@ -3,7 +3,7 @@
 // REMARK / VOUCHER TOTAL footer, the Voucher Detail panel and the "0994 PRINTING" box.
 // Day book shows everything that happened (sales cash or credit, receipts, contra …);
 // sale book shows only the sales whose money has been received.
-import { api, esc, toast, h, today, money, openWin } from './ui.ts';
+import { api, esc, toast, h, today, money, openWin, confirmBox } from './ui.ts';
 import { margBar, margPop } from './margui.ts';
 import { pickParty } from './sale.ts';
 import { canAction } from './session.ts';
@@ -160,7 +160,7 @@ export async function bookScreen(kind: Kind) {
 
   const w = openWin(title, 'full', '');
   w.el.classList.add('marg');
-  w.setFoot('<span><b>F2</b>-Dt</span><span><b>F4</b>-Nar</span><span><b>Enter</b>-Bill / Voucher</span><span><b>F10/Ctrl+P</b>-Print</span><span><b>Esc</b>-Exit</span>');
+  w.setFoot('<span><b>F2</b>-Dt</span><span><b>F4</b>-Nar</span><span><b>Enter</b>-Bill / Voucher</span><span><b>Del</b>-Delete</span><span><b>F10/Ctrl+P</b>-Print</span><span><b>Esc</b>-Exit</span>');
   const screen = h('div', { class: 'db-screen' });
   screen.innerHTML = `
     <div class="db-main">
@@ -277,8 +277,22 @@ export async function bookScreen(kind: Kind) {
     if (k === 'F4') { showNarr = !showNarr; draw(); return true; }
     if (k === 'F10' || k === 'Ctrl+P') { printFlow(); return true; }
     if (k === 'Enter' && rows[sel]) { open(rows[sel]); return true; }
+    if (k === 'Delete' && rows[sel]) { remove(rows[sel]); return true; }
     return false;
   };
   w.onClose = () => { detailSeq++; };
+
+  /** Del: delete the highlighted bill or voucher (Receipt, Payment …) after Yes. */
+  async function remove(r: Row) {
+    const isBill = r.source === 'BILL';
+    if (!isBill && !canAction(`voucher.list:${r.vtype}`)) { toast('Access denied — your role cannot delete vouchers', true); return; }
+    const what = `${isBill ? 'Bill' : 'Voucher'} ${r.no ?? ''}${r.party ? ` (${r.party})` : ''}`;
+    if (!(await confirmBox(`Delete ${what} ?`, false))) return;
+    try {
+      await api(`/${isBill ? 'bills' : 'vouchers'}/${r.source_id}`, { method: 'DELETE' });
+      toast(`${what} deleted`);
+      load();
+    } catch (err) { toast((err as Error).message, true); }
+  }
   await load();
 }

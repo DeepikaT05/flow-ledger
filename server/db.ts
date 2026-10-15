@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS ledgers (
   credit_limit REAL NOT NULL DEFAULT 0, is_system INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS items (
-  id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  id INTEGER PRIMARY KEY, name TEXT NOT NULL COLLATE NOCASE,   -- unique together with pack (items_name_pack)
   company TEXT, unit TEXT NOT NULL DEFAULT 'PCS', pack TEXT, hsn TEXT,
   gst_rate REAL NOT NULL DEFAULT 0, mrp REAL NOT NULL DEFAULT 0,
   sale_rate REAL NOT NULL DEFAULT 0, purchase_rate REAL NOT NULL DEFAULT 0,
@@ -129,6 +129,8 @@ CREATE INDEX IF NOT EXISTS ix_vadj_bill ON voucher_adjustments(bill_id);
 `;
 // New columns on existing tables (ignored when they already exist).
 const COMPANY_ALTERS = [
+  // NEW PRODUCT's fields that have no column of their own (status, hide, color type, rack, schedule H1 …), as JSON.
+  "ALTER TABLE items ADD COLUMN details TEXT NOT NULL DEFAULT '{}'",
   // SALE RETURN: the customer's Party No. / Dt, the reason, the bill returned against and the calculation type.
   'ALTER TABLE bills ADD COLUMN ref_no TEXT',
   'ALTER TABLE bills ADD COLUMN ref_date TEXT',
@@ -166,10 +168,33 @@ export function currentFy() {
 
 export interface CompanyInfo { name: string; address1?: string; address2?: string; gstin?: string; state?: string; fy_start: string }
 
+/**
+ * A product is unique by NAME + PACKING (KASOL 500ML and KASOL 1LTR are two items).
+ * Files made before this had UNIQUE on the name alone: rebuild that table once.
+ */
+function itemsUniqueByPack(d: DatabaseSync) {
+  const sql = (d.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='items'").get() as { sql: string } | undefined)?.sql ?? '';
+  if (/name TEXT NOT NULL UNIQUE/i.test(sql)) {
+    const cols = (d.prepare('PRAGMA table_info(items)').all() as { name: string }[]).map((c) => c.name).join(',');
+    d.exec('PRAGMA foreign_keys = OFF');
+    try {
+      d.exec('BEGIN');
+      d.exec(`CREATE TABLE items_new (${sql.slice(sql.indexOf('(') + 1, sql.lastIndexOf(')')).replace(/name TEXT NOT NULL UNIQUE COLLATE NOCASE/i, 'name TEXT NOT NULL COLLATE NOCASE')})`);
+      d.exec(`INSERT INTO items_new (${cols}) SELECT ${cols} FROM items`);
+      d.exec('DROP TABLE items');
+      d.exec('ALTER TABLE items_new RENAME TO items');
+      d.exec('COMMIT');
+    } catch (e) { d.exec('ROLLBACK'); throw e; } finally { d.exec('PRAGMA foreign_keys = ON'); }
+  }
+  d.exec("UPDATE items SET pack='' WHERE pack IS NULL");
+  d.exec('CREATE UNIQUE INDEX IF NOT EXISTS items_name_pack ON items (name COLLATE NOCASE, pack COLLATE NOCASE)');
+}
+
 /** Schema, account groups, system ledgers and the first year for a company file. `demo` adds sample data. */
 function initCompany(d: DatabaseSync, info: CompanyInfo, demo: boolean) {
   d.exec(COMPANY_SCHEMA);
   for (const sql of COMPANY_ALTERS) { try { d.exec(sql); } catch { /* column already there */ } }
+  itemsUniqueByPack(d);
   if (demo) demoExtras(d);   // also tops up an existing demo file (batches, modes, years)
   if (d.prepare('SELECT 1 FROM company').get()) return;
 
@@ -316,7 +341,8 @@ CREATE TABLE IF NOT EXISTS roles (
 );
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE COLLATE NOCASE,
-  salt TEXT NOT NULL, hash TEXT NOT NULL, is_admin INTEGER NOT NULL DEFAULT 0
+  salt TEXT NOT NULL, hash TEXT NOT NULL, is_admin INTEGER NOT NULL DEFAULT 0,
+  role_id INTEGER REFERENCES roles(id)
 );
 -- LIST OF COMPANIES. file = the company's database, relative to data/.
 CREATE TABLE IF NOT EXISTS companies (
@@ -326,12 +352,21 @@ CREATE TABLE IF NOT EXISTS companies (
 );
 `);
 try { sysDb.exec('ALTER TABLE users ADD COLUMN role_id INTEGER REFERENCES roles(id)'); } catch { /* already there */ }
+// COMPANY CREATION's other fields (phone, licences, working style …) as JSON.
+try { sysDb.exec("ALTER TABLE companies ADD COLUMN details TEXT NOT NULL DEFAULT '{}'"); } catch { /* already there */ }
+export const SEED_DEMO = process.env.SEED_DEMO === 'true';
 
-// The first company lives in marg.db itself.
-initCompany(sysDb, {
-  name: 'TAMRAKAR AGROTECH-DURG', address1: 'SHOP NO.34,KRISHI UPAJ MANDI DHAMDHA', address2: 'ROAD DURG (C.G.)',
-  gstin: '22', state: 'Chhattisgarh', fy_start: '2026-04-01',
-}, true);
+// The first company lives in marg.db itself if demo data is enabled.
+if (SEED_DEMO) {
+  initCompany(sysDb, {
+    name: 'TAMRAKAR AGROTECH-DURG', address1: 'SHOP NO.34,KRISHI UPAJ MANDI DHAMDHA', address2: 'ROAD DURG (C.G.)',
+    gstin: '22', state: 'Chhattisgarh', fy_start: '2026-04-01',
+  }, true);
+} else {
+  sysDb.exec(COMPANY_SCHEMA);
+  for (const sql of COMPANY_ALTERS) { try { sysDb.exec(sql); } catch { /* column already there */ } }
+  itemsUniqueByPack(sysDb);
+}
 
 /** scrypt password hashing — keeps plain passwords out of the database file. */
 export function hashPassword(password: string, salt = randomBytes(16).toString('hex')) {
@@ -357,8 +392,10 @@ function seedSystem() {
   const roleId = (n: string) => (sysDb.prepare('SELECT id FROM roles WHERE name=?').get(n) as { id: number }).id;
   if (!sysDb.prepare('SELECT 1 FROM users').get()) {
     const ins = sysDb.prepare('INSERT INTO users (name,salt,hash,is_admin,role_id) VALUES (?,?,?,?,?)');
-    const nk = hashPassword('marg');
-    ins.run('NK', nk.salt, nk.hash, 1, roleId('SUPERADMIN'));
+    const saUser = (process.env.SUPERADMIN_USER || 'NK').trim().toUpperCase();
+    const saPass = process.env.SUPERADMIN_PASS || 'marg';
+    const sa = hashPassword(saPass);
+    ins.run(saUser, sa.salt, sa.hash, 1, roleId('SUPERADMIN'));
     const admin = hashPassword('admin');
     ins.run('ADMIN', admin.salt, admin.hash, 1, roleId('ADMIN'));
   }
@@ -398,12 +435,14 @@ function seedSystem() {
   const supers = sysDb.prepare('SELECT COUNT(*) AS c FROM users u JOIN roles r ON r.id=u.role_id WHERE r.is_super=1').get() as { c: number };
   if (!supers.c) sysDb.prepare('UPDATE users SET role_id=? WHERE id=(SELECT MIN(id) FROM users)').run(roleId('SUPERADMIN'));
 
-  if (!sysDb.prepare('SELECT 1 FROM companies').get()) {
-    const c = sysDb.prepare('SELECT * FROM company WHERE id=1').get() as Row;
-    const ins = sysDb.prepare('INSERT INTO companies (name,station,address1,address2,gstin,state,file) VALUES (?,?,?,?,?,?,?)');
-    ins.run('ABC', 'ABC', 'TEST', '', '', 'Chhattisgarh', 'companies/abc.db');
-    ins.run('BARTAN SHOP', 'BASH', '', '', '', 'Chhattisgarh', 'companies/bash.db');
-    ins.run('TAMRAKAR AGROTECH', 'DURG', c.address1 as string, c.address2 as string, c.gstin as string, c.state as string, 'marg.db');
+  if (SEED_DEMO && !sysDb.prepare('SELECT 1 FROM companies').get()) {
+    const c = sysDb.prepare('SELECT * FROM company WHERE id=1').get() as Row | undefined;
+    if (c) {
+      const ins = sysDb.prepare('INSERT INTO companies (name,station,address1,address2,gstin,state,file) VALUES (?,?,?,?,?,?,?)');
+      ins.run('ABC', 'ABC', 'TEST', '', '', 'Chhattisgarh', 'companies/abc.db');
+      ins.run('BARTAN SHOP', 'BASH', '', '', '', 'Chhattisgarh', 'companies/bash.db');
+      ins.run('TAMRAKAR AGROTECH', 'DURG', c.address1 as string, c.address2 as string, c.gstin as string, c.state as string, 'marg.db');
+    }
   }
 }
 seedSystem();

@@ -1,12 +1,13 @@
 // MARG start-up, in the same order as the real program:
 //   User Id / User Password  →  LIST OF COMPANIES
 //   →  company menu (A MARG GATEWAY …)  →  SELECT TO EXECUTE (financial year)  →  main screen.
-import { api, esc, h, openWin, toast, alertBox, confirmBox, formWin } from './ui.ts';
+import { api, esc, h, openWin, toast, alertBox, confirmBox } from './ui.ts';
 import { margBar, notExist } from './margui.ts';
+import { companyScreen } from './companyform.ts';
 import { setSession, token, isSuper, type Session } from './session.ts';
 
 export type User = Session;
-export interface Company { id: number; name: string; station: string; address1: string; address2: string; gstin: string; state: string }
+export interface Company { id: number; name: string; station: string; address1: string; address2: string; gstin: string; state: string; details?: string }
 interface Year { id: number; code: string; fy_start: string; fy_end: string; backup_upto: string | null; freez_upto: string | null }
 
 let booting = false;
@@ -173,6 +174,11 @@ function companyList(startId: number | undefined, required: boolean): Promise<Co
 
     let sel = Math.max(0, rows.findIndex((r) => r.id === startId));
     const draw = () => {
+      if (rows.length === 0) {
+        list.innerHTML = `<div style="padding:20px;text-align:center;color:#666;font-size:13px;line-height:1.6;">No companies created yet.<br><br>Press <b style="color:#000;">F2</b> to create a new company,<br>or add one from the SuperAdmin Panel.</div>`;
+        setInfo(null);
+        return;
+      }
       list.innerHTML = rows.map((r, i) => `<div class="co-row${i === sel ? ' sel' : ''}" data-i="${i}">
         <span>${esc(r.name)}</span><span>${esc(r.station)}</span></div>`).join('');
       list.querySelector('.sel')?.scrollIntoView({ block: 'nearest' });
@@ -206,25 +212,8 @@ function companyList(startId: number | undefined, required: boolean): Promise<Co
     };
     const edit = async (c?: Company) => {
       if (!isSuper()) { toast('Only SuperAdmin can create or change companies', true); return; }
-      const fields = [
-        { name: 'name', label: 'Company Name', required: true, upper: true },
-        { name: 'station', label: 'Station', upper: true },
-        { name: 'address1', label: 'Address 1' },
-        { name: 'address2', label: 'Address 2' },
-        { name: 'gstin', label: 'GSTIN', upper: true },
-        { name: 'state', label: 'State' },
-        ...(c ? [] : [{ name: 'fy_year', label: 'Year From (April)', type: 'number' as const, required: true }]),
-      ];
-      const now = new Date();
-      const init = c ?? { state: 'Chhattisgarh', fy_year: now.getMonth() < 3 ? now.getFullYear() - 1 : now.getFullYear() };
-      let savedId = c?.id;
-      const r = await formWin(c ? `Edit Company : ${c.name}` : 'New Company', fields, init, async (v) => {
-        if (c) return api(`/companies/${c.id}`, { method: 'PUT', body: v });
-        const out = await api<{ id: number }>('/companies', { method: 'POST', body: { ...v, fy_start: `${v.fy_year}-04-01` } });
-        savedId = out.id;
-        return out;
-      });
-      if (r) { toast(c ? 'Company updated' : 'Company created'); await reload(savedId); } else input.focus();
+      const id = await companyScreen(c);   // F2 COMPANY CREATION / F3 COMPANY ALTERATION
+      if (id) await reload(id); else input.focus();
     };
 
     w.onKey = (_e, k) => {

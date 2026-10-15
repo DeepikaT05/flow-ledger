@@ -1,5 +1,6 @@
 import { api, openWin, GridList, formWin, confirmBox, toast, pick, money, drcr, esc, type Field } from './ui.ts';
 import { seeCost } from './session.ts';
+import { productScreen } from './productform.ts';
 
 export interface Ledger { id: number; name: string; group_id: number; group_name: string; nature: string; city: string; phone: string; gstin: string; state: string; address: string; opening: number; opening_type: string; credit_limit: number; balance: number; is_system: number }
 export interface Item { id: number; name: string; company: string; unit: string; pack: string; hsn: string; gst_rate: number; mrp: number; sale_rate: number; purchase_rate: number; opening_stock: number; min_stock: number; reorder_qty: number; stock: number }
@@ -93,27 +94,9 @@ export function groupForm() {
 }
 
 // ------------------------------------------------------------------ items
-export async function itemForm(existing?: Partial<Item>): Promise<Item | null> {
-  const fields: Field[] = [
-    { name: 'name', label: 'Item Name', required: true, upper: true },
-    { name: 'company', label: 'Company', upper: true },
-    { name: 'unit', label: 'Unit', upper: true },
-    { name: 'pack', label: 'Packing', upper: true },
-    { name: 'hsn', label: 'HSN/SAC Code' },
-    { name: 'gst_rate', label: 'GST %', type: 'select', options: [0, 0.25, 3, 5, 12, 18, 28].map((v) => ({ value: v, label: `${v} %` })) },
-    { name: 'mrp', label: 'M.R.P.', type: 'number' },
-    { name: 'sale_rate', label: 'Sale Rate', type: 'number' },
-    { name: 'purchase_rate', label: 'Purchase Rate', type: 'number' },
-    { name: 'opening_stock', label: 'Opening Stock', type: 'number' },
-    { name: 'min_stock', label: 'Minimum Stock', type: 'number' },
-    { name: 'reorder_qty', label: 'Re-Order Qty', type: 'number' },
-  ];
-  // Roles without the cost power never see (or overwrite) the purchase rate.
-  const shown = seeCost() ? fields : fields.filter((f) => f.name !== 'purchase_rate');
-  const saved = await formWin(existing?.id ? `Modify Item : ${existing.name}` : 'Item Master - Add', shown, { unit: 'PCS', gst_rate: 18, ...existing },
-    (v) => (existing?.id ? api(`/items/${existing.id}`, { method: 'PUT', body: v }) : api('/items', { method: 'POST', body: v })));
-  if (!saved) return null;
-  return api<Item>(`/items/${saved.id ?? existing?.id}`);
+/** F2 NEW PRODUCT / F3 MODIFY PRODUCT (the MARG product screen). */
+export function itemForm(existing?: Partial<Item>): Promise<Item | null> {
+  return productScreen(existing);
 }
 
 const itemCols = [
@@ -206,7 +189,7 @@ export async function companyForm() {
 
 export async function partyGstList() {
   const rows = await api<Ledger[]>('/ledgers?group=Sundry Debtors,Sundry Creditors');
-  const w = openWin('Party GST No. / State', 'wide', '<span><b>F3</b> Modify</span><span><b>Esc</b> Close</span>');
+  const w = openWin('Party GST No. / State', 'wide', '<span><b>F2</b> Add</span><span><b>F3</b> Modify</span><span><b>Esc</b> Close</span>');
   w.body.style.height = '100%';
   const g = new GridList<Ledger>(w.body, [
     { title: 'Party', get: (r) => r.name }, { title: 'Group', get: (r) => r.group_name },
@@ -216,7 +199,9 @@ export async function partyGstList() {
   g.focus();
   w.onKey = (_e, k) => {
     if (g.nav(k)) return true;
-    if (k === 'F3' && g.current) { ledgerForm(g.current).then(async (r) => r && g.setRows(await api('/ledgers?group=Sundry Debtors,Sundry Creditors'), true)); return true; }
+    const reload = async () => g.setRows(await api('/ledgers?group=Sundry Debtors,Sundry Creditors'), true);
+    if (k === 'F2') { ledgerForm().then((r) => r && reload()); return true; }
+    if (k === 'F3' && g.current) { ledgerForm(g.current).then((r) => r && reload()); return true; }
     return false;
   };
 }
