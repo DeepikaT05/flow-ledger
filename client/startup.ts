@@ -237,8 +237,7 @@ function companyList(startId: number | undefined, required: boolean): Promise<Co
 
 // ------------------------------------------------------------------ company menu (A MARG GATEWAY …)
 const COMPANY_MENU: [string, string][] = [
-  ['A', 'FLOW LEDGER GATEWAY'], ['B', 'FILES MAINTENANCE'], ['C', 'BACKUP OF FINANCIAL YEAR'], ['D', 'RESTORE BACKUP'],
-  ['E', 'NEW FINANCIAL YEAR'], ['F', 'DELETE FINANCIAL YEAR'], ['G', 'ERROR CHECKINGS & REWRITING'],
+  ['A', 'FLOW LEDGER GATEWAY'], ['C', 'BACKUP OF FINANCIAL YEAR'], ['E', 'NEW FINANCIAL YEAR'],
 ];
 
 function companyMenu(c: Company): Promise<string | null> {

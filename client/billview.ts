@@ -19,9 +19,8 @@ const daysSince = (d: string) => Math.max(0, Math.round((Date.parse(new Date().t
 
 /** [label, hot letter index, action]. The underlined letters are the hotkeys, as in MARG. */
 const BUTTONS: [string, number, string][] = [
-  ['Next', 0, 'next'], ['Modify', 0, 'modify'], ['Print', 0, 'print'], ['Delete', 0, 'delete'], ['Cancel', 0, 'cancel'],
-  ['View', 0, 'view'], ['Amend', 0, 'amend'], ['Detail', 2, 'detail'], ['Email', 0, 'email'], ['Exit', 1, 'exit'],
-  ['Previous', 1, 'previous'], ['Courier', 1, 'courier'],
+  ['Next', 0, 'next'], ['Modify', 0, 'modify'], ['Print', 0, 'print'], ['Delete', 0, 'delete'],
+  ['View', 0, 'view'], ['Detail', 2, 'detail'], ['Exit', 1, 'exit'], ['Previous', 1, 'previous'],
 ];
 
 /**
@@ -162,7 +161,7 @@ export async function billAlteration(list: BillRef[], index: number, onChange?: 
         return;
       }
       case 'detail': detailBox(); return;
-      default: notExist(`"${BUTTONS.find((x) => x[2] === act)?.[0] ?? act}"`);   // Cancel, Amend, Email, Courier
+      default: notExist(`"${BUTTONS.find((x) => x[2] === act)?.[0] ?? act}"`);
     }
   }
 

@@ -53,6 +53,9 @@ const ACTIONS: Record<string, (arg?: string) => unknown> = {
   'report.group': () => R.groupSummary(),
   'report.itemsale': () => R.itemWiseSale(),
   'report.gstr3b': () => R.gstr3b(),
+  'report.summary': (spec) => R.summary(spec!),
+  'report.ageing': () => R.ageing(),
+  'report.negstock': () => R.negativeStock(),
   'salesman.list': () => salesmanList(),
   // Alt+E / T / B / S / D / R / G / F: drop open that top menu (main screen only).
   'menu.open': (hot) => { if (!winCount()) { const i = topMenuIndex(hot!); if (i >= 0) openTop(i); } },
@@ -159,7 +162,7 @@ function viewedName(label: string | undefined, action: string): string {
 }
 function renderSeen() {
   const li = (x: Seen) => `<li data-a="${esc(x.action)}">${esc(x.label)}</li>`;
-  const mine = loadSeen().filter((x) => shortcutAllowed(x.label, x.action));
+  const mine = loadSeen().filter((x) => works(x.action) && shortcutAllowed(x.label, x.action));
   // Most viewed: most opened first; equal counts go by which was opened last.
   const most = [...mine].sort((a, b) => b.count - a.count || b.at - a.at).slice(0, 6);
   const recent = [...mine].sort((a, b) => b.at - a.at).slice(0, 15);
@@ -168,9 +171,7 @@ function renderSeen() {
 }
 document.getElementById('leftpanel')!.addEventListener('click', (e) => {
   const li = (e.target as HTMLElement).closest('li[data-a]') as HTMLElement | null;
-  if (li) { run(li.dataset.a, li.textContent ?? ''); return; }
-  const btn = (e.target as HTMLElement).closest('.lp-btn') as HTMLElement | null;
-  if (btn) run(undefined, btn.dataset.label);
+  if (li) run(li.dataset.a, li.textContent ?? '');
 });
 
 // ------------------------------------------------------------------ menubar
@@ -214,13 +215,26 @@ function shortcutAllowed(label: string, action: string): boolean {
   if (!leaves.length) return !!action && canAction(action);
   return leaves.some((l) => menuTickedFor(l.key)) && (!action || canAction(action));
 }
-let TREE: MenuItem[] = MENU;
+/** Opens a real screen? Items whose screen isn't built would only show "404 — NOT EXIST", so they are left out. */
+const works = (action?: string) => !!action && !!ACTIONS[action.split(':')[0]];
+function pruneDead(items: MenuEntry[]): MenuEntry[] {
+  const out: MenuEntry[] = [];
+  for (const m of items) {
+    if (m === '-') { if (out.length && out[out.length - 1] !== '-') out.push('-'); continue; }
+    if (m.children) {
+      const kids = pruneDead(m.children);
+      if (kids.some((k) => k !== '-' && !k.disabled)) out.push({ ...m, children: kids });
+    } else if (!m.disabled && works(m.action)) out.push(m);
+  }
+  while (out[out.length - 1] === '-') out.pop();
+  return out;
+}
+const LIVE_MENU = pruneDead(MENU) as MenuItem[];
+const LIVE_USER_MENU = pruneDead(USER_MENU) as MenuItem[];
+let TREE: MenuItem[] = LIVE_MENU;
 function applyRole() {
   simpleMenu = isUserRole();
-  TREE = simpleMenu ? (filterTree(USER_MENU) as MenuItem[]) : isSuper() ? MENU : (filterTree(MENU) as MenuItem[]);
-  // Digital Entry / Delivery / margmart buttons belong to the Digital menu.
-  const digital = TREE.some((t) => t.label === 'Digital');
-  document.querySelectorAll<HTMLElement>('#leftpanel .lp-btn').forEach((b) => (b.style.display = digital ? '' : 'none'));
+  TREE = simpleMenu ? (filterTree(LIVE_USER_MENU) as MenuItem[]) : isSuper() ? LIVE_MENU : (filterTree(LIVE_MENU) as MenuItem[]);
   closeMenu();
   renderQuick();
   renderSeen();
@@ -420,7 +434,7 @@ const sameQuick = (a: Quick, b: Quick) => a.action === b.action && (a.action !==
 
 function renderQuick() {
   const all = savedQuick();
-  quick = session() ? all.filter((q) => shortcutAllowed(q.label, q.action)) : all;
+  quick = all.filter((q) => works(q.action) && (!session() || shortcutAllowed(q.label, q.action)));
   rpSel = Math.max(0, Math.min(rpSel, quick.length - 1));
   rp.innerHTML = quick.map((q, i) => `<div class="rp-btn${i === rpSel ? ' focus' : ''}" data-i="${i}"><span class="rp-no">${i + 1}</span>${esc(q.label)}</div>`).join('');
 }

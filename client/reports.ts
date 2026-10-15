@@ -304,6 +304,102 @@ export function itemWiseSale() {
   });
 }
 
+// ------------------------------------------------------------------ summaries (Party / Company / M.R. / Day / Month wise)
+interface SumRow { name: string; month: string; bills: number; returns: number; qty: number; taxable: number; tax: number; amount: number; cost: number | null }
+const SUM_BY: Record<string, string> = { party: 'Party', company: 'Company', item: 'Item', mr: 'M.R.', hsn: 'HSN/SAC', gst: 'GST %', day: 'Date', month: 'Month' };
+const monthName = (m: string) => `${new Date(`${m}-01`).toLocaleString('en', { month: 'short' })}-${m.slice(2, 4)}`;
+const monthsIn = (from: string, to: string) => {
+  const out: string[] = [];
+  for (let d = new Date(`${from.slice(0, 7)}-01`); d.toISOString().slice(0, 7) <= to.slice(0, 7); d.setUTCMonth(d.getUTCMonth() + 1)) out.push(d.toISOString().slice(0, 7));
+  return out;
+};
+
+/**
+ * spec = SIDE/by[/month]: SIDE is SALE, PURCHASE or GP (sale with cost & profit), `by` one
+ * of SUM_BY. With /month the months of the period become columns (Marg's "…/Month Wise").
+ */
+export function summary(spec: string) {
+  const [side, by, pivot] = spec.split('/');
+  const gp = side === 'GP';
+  const what = gp ? 'Gross Profit' : side === 'PURCHASE' ? 'Purchase' : 'Sale';
+  const title = `${SUM_BY[by]} Wise ${what} ${pivot ? '/ Month Wise' : 'Summary'}`;
+  const nameOf = (r: SumRow) => (by === 'day' ? fmtDate(r.name) : by === 'month' ? monthName(r.name) : r.name);
+  const val = (r: SumRow) => (gp ? (r.cost == null ? null : r.taxable - r.cost) : r.amount);
+  const load = (p: { from: string; to: string }) => api<SumRow[]>(`/reports/summary?side=${gp ? 'SALE' : side}&by=${by}&from=${p.from}&to=${p.to}${pivot ? '&pivot=month' : ''}`);
+  const from = by === 'day' ? `${today().slice(0, 8)}01` : undefined;
+
+  if (pivot) {
+    type PRow = { name: string; m: Record<string, number | null>; total: number | null };
+    const cols: Col<PRow>[] = [];
+    let months: string[] = [];
+    const cell = (v: number | null | undefined) => (gp ? cm(v ?? 0) : money(v ?? 0));
+    return reportWin<PRow>({
+      title, period: true, cols, search: (r) => r.name, from,
+      load: async (p) => {
+        months = monthsIn(p.from, p.to);
+        cols.splice(0, cols.length, { title: SUM_BY[by], get: (r) => r.name },
+          ...months.map((m) => ({ title: monthName(m), get: (r: PRow) => cell(r.m[m]), num: true })), { title: 'Total', get: (r) => cell(r.total), num: true });
+        const by2 = new Map<string, PRow>();
+        for (const r of await load(p)) {
+          const row = by2.get(r.name) ?? { name: nameOf(r), m: {}, total: 0 };
+          const v = val(r);
+          row.m[r.month] = v == null ? null : (row.m[r.month] ?? 0)! + v;
+          row.total = v == null || row.total == null ? null : row.total + v;
+          by2.set(r.name, row);
+        }
+        return [...by2.values()].sort((a, b) => (b.total ?? 0) - (a.total ?? 0));
+      },
+      footer: (rows) => `<tr class="total"><td>Total (${rows.length})</td>${months.map((m) => `<td class="n">${cell(rows.reduce((s, r) => s + (r.m[m] ?? 0), 0))}</td>`).join('')}
+        <td class="n">${cell(rows.reduce((s, r) => s + (r.total ?? 0), 0))}</td></tr>`,
+    });
+  }
+
+  const cols: Col<SumRow>[] = gp
+    ? [{ title: SUM_BY[by], get: nameOf }, { title: 'Qty', get: (r) => r.qty, num: true }, { title: 'Sale (Taxable)', get: (r) => r.taxable, money: true },
+      { title: 'Cost', get: (r) => cm(r.cost), num: true }, { title: 'Profit', get: (r) => cm(r.cost == null ? null : r.taxable - r.cost), num: true },
+      { title: '%', get: (r) => (r.cost == null || !seeCost() ? '****' : r.taxable ? (((r.taxable - r.cost) / r.taxable) * 100).toFixed(2) : '0'), num: true }]
+    : [{ title: SUM_BY[by], get: nameOf }, { title: 'Bills', get: (r) => r.bills, num: true }, { title: 'Returns', get: (r) => r.returns, num: true },
+      { title: 'Qty', get: (r) => r.qty, num: true }, { title: 'Taxable', get: (r) => r.taxable, money: true },
+      { title: 'GST', get: (r) => r.tax, money: true }, { title: 'Amount', get: (r) => r.amount, money: true }];
+  const s = (rows: SumRow[], k: 'qty' | 'taxable' | 'tax' | 'amount' | 'bills' | 'returns') => rows.reduce((a, r) => a + r[k], 0);
+  return reportWin<SumRow>({
+    title, period: true, cols, search: (r) => nameOf(r), load, from,
+    footer: (rows) => {
+      if (gp) {
+        const sale = s(rows, 'taxable'), cost = rows.reduce((a, r) => a + (r.cost ?? 0), 0);
+        return `<tr class="total"><td>Total (${rows.length})</td><td class="n">${s(rows, 'qty')}</td><td class="n">${money(sale)}</td><td class="n">${cmTotal(cost)}</td>
+          <td class="n">${cmTotal(sale - cost)}</td><td class="n">${!seeCost() ? '****' : sale ? (((sale - cost) / sale) * 100).toFixed(2) : ''}</td></tr>`;
+      }
+      return `<tr class="total"><td>Total (${rows.length})</td><td class="n">${s(rows, 'bills')}</td><td class="n">${s(rows, 'returns')}</td><td class="n">${s(rows, 'qty')}</td>
+        <td class="n">${money(s(rows, 'taxable'))}</td><td class="n">${money(s(rows, 'tax'))}</td><td class="n">${money(s(rows, 'amount'))}</td></tr>`;
+    },
+  });
+}
+
+/** Outstanding Ageing: each debtor's unpaid credit bills by age (0-30, 31-60, 61-90, 91-180, 180+ days). */
+export function ageing() {
+  type ARow = { id: number; name: string; city: string; bills: number; s0: number; s1: number; s2: number; s3: number; s4: number; total: number };
+  const slabs: [keyof ARow, string][] = [['s0', '0-30 Days'], ['s1', '31-60'], ['s2', '61-90'], ['s3', '91-180'], ['s4', 'Above 180']];
+  return reportWin<ARow>({
+    title: 'Outstanding Ageing (Debtors)', search: (r) => r.name,
+    cols: [{ title: 'Party', get: (r) => r.name }, { title: 'Station', get: (r) => r.city }, { title: 'Bills', get: (r) => r.bills, num: true },
+      ...slabs.map(([k, t]) => ({ title: t, get: (r: ARow) => r[k], money: true })), { title: 'Total', get: (r) => r.total, money: true }],
+    load: () => api('/reports/ageing'),
+    footer: (rows) => `<tr class="total"><td colspan="3">Total (${rows.length})</td>${[...slabs.map(([k]) => k), 'total' as const]
+      .map((k) => `<td class="n">${money(rows.reduce((s, r) => s + Number(r[k]), 0))}</td>`).join('')}</tr>`,
+    onEnter: (r) => { api<Ledger>(`/ledgers/${r.id}`).then((l) => ledgerStatement(l)); },
+  });
+}
+
+/** Negative Stock Checking: items whose book stock has gone below zero. */
+export function negativeStock() {
+  return reportWin<any>({
+    title: 'Negative Stock', search: (r) => `${r.name} ${r.company}`, cols: stockCols.slice(0, 4),
+    load: async () => (await api<any[]>('/reports/stock')).filter((r) => r.stock < 0),
+    onEnter: (r) => itemRegister(r),
+  });
+}
+
 export function gstr3b() {
   type Line = { head: string; taxable: number; cgst: number; sgst: number; total: number };
   let payable = 0;

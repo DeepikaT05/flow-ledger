@@ -93,8 +93,10 @@ export function permsForAction(action: string): string[] | null {
     case 'report.book': case 'report.salebook': return ['books.registers'];
     case 'report.tb': case 'report.pl': case 'report.bs': case 'report.group': return ['reports.final'];
     case 'report.gstr3b': return ['reports.gst'];
-    case 'report.outstanding': return ['reports.outstanding'];
-    case 'report.stock': case 'report.batch': case 'report.expiry': case 'report.reorder': return ['reports.stock'];
+    case 'report.outstanding': case 'report.ageing': return ['reports.outstanding'];
+    // G.P. summaries need the profit power; the other summaries are daily / register reports.
+    case 'report.summary': return arg.startsWith('GP') ? ['reports.profit'] : ['reports.daily', 'books.registers'];
+    case 'report.stock': case 'report.negstock': case 'report.batch': case 'report.expiry': case 'report.reorder': return ['reports.stock'];
     case 'report.gp': return ['reports.profit'];
     case 'report.mis': case 'report.mop': case 'report.itemsale': return ['reports.daily'];
     default: return null; // calculator, calendar, print, shortcuts, change user, exit, about, menus…

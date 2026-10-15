@@ -9,7 +9,9 @@ It runs on one PC (or the shop's LAN) with Node.js and a local SQLite database. 
 ## Features
 - **Billing:** sale, purchase, counter sale, challans, sale / purchase returns, MODE OF PAYMENT, multi-copy printing
 - **Accounts:** receipt, payment, contra, journal, debit / credit notes, bill-by-bill adjustment of receipts
-- **Books & reports:** Day Book, Sale Book, All Ledgers (ledger / monthly / daily / summary), trial balance, outstanding, MIS, gross profit, GST reports
+- **Books & reports:** Day Book, Sale Book, All Ledgers (ledger / monthly / daily / summary), trial balance, outstanding, outstanding ageing, MIS, gross profit, GST reports
+- **Summaries:** Party / Company / Item / M.R. / HSN / GST % / Day / Month wise sale and purchase summaries, their "…/Month Wise" versions (months as columns) and G.P. summaries, opened from the same menu items as in MARG
+- **Menus show only working screens:** the full MARG menu tree is kept in `client/menu.ts`, but items whose screen isn't built yet are hidden instead of showing "404 — NOT EXIST". Give an item an `action` (or add it to `REPORT_LINKS`) and it appears.
 - **Inventory:** items with batches, current stock by store, stock register, re-order list
 - **Multi-company and multi-year:** each company has its own database file; back up and add financial years
 - **Users, roles & permissions:** about 1,150 menu-level permissions, enforced on the server
@@ -54,7 +56,7 @@ A file-by-file guide is in [Layout](#layout) below.
 
 ---
 
-Start-up order: **User Id / User Password** → **LIST OF COMPANIES** → the company's menu (**A FLOW LEDGER GATEWAY**, B FILES MAINTENANCE, C BACKUP OF FINANCIAL YEAR, D RESTORE BACKUP, E NEW FINANCIAL YEAR, F DELETE FINANCIAL YEAR, G ERROR CHECKINGS & REWRITING) → **SELECT TO EXECUTE** (financial year) → main screen. A wrong User Id is reported straight away, before the password is asked. Quit (Ctrl+Q) logs out and returns to the login box.
+Start-up order: **User Id / User Password** → **LIST OF COMPANIES** → the company's menu (**A FLOW LEDGER GATEWAY**, C BACKUP OF FINANCIAL YEAR, E NEW FINANCIAL YEAR) → **SELECT TO EXECUTE** (financial year) → main screen. A wrong User Id is reported straight away, before the password is asked. Quit (Ctrl+Q) logs out and returns to the login box.
 
 On LIST OF COMPANIES, **F2** opens **COMPANY CREATION** and **F3** opens **COMPANY ALTERATION** (SuperAdmin only), laid out as in MARG with the State Code's list on the right. Type a state code (e.g. `22`) in State; Enter / ↓ moves to the next field and Enter on the last field asks **Save ?**. The extra fields (phone, licences and expiry dates, working style, date type, valuation …) are kept in the `details` column of `companies`; the company password is stored only as a hash.
 
@@ -84,7 +86,7 @@ It runs in the same server process. Data, sessions and every server-side permiss
 ## Companies
 - `data/marg.db` holds the users, roles and the list of companies, and is also TAMRAKAR AGROTECH's data. Every other company has its own file in `data/companies/` (created the first time it is opened), so their ledgers, items and bills never mix.
 - **LIST OF COMPANIES:** type to jump to a name, ↑↓ to move, Enter / F8 opens the company menu. F2 new company and F3 edit are SuperAdmin only. F5, F6, F7, F9 and Alt+P show "404 — NOT EXIST".
-- **Company menu:** press the letter or Enter. A opens SELECT TO EXECUTE. C copies the whole company file to `data/backup/` and fills BACKUP UPTO. E adds the next financial year. C and E are SuperAdmin only. B, D, F and G aren't built yet (404). Esc goes back to the list.
+- **Company menu:** press the letter or Enter. A opens SELECT TO EXECUTE. C copies the whole company file to `data/backup/` and fills BACKUP UPTO. E adds the next financial year. C and E are SuperAdmin only. Esc goes back to the list.
 - **SELECT TO EXECUTE:** Enter runs the highlighted year (its dates become the company's period); Esc goes back to the company menu.
 - **F1** or **Alt+X** (Hot Keys → Change Company) reopens the list from the main screen without logging out; Esc there keeps the company you had. Each logged-in user has their own open company, and Ctrl+U keeps it.
 

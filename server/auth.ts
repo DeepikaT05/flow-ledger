@@ -101,6 +101,7 @@ function needsFor(req: Request, a: AuthCtx): { need: Need | null; backdate?: { d
       'gross-profit': ['reports.profit'],
       mis: ['reports.daily'], 'mode-of-payment': ['reports.daily'], 'item-sale': ['reports.daily'],
       gstr3b: ['reports.gst'],
+      summary: ['reports.daily', 'books.registers', 'reports.profit'], ageing: ['reports.outstanding'],
     };
     return { need: [map[r] ?? [SUPER]] };
   }

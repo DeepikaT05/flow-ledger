@@ -757,6 +757,56 @@ app.get('/api/reports/item-sale', h((req) => {
     GROUP BY i.id ORDER BY taxable DESC`).all(from, to);
 }));
 
+// Sale / purchase summaries grouped by party, company, item, M.R., HSN, GST %, day or month
+// (Marg's Party / Company / M.R. / Day / Month Wise Summary and G.P. summaries). Returns
+// net of returns; `pivot=month` adds the month so the client can lay months out as columns.
+const SUMMARY_KEYS: Record<string, string> = {
+  party: 'l.name', company: "COALESCE(NULLIF(i.company,''),'(No Company)')", item: "i.name || CASE WHEN i.pack<>'' THEN ' ' || i.pack ELSE '' END",
+  mr: "COALESCE(s.name,'(No M.R.)')", hsn: "COALESCE(NULLIF(i.hsn,''),'(No HSN)')", gst: "printf('GST %g%%', bi.gst_rate)",
+  day: 'b.date', month: 'substr(b.date,1,7)',
+};
+app.get('/api/reports/summary', h((req) => {
+  const { from, to, side, by, pivot } = req.query as Record<string, string>;
+  const key = SUMMARY_KEYS[by];
+  if (!key) throw new Error('Unknown summary');
+  const [types, ret] = side === 'PURCHASE' ? [`'PURCHASE'`, 'PURCHASE_RETURN'] : [`'SALE','COUNTER_SALE'`, 'SALE_RETURN'];
+  const sg = `(CASE WHEN b.type='${ret}' THEN -1 ELSE 1 END)`;
+  return db.prepare(`SELECT ${key} AS name, ${pivot === 'month' ? 'substr(b.date,1,7)' : "''"} AS month,
+      COUNT(DISTINCT CASE WHEN b.type<>'${ret}' THEN b.id END) AS bills,
+      COUNT(DISTINCT CASE WHEN b.type='${ret}' THEN b.id END) AS returns,
+      SUM(${sg}*(bi.qty+bi.free)) AS qty, SUM(${sg}*bi.taxable) AS taxable, SUM(${sg}*bi.tax) AS tax,
+      SUM(${sg}*bi.amount) AS amount, SUM(${sg}*bi.qty*i.purchase_rate) AS cost
+    FROM bill_items bi JOIN bills b ON b.id=bi.bill_id JOIN items i ON i.id=bi.item_id JOIN ledgers l ON l.id=b.party_id
+    LEFT JOIN salesmen s ON s.id=b.mr_id
+    WHERE b.type IN (${types},'${ret}') AND b.date BETWEEN ? AND ?
+    GROUP BY 1, 2 ORDER BY ${by === 'day' || by === 'month' ? '1' : 'amount DESC'}`).all(from, to)
+    .map((r: any) => ({ ...r, qty: r2(r.qty), taxable: r2(r.taxable), tax: r2(r.tax), amount: r2(r.amount), cost: r2(r.cost) }));
+}));
+
+// Outstanding ageing: each party's unpaid credit sale bills split into age slabs (days since bill date).
+app.get('/api/reports/ageing', h((req) => {
+  const upto = String(req.query.upto || new Date().toISOString().slice(0, 10));
+  const due = db.prepare(`SELECT l.id, l.name, l.city, l.phone, b.date,
+      b.net - COALESCE((SELECT SUM(amount) FROM bill_payments WHERE bill_id=b.id),0)
+            - COALESCE((SELECT SUM(amount) FROM voucher_adjustments WHERE bill_id=b.id),0)
+            - COALESCE((SELECT SUM(r.net) FROM bills r WHERE r.type='SALE_RETURN' AND r.against_bill_id=b.id),0) AS due
+    FROM bills b JOIN ledgers l ON l.id=b.party_id
+    WHERE b.type='SALE' AND b.mode<>'CASH' AND b.date<=?`).all(upto) as { id: number; name: string; city: string; phone: string; date: string; due: number }[];
+  const SLABS = [30, 60, 90, 180];
+  const by = new Map<number, Row>();
+  for (const d of due) {
+    if (d.due <= 0.004) continue;
+    const days = Math.round((Date.parse(upto) - Date.parse(d.date)) / 864e5);
+    const slab = SLABS.findIndex((s) => days <= s);
+    const p = by.get(d.id) ?? { id: d.id, name: d.name, city: d.city, phone: d.phone, bills: 0, s0: 0, s1: 0, s2: 0, s3: 0, s4: 0, total: 0 };
+    p[`s${slab < 0 ? 4 : slab}`] = r2(Number(p[`s${slab < 0 ? 4 : slab}`]) + d.due);
+    p.total = r2(Number(p.total) + d.due);
+    p.bills = Number(p.bills) + 1;
+    by.set(d.id, p);
+  }
+  return [...by.values()].sort((a, b) => String(a.name).localeCompare(String(b.name)));
+}));
+
 app.get('/api/reports/gstr3b', h((req) => {
   const { from, to } = req.query as Record<string, string>;
   const sum = (types: string) => db.prepare(`SELECT COALESCE(SUM(taxable),0) AS taxable, COALESCE(SUM(tax),0) AS tax, COUNT(*) AS bills

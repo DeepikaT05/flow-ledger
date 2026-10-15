@@ -2098,6 +2098,87 @@ export const MENU: MenuItem[] = [
   EXIT_MENU,
 ];
 
+// MARG reports that Flow Ledger's summary / ageing / stock screens already answer, by
+// menu path. Kept apart from the tree above so it stays a copy of MARG's menus.
+const S = (spec: string) => `report.summary:${spec}`;
+const REPORT_LINKS: Record<string, string> = {
+  // Books
+  'Books > Entry Books > Selected Book': 'report.daybook',
+  'Books > Entry Books > Ledger Day Book': 'report.ledger',
+  'Books > Entry Books > Item Day Book': 'item.register',
+  'Books > Analytical Summaries > Party wise Sales': S('SALE/party'),
+  'Books > Analytical Summaries > Company wise Sales': S('SALE/company'),
+  'Books > Outstandings > Ageing': 'report.ageing',
+  // Daily Reports → Sale / Purchase / Inventory
+  'Daily Reports > Sale Report > M.R. Sale > M.R. Summary': S('SALE/mr'),
+  'Daily Reports > Sale Report > Party Sales > Party Summary': S('SALE/party'),
+  'Daily Reports > Sale Report > Company/Salt/Category/HSN/SAC > Summary': S('SALE/hsn'),
+  'Daily Reports > Sale Report > Company/Salt/Category/HSN/SAC > M.R. Summary': S('SALE/mr'),
+  'Daily Reports > Sale Report > Company/Salt/Category/HSN/SAC > Party Summary': S('SALE/party'),
+  'Daily Reports > Sale Report > Company/Salt/Category/HSN/SAC > Product Summary': S('SALE/item'),
+  'Daily Reports > Sale Report > Day Wise Summary': S('SALE/day'),
+  'Daily Reports > Sale Report > Month Wise Summary': S('SALE/month'),
+  'Daily Reports > Sale Report > Company/Category wise Tax Summary': S('SALE/company'),
+  'Daily Reports > Sale Report > Product wise Purchase': S('PURCHASE/item'),
+  'Daily Reports > Purchase Report > Day Wise Summary': S('PURCHASE/day'),
+  'Daily Reports > Purchase Report > Month Wise Summary': S('PURCHASE/month'),
+  'Daily Reports > Purchase Report > Supplier Wise Statement': S('PURCHASE/party'),
+  'Daily Reports > Purchase Report > Company Wise Summary': S('PURCHASE/company'),
+  'Daily Reports > Purchase Report > Bill/Item Wise Statement': 'report.book:PURCHASE',
+  'Daily Reports > Inventory Reports > Negative Stock Report': 'report.negstock',
+  // Reports → Sale Analysis
+  'Reports > Sale Analysis > Monthly Summaries > Party Sale Summary': S('SALE/party/month'),
+  'Reports > Sale Analysis > Monthly Summaries > M.R. Sale Summary': S('SALE/mr/month'),
+  'Reports > Sale Analysis > Item Wise Sale > Party Sale Summary': S('SALE/party'),
+  'Reports > Sale Analysis > Item Wise Sale > M.R. Sale Summary': S('SALE/mr'),
+  'Reports > Sale Analysis > Item Wise Sale > Company Sale Summary': S('SALE/company'),
+  'Reports > Sale Analysis > Item Wise Sale > All Items/Months': S('SALE/item/month'),
+  'Reports > Sale Analysis > Company Wise Sale > All Company/Month': S('SALE/company/month'),
+  'Reports > Sale Analysis > Company Wise Sale > Company Wise Sale': S('SALE/company'),
+  'Reports > Sale Analysis > Party Wise Sale > All Parties/Month': S('SALE/party/month'),
+  'Reports > Sale Analysis > Party Wise Sale > Bill Collection Ageing': 'report.ageing',
+  'Reports > Sale Analysis > M.R. Wise Sale > All M.R./Month': S('SALE/mr/month'),
+  'Reports > Sale Analysis > M.R. Wise Sale > M.R. Wise Sale': S('SALE/mr'),
+  // Reports → Purchase Analysis
+  'Reports > Purchase Analysis > Item Wise Purchase & %': S('PURCHASE/item'),
+  'Reports > Purchase Analysis > Company Wise Purchase': S('PURCHASE/company'),
+  'Reports > Purchase Analysis > Purchase Summary': S('PURCHASE/party'),
+  'Reports > Purchase Analysis > Monthly Summaries': S('PURCHASE/party/month'),
+  'Reports > Purchase Analysis > Item Wise Purchase > Item Wise Purchase': S('PURCHASE/item'),
+  'Reports > Purchase Analysis > Item Wise Purchase > Party Purchase Summary': S('PURCHASE/party'),
+  'Reports > Purchase Analysis > Item Wise Purchase > Company Purchase Summary': S('PURCHASE/company'),
+  'Reports > Purchase Analysis > Item Wise Purchase > Item Day Wise Purchase': S('PURCHASE/day'),
+  'Reports > Purchase Analysis > Company Wise Purchase > Company/Month Wise': S('PURCHASE/company/month'),
+  'Reports > Purchase Analysis > Company Wise Purchase > Company Wise Purchase': S('PURCHASE/company'),
+  'Reports > Purchase Analysis > Party Wise Purchase > Parties/Month Wise': S('PURCHASE/party/month'),
+  // Reports → Inventory / Management (gross profit summaries)
+  'Reports > Inventory Report > Negative Stock Checking': 'report.negstock',
+  'Reports > Management Report > Gross Profit Analysis > Item G.P. Summaries > Party G.P. Summary': S('GP/party'),
+  'Reports > Management Report > Gross Profit Analysis > Item G.P. Summaries > M.R. G.P. summary': S('GP/mr'),
+  'Reports > Management Report > Gross Profit Analysis > Item G.P. Summaries > Company G.P. Summary': S('GP/company'),
+  'Reports > Management Report > Gross Profit Analysis > Item G.P. Summaries > All Items/Months': S('GP/item/month'),
+  'Reports > Management Report > Gross Profit Analysis > Company G.P. Summary > All Company/Month': S('GP/company/month'),
+  'Reports > Management Report > Gross Profit Analysis > Company G.P. Summary > Company Wise G.P.': S('GP/company'),
+  'Reports > Management Report > Gross Profit Analysis > Party G.P. Summaries > All Parties/Month': S('GP/party/month'),
+  'Reports > Management Report > Gross Profit Analysis > Party G.P. Summaries > Party Wise G.P.': S('GP/party'),
+  'Reports > Management Report > Gross Profit Analysis > M.R. G.P. Summaries > All M.R./Month': S('GP/mr/month'),
+  'Reports > Management Report > Gross Profit Analysis > M.R. G.P. Summaries > M.R. wise G.P.': S('GP/mr'),
+  'Reports > Management Report > Gross Profit Analysis > Monthly G.P. (Values) > Party G.P. Summary': S('GP/party/month'),
+  'Reports > Management Report > Gross Profit Analysis > Monthly G.P. (Values) > M.R. G.P. Summary': S('GP/mr/month'),
+  // GST
+  'Gst > Tax Registers & Summaries > Sales Summary': S('SALE/gst'),
+  'Gst > Tax Registers & Summaries > Purchase Summary': S('PURCHASE/gst'),
+  'Gst > Tax Registers & Summaries > Tax% wise Trading': S('SALE/gst'),
+};
+(function link(items: MenuEntry[], path: string) {
+  for (const m of items) {
+    if (m === '-') continue;
+    const p = path ? `${path} > ${m.label}` : m.label;
+    if (m.children) link(m.children, p);
+    else if (!m.action && REPORT_LINKS[p]) m.action = REPORT_LINKS[p];
+  }
+})(MENU, '');
+
 // The menu bar a USER-role login gets instead of the full one: My Menu, Links, Exit.
 export const USER_MENU: MenuItem[] = [
   {
