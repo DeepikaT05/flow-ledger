@@ -1,6 +1,6 @@
 import { MENU, USER_MENU, QUICK, HOTKEYS, type MenuEntry, type MenuItem } from './menu.ts';
 import { api, esc, keyName, toast, openWin, handleWinKey, winCount, confirmBox, alertBox } from './ui.ts';
-import { ledgerList, ledgerForm, itemList, itemForm, groupList, groupForm, companyForm, partyGstList, masterStats, exportLedgers, itemRegister, salesmanList } from './masters.ts';
+import { ledgerList, ledgerForm, itemList, itemForm, groupList, groupForm, companyForm, partyGstList, masterStats, exportLedgers, itemRegister, salesmanList, priceList } from './masters.ts';
 import { billList } from './billing.ts';
 import { saleEntry } from './sale.ts';
 import { voucherEntry, voucherList, voucherMenu } from './vouchers.ts';
@@ -24,6 +24,7 @@ const ACTIONS: Record<string, (arg?: string) => unknown> = {
   'group.add': () => groupForm(),
   'item.add': () => itemForm(),
   'item.list': () => itemList(),
+  'item.prices': (by) => priceList(by === 'company'),
   'item.register': () => itemRegister(),
   'company.edit': () => companyForm(),
   'company.change': () => switchCompany(),

@@ -137,6 +137,72 @@ export async function itemList() {
   };
 }
 
+// ------------------------------------------------------------------ price list (rate updation)
+/**
+ * Masters → Rate & Discount Master → Price List. Like MARG: pick the item, Enter opens its
+ * price list box (M.R.P., Rate-A, Purchase Rate), Ctrl+W saves. With `byCompany` the
+ * company is asked first (Selected Company/Item).
+ */
+export async function priceList(byCompany = false) {
+  let all = await api<Item[]>('/items');
+  let company = '';
+  if (byCompany) {
+    const names = [...new Set(all.map((i) => i.company || ''))].sort().map((name) => ({ name, items: all.filter((i) => (i.company || '') === name).length }));
+    const c = await pick<{ name: string; items: number }>({
+      title: 'Select Company', rows: names, key: (r) => r.name, size: 'mid',
+      cols: [{ title: 'Company', get: (r) => r.name || '(No Company)' }, { title: 'Items', get: (r) => r.items, num: true }],
+    });
+    if (!c) return;
+    company = c.name;
+  }
+  const w = openWin(`Price List${byCompany ? ` : ${company || '(No Company)'}` : ' : All Items'}`, 'wide',
+    '<span><b>Enter</b> Change Rates</span><span><b>F2</b> New Item</span><span><b>Esc</b> Close</span>');
+  w.body.style.height = '100%';
+  const g = new GridList<Item>(w.body, [
+    { title: 'Item Name', get: (r) => r.name }, { title: 'Pack', get: (r) => r.pack }, { title: 'Company', get: (r) => r.company },
+    { title: 'Stock', get: (r) => r.stock, num: true }, { title: 'M.R.P.', get: (r) => r.mrp, money: true },
+    { title: 'Rate-A', get: (r) => r.sale_rate, money: true },
+    { title: 'Purc. Rate', get: (r) => (r.purchase_rate == null || !seeCost() ? '****' : money(r.purchase_rate)), num: true },
+    { title: 'GST%', get: (r) => r.gst_rate, num: true },
+  ], (r) => `${r.name} ${r.company}`);
+  const load = async () => {
+    all = await api<Item[]>('/items');
+    g.setRows(byCompany ? all.filter((i) => (i.company || '') === company) : all, true);
+  };
+  await load();
+  g.focus();
+  w.onKey = (_e, k) => {
+    if (g.nav(k)) return true;
+    const cur = g.current;
+    if (k === 'Enter' && cur) { rateUpdate(cur).then((r) => { if (r) load(); }); return true; }
+    if (k === 'F2') { itemForm().then((r) => r && load()); return true; }
+    return false;
+  };
+}
+
+/** The price list box of one item. Saving also updates its batches' rates when asked. */
+async function rateUpdate(it: Item): Promise<boolean> {
+  const fields: Field[] = [
+    { name: 'mrp', label: 'M.R.P.', type: 'number' },
+    { name: 'sale_rate', label: 'Rate-A', type: 'number' },
+    ...(seeCost() ? [{ name: 'purchase_rate', label: 'Purchase Rate', type: 'number' } as Field] : []),
+    { name: 'batches', label: 'Update Batch Rates also', type: 'select', options: [{ value: 'Y', label: 'Yes' }, { value: 'N', label: 'No' }] },
+  ];
+  let batches = 0;
+  const saved = await formWin(`Price List : ${it.name}${it.pack ? ` ${it.pack}` : ''}`, fields,
+    { mrp: it.mrp, sale_rate: it.sale_rate, purchase_rate: it.purchase_rate, batches: 'Y' },
+    async (v) => {
+      const r = await api<{ batches: number }>(`/items/${it.id}/rates`, {
+        method: 'PUT', body: { mrp: Number(v.mrp), sale_rate: Number(v.sale_rate), purchase_rate: seeCost() ? Number(v.purchase_rate) : null, batches: v.batches === 'Y' },
+      });
+      batches = r.batches;
+      return r;
+    });
+  if (!saved) return false;
+  toast(`Rates updated : ${it.name}${batches ? ` (${batches} batch${batches > 1 ? 'es' : ''})` : ''}`);
+  return true;
+}
+
 export async function pickItem(initial = ''): Promise<Item | null> {
   const rows = await api<Item[]>('/items');
   return pick<Item>({ title: 'Select Item', rows, cols: itemCols, key: (r) => r.name, initial, size: 'wide', onNew: () => itemForm({ name: initial.toUpperCase() }) });

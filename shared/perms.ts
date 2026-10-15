@@ -77,7 +77,7 @@ export function permsForAction(action: string): string[] | null {
   switch (name) {
     case 'ledger.add': case 'ledger.list': case 'ledger.gst': case 'ledger.export': case 'master.stats':
       return ['masters.ledger'];
-    case 'item.add': case 'item.list': return ['masters.item'];
+    case 'item.add': case 'item.list': case 'item.prices': return ['masters.item'];
     case 'item.register': return ['reports.stock', 'masters.item'];
     case 'group.list': case 'group.add': return ['masters.group'];
     case 'salesman.list': return ['masters.salesman'];

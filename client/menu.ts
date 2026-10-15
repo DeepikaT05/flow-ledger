@@ -219,8 +219,8 @@ export const MENU: MenuItem[] = [
         label: 'Rate & Discount Master', hot: 'R', children: [
           {
             label: 'Price List', hot: 'P', children: [
-              { label: 'All Items', hot: 'A', action: 'item.list' },
-              { label: 'Selected Company/Item', hot: 'S', action: 'item.list' },
+              { label: 'All Items', hot: 'A', action: 'item.prices' },
+              { label: 'Selected Company/Item', hot: 'S', action: 'item.prices:company' },
               { label: 'Selected Salt', hot: 'l' },
               { label: 'Area Wise', hot: 'r' },
               '-',
@@ -300,7 +300,7 @@ export const MENU: MenuItem[] = [
       },
       {
         label: 'Ease of GST', hot: 'E', children: [
-          { label: 'Item GST%/HSN/SAC/RATES Updation', hot: 'I', action: 'item.list' },
+          { label: 'Item GST%/HSN/SAC/RATES Updation', hot: 'I', action: 'item.prices' },
           { label: 'Party GST No./State Updation', hot: 'P', action: 'ledger.gst' },
           { label: 'Reverse Charge on Expences', hot: 'R' },
           '-',

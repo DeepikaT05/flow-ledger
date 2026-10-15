@@ -282,6 +282,19 @@ app.put('/api/items/:id', h((req) => {
     opening_stock=?,min_stock=?,reorder_qty=?,details=? WHERE id=?`).run(...itemArgs(body), itemDetails(body, old), req.params.id);
   return { ok: true };
 }));
+// PRICE LIST (Masters → Rate & Discount Master → Price List): change only an item's rates.
+// `batches` also rewrites the rates of its batches, since billing picks the batch's rate.
+app.put('/api/items/:id/rates', h((req) => tx(() => {
+  const b = req.body ?? {};
+  const it = db.prepare('SELECT purchase_rate FROM items WHERE id=?').get(req.params.id) as { purchase_rate: number } | undefined;
+  if (!it) throw new Error('Item not found');
+  // A role that saw the purchase rate masked keeps the stored one.
+  const pr = can(authOf(req), 'feature.view_cost') && b.purchase_rate != null ? num(b.purchase_rate) : it.purchase_rate;
+  db.prepare('UPDATE items SET mrp=?, sale_rate=?, purchase_rate=? WHERE id=?').run(num(b.mrp), num(b.sale_rate), pr, req.params.id);
+  // Billing reads the batch's rate on the same basis as the item's Rate-A, so they stay in step.
+  const n = b.batches ? db.prepare('UPDATE batches SET mrp=?, rate=?, purchase_rate=? WHERE item_id=?').run(num(b.mrp), num(b.sale_rate), pr, req.params.id).changes : 0;
+  return { ok: true, batches: Number(n) };
+})));
 app.delete('/api/items/:id', h((req) => {
   if (db.prepare('SELECT 1 FROM bill_items WHERE item_id=? LIMIT 1').get(req.params.id)) throw new Error('Item has transactions, cannot delete');
   db.prepare('DELETE FROM items WHERE id=?').run(req.params.id);
