@@ -495,14 +495,18 @@ app.get('/api/years', h(() => db.prepare('SELECT * FROM company_years ORDER BY c
 
 // ---------------------------------------------------------------- party pending bills / CUSTOMER STATUS (receipt entry)
 const daysSince = (d: string) => Math.max(0, Math.round((Date.parse(new Date().toISOString().slice(0, 10)) - Date.parse(d)) / 864e5));
-/** Credit sale bills of a party still not fully received. `exclude` = the receipt being modified. */
-function pendingBills(partyId: number, exclude = 0) {
+/**
+ * Credit bills of a party still not fully settled. kind SALE = sale bills (receipt / credit note),
+ * PURCHASE = purchase bills (payment / debit note). `exclude` = the voucher being modified.
+ */
+function pendingBills(partyId: number, exclude = 0, kind: 'SALE' | 'PURCHASE' = 'SALE') {
+  const ret = kind === 'PURCHASE' ? 'PURCHASE_RETURN' : 'SALE_RETURN';
   const fy = (db.prepare('SELECT fy_start FROM company WHERE id=1').get() as { fy_start: string } | undefined)?.fy_start ?? '';
   const rows = db.prepare(`SELECT b.id, b.no, b.date, b.net,
       b.net - COALESCE((SELECT SUM(amount) FROM bill_payments WHERE bill_id=b.id),0)
             - COALESCE((SELECT SUM(amount) FROM voucher_adjustments WHERE bill_id=b.id AND voucher_id<>?),0)
-            - COALESCE((SELECT SUM(r.net) FROM bills r WHERE r.type='SALE_RETURN' AND r.against_bill_id=b.id),0) AS balance
-    FROM bills b WHERE b.party_id=? AND b.type='SALE' AND b.mode<>'CASH' ORDER BY b.date, b.id`).all(exclude, partyId) as
+            - COALESCE((SELECT SUM(r.net) FROM bills r WHERE r.type=? AND r.against_bill_id=b.id),0) AS balance
+    FROM bills b WHERE b.party_id=? AND b.type=? AND b.mode<>'CASH' ORDER BY b.date, b.id`).all(exclude, ret, partyId, kind) as
     { id: number; no: string; date: string; net: number; balance: number }[];
   // MARG marks bills from an earlier financial year with "*".
   return rows.filter((r) => r.balance > 0.004).map((r) => ({ ...r, balance: r2(r.balance), ref: `${r.date < fy ? '*' : ''}${r.no}`, days: daysSince(r.date) }));
@@ -512,17 +516,22 @@ app.get('/api/ledgers/:id/sold-items', h((req) => db.prepare(`SELECT bi.item_id,
     MAX(bi.mrp) AS mrp, MAX(bi.rate) AS rate, SUM(bi.qty+bi.free) AS qty, MAX(b.date) AS last_date, MAX(b.no) AS last_no
   FROM bill_items bi JOIN bills b ON b.id=bi.bill_id JOIN items i ON i.id=bi.item_id
   WHERE b.party_id=? AND b.type IN ('SALE','COUNTER_SALE') GROUP BY bi.item_id, bi.batch ORDER BY i.name`).all(req.params.id)));
-app.get('/api/ledgers/:id/pending-bills', h((req) => pendingBills(Number(req.params.id), Number(req.query.exclude) || 0)));
+const billKind = (k: unknown) => (k === 'PURCHASE' ? 'PURCHASE' : 'SALE');
+app.get('/api/ledgers/:id/pending-bills', h((req) => pendingBills(Number(req.params.id), Number(req.query.exclude) || 0, billKind(req.query.kind))));
+// CUSTOMER STATUS (kind SALE: last sale / receipts) or SUPPLIER STATUS (kind PURCHASE: last purchase / payments).
 app.get('/api/ledgers/:id/status', h((req) => {
   const id = Number(req.params.id);
+  const kind = billKind(req.query.kind);
   const l = db.prepare(`${LEDGER_BAL} WHERE l.id=?`).get(id) as Row & { balance: number };
   if (!l) throw new Error('Ledger not found');
-  const bills = pendingBills(id);
-  const lastSale = db.prepare(`SELECT net, date FROM bills WHERE party_id=? AND type IN ('SALE','COUNTER_SALE') ORDER BY date DESC, id DESC LIMIT 1`).get(id) as { net: number; date: string } | undefined;
-  const receipts = db.prepare(`SELECT v.date, vl.credit AS amount,
-      (SELECT l2.name FROM voucher_lines v2 JOIN ledgers l2 ON l2.id=v2.ledger_id WHERE v2.voucher_id=v.id AND v2.debit>0 LIMIT 1) AS mode
+  const bills = pendingBills(id, 0, kind);
+  const pur = kind === 'PURCHASE';
+  const lastSale = db.prepare(`SELECT net, date FROM bills WHERE party_id=? AND type IN (${pur ? `'PURCHASE'` : `'SALE','COUNTER_SALE'`}) ORDER BY date DESC, id DESC LIMIT 1`).get(id) as { net: number; date: string } | undefined;
+  const [own, other] = pur ? ['debit', 'credit'] : ['credit', 'debit'];
+  const receipts = db.prepare(`SELECT v.date, vl.${own} AS amount,
+      (SELECT l2.name FROM voucher_lines v2 JOIN ledgers l2 ON l2.id=v2.ledger_id WHERE v2.voucher_id=v.id AND v2.${other}>0 LIMIT 1) AS mode
     FROM vouchers v JOIN voucher_lines vl ON vl.voucher_id=v.id
-    WHERE v.type='RECEIPT' AND vl.ledger_id=? AND vl.credit>0 ORDER BY v.date DESC, v.id DESC LIMIT 6`).all(id) as { date: string; amount: number; mode: string }[];
+    WHERE v.type=? AND vl.ledger_id=? AND vl.${own}>0 ORDER BY v.date DESC, v.id DESC LIMIT 6`).all(pur ? 'PAYMENT' : 'RECEIPT', id) as { date: string; amount: number; mode: string }[];
   return {
     name: l.name, phone: l.phone ?? '', balance: r2(l.balance),
     bills: bills.length, days: bills.length ? bills[0].days : 0,

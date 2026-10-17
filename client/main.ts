@@ -4,7 +4,7 @@ import { ledgerList, ledgerForm, itemList, itemForm, groupList, groupForm, compa
 import { billList } from './billing.ts';
 import { saleEntry } from './sale.ts';
 import { voucherEntry, voucherList, voucherMenu } from './vouchers.ts';
-import { receiptEntry } from './receipt.ts';
+import { receiptEntry, type VType } from './receipt.ts';
 import { bookScreen } from './daybook.ts';
 import { currentStock } from './stock.ts';
 import * as R from './reports.ts';
@@ -31,7 +31,7 @@ const ACTIONS: Record<string, (arg?: string) => unknown> = {
   'master.stats': () => masterStats(),
   'bill.new': (t) => saleEntry(t!),
   'bill.list': (t) => billList(t!),
-  'voucher.new': (t) => (t === 'RECEIPT' || t === 'CONTRA' ? receiptEntry(t) : voucherEntry(t!)),
+  'voucher.new': (t) => receiptEntry(t as VType),
   'voucher.list': (t) => voucherList(t!),
   'voucher.menu': () => voucherMenu(),
   'party.txn': () => R.partyTransactions(),

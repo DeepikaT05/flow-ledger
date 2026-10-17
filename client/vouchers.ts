@@ -17,7 +17,7 @@ export async function voucherMenu() {
   const rows = Object.entries(V_TITLE).map(([id, name]) => ({ id, name, key: Object.entries(SWITCH).find(([, v]) => v === id)![0] }))
     .filter((r) => canAction(`voucher.new:${r.id}`));   // only the voucher types this role may enter
   const r = await pick({ title: 'Voucher Entry (Alt+V)', rows, key: (x) => x.name, cols: [{ title: 'Voucher', get: (x) => x.name }, { title: 'Key', get: (x) => x.key }] });
-  if (r) { if (r.id === 'RECEIPT' || r.id === 'CONTRA') (await import('./receipt.ts')).receiptEntry(r.id); else voucherEntry(r.id); }
+  if (r) (await import('./receipt.ts')).receiptEntry(r.id as any);
 }
 
 export async function voucherEntry(initialType: string, voucherId?: number) {
@@ -258,7 +258,7 @@ export async function voucherList(type: string) {
     if (g.nav(k)) return true;
     const cur = g.current;
     if ((k === 'Enter' || k === 'F3') && cur) { voucherEntry(cur.type, cur.id); reloadOnClose(load); return true; }
-    if (k === 'F2') { voucherEntry(type); reloadOnClose(load); return true; }
+    if (k === 'F2') { import('./receipt.ts').then((m) => m.receiptEntry(type as any)); reloadOnClose(load); return true; }
     if (k === 'Delete' && cur) {
       confirmBox(`Delete ${V_TITLE[cur.type] ?? V_TITLE[type]} ${cur.no} ?`, false).then(async (y) => {
         if (!y) return;
