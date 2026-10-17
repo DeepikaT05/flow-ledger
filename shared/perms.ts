@@ -42,8 +42,8 @@ export const PERMS: Perm[] = [
   { group: 'Books & Reports', key: 'reports.gst', label: 'GSTR-3B tax summary' },
   // Special powers
   { group: 'Special Powers', key: 'feature.view_cost', label: 'See purchase rate, cost, margin & profit' },
-  { group: 'Special Powers', key: 'feature.delete', label: 'Delete bills, vouchers, ledgers & items' },
-  { group: 'Special Powers', key: 'feature.backdate', label: 'Enter bills / vouchers with a back date' },
+  { group: 'Special Powers', key: 'feature.delete', label: 'Delete anything — bills, vouchers, ledgers & items' },
+  { group: 'Special Powers', key: 'feature.backdate', label: 'Change the date in bills / vouchers (back or future date)' },
 ];
 
 export const PERM_KEYS = PERMS.map((p) => p.key);

@@ -1,6 +1,6 @@
 import { api, openWin, GridList, confirmBox, toast, money, esc, today, fmtDate, pick, reloadOnClose } from './ui.ts';
 import { pickLedger, type Ledger } from './masters.ts';
-import { canAction, canBackdate, session } from './session.ts';
+import { canAction, canBackdate, canDelete, session, NO_DATE, NO_DELETE } from './session.ts';
 
 export const V_TITLE: Record<string, string> = {
   RECEIPT: 'Receipt', PAYMENT: 'Payment', CONTRA: 'Contra', JOURNAL: 'Journal', DEBIT_NOTE: 'Debit Note', CREDIT_NOTE: 'Credit Note',
@@ -84,7 +84,7 @@ export async function voucherEntry(initialType: string, voucherId?: number) {
     dirty = false;
     account = null;
     $('[data-h=date]').value = today();
-    if (!canBackdate()) { $('[data-h=date]').readOnly = true; $('[data-h=date]').title = 'Back-dated entry is not allowed for your role'; }
+    if (!canBackdate()) { $('[data-h=date]').readOnly = true; $('[data-h=date]').title = NO_DATE; }
     $('[data-h=no]').value = (await api(`/vouchers/next-no?type=${type}`)).no;
     if (isSimple(type)) {
       const cash = (await api<Ledger[]>('/ledgers?group=Cash-in-hand'))[0];
@@ -144,6 +144,7 @@ export async function voucherEntry(initialType: string, voucherId?: number) {
     if (k === 'Ctrl+W') { save(); return true; }
     // Modify mode: delete this voucher.
     if (k === 'Ctrl+D' && voucherId) {
+      if (!canDelete()) { toast(NO_DELETE, true); return true; }
       confirmBox(`Delete ${V_TITLE[type]} Voucher ${$('[data-h=no]').value} ?`, false).then(async (y) => {
         if (!y) return;
         try { await api(`/vouchers/${voucherId}`, { method: 'DELETE' }); toast('Voucher deleted'); dirty = false; w.close(); }
@@ -260,6 +261,7 @@ export async function voucherList(type: string) {
     if ((k === 'Enter' || k === 'F3') && cur) { voucherEntry(cur.type, cur.id); reloadOnClose(load); return true; }
     if (k === 'F2') { import('./receipt.ts').then((m) => m.receiptEntry(type as any)); reloadOnClose(load); return true; }
     if (k === 'Delete' && cur) {
+      if (!canDelete()) { toast(NO_DELETE, true); return true; }
       confirmBox(`Delete ${V_TITLE[cur.type] ?? V_TITLE[type]} ${cur.no} ?`, false).then(async (y) => {
         if (!y) return;
         try { await api(`/vouchers/${cur.id}`, { method: 'DELETE' }); toast('Deleted'); load(); } catch (err) { toast((err as Error).message, true); }

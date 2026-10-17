@@ -38,3 +38,7 @@ export const menuTickedFor = (key: string) => !!current && (current.is_super || 
 /** Cost, margin and profit figures are only for roles with "See purchase rate…". */
 export const seeCost = () => can('feature.view_cost');
 export const canBackdate = () => can('feature.backdate');
+/** Special power "Delete anything". Without it every Del / Ctrl+D shows NO_DELETE instead. */
+export const canDelete = () => can('feature.delete');
+export const NO_DELETE = 'Delete not allowed for your role — ask SuperAdmin (Special Powers)';
+export const NO_DATE = 'Date change not allowed for your role';

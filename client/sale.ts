@@ -5,7 +5,7 @@ import { api, esc, toast, h, today, money, openWin, type Win } from './ui.ts';
 import { margBar, margPop, popList, margConfirm, margNumber, margAsk, notExist } from './margui.ts';
 import { billDetails, pickBillItems, pickSold, saveInBox, type ReturnInfo } from './salereturn.ts';
 import { ledgerForm, itemForm, type Ledger, type Item } from './masters.ts';
-import { canAction, seeCost, canBackdate, session } from './session.ts';
+import { canAction, seeCost, canBackdate, session, NO_DATE } from './session.ts';
 
 /** Run `fn` only if the role may do `action`; otherwise say so. */
 function allowed(action: string, what: string): boolean {
@@ -318,7 +318,7 @@ export async function saleEntry(type = 'SALE', billId?: number) {
   const nameI = $('[data-f=name]'), dateI = $('[data-f=date]'), noI = $('[data-f=no]'), mrI = $('[data-f=mr]'), typeI = $('[data-f=type]');
   const pnoI = $('[data-f=pno]') as HTMLInputElement | null, pdtI = $('[data-f=pdt]') as HTMLInputElement | null;
   // "No back-dated entry" roles bill on today's date only (the server checks too).
-  if (!canBackdate()) { dateI.readOnly = true; dateI.title = 'Back-dated entry is not allowed for your role'; }
+  if (!canBackdate()) { dateI.readOnly = true; dateI.title = NO_DATE; }
   const tbody = screen.querySelector('tbody')!;
   const setBar = (t: string) => { (bar.firstElementChild as HTMLElement).textContent = t; };
 

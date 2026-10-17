@@ -1,6 +1,7 @@
 import { api, openWin, GridList, confirmBox, toast, money, esc, fmtDate, h, reloadOnClose } from './ui.ts';
 import { type Ledger } from './masters.ts';
 import { saleEntry } from './sale.ts';
+import { canDelete, NO_DELETE } from './session.ts';
 
 export const BILL_TITLE: Record<string, string> = {
   SALE: 'Sale Bill', PURCHASE: 'Purchase Bill', SALE_CHALLAN: 'Sale Challan', PURCHASE_CHALLAN: 'Purchase Challan',
@@ -30,6 +31,7 @@ export async function billList(type: string) {
     if (k === 'F2') { saleEntry(types[0]); reloadOnClose(load); return true; }
     if (k === 'F10' && cur) { printBill(cur.id); return true; }
     if (k === 'Delete' && cur) {
+      if (!canDelete()) { toast(NO_DELETE, true); return true; }
       confirmBox(`Delete bill ${cur.no} (${money(cur.net)}) ?`, false).then(async (y) => {
         if (!y) return;
         await api(`/bills/${cur.id}`, { method: 'DELETE' });

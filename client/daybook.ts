@@ -6,7 +6,7 @@
 import { api, esc, toast, h, today, money, openWin, confirmBox } from './ui.ts';
 import { margBar, margPop } from './margui.ts';
 import { pickParty } from './sale.ts';
-import { canAction } from './session.ts';
+import { canAction, canDelete, NO_DELETE } from './session.ts';
 import { type Ledger } from './masters.ts';
 
 interface Row {
@@ -285,6 +285,7 @@ export async function bookScreen(kind: Kind) {
   /** Del: delete the highlighted bill or voucher (Receipt, Payment …) after Yes. */
   async function remove(r: Row) {
     const isBill = r.source === 'BILL';
+    if (!canDelete()) { toast(NO_DELETE, true); return; }
     if (!isBill && !canAction(`voucher.list:${r.vtype}`)) { toast('Access denied — your role cannot delete vouchers', true); return; }
     const what = `${isBill ? 'Bill' : 'Voucher'} ${r.no ?? ''}${r.party ? ` (${r.party})` : ''}`;
     if (!(await confirmBox(`Delete ${what} ?`, false))) return;

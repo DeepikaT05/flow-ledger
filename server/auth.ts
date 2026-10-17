@@ -155,7 +155,7 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction) 
     return;
   }
   if (backdate?.date && !can(a, 'feature.backdate') && backdate.date !== today() && backdate.date !== backdate.existing) {
-    res.status(403).json({ error: `Back-dated entry not allowed for role ${a.role} — use today's date` });
+    res.status(403).json({ error: `Date change not allowed for role ${a.role} — use today's date` });
     return;
   }
   next();

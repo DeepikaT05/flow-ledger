@@ -7,7 +7,7 @@
 import { api, esc, toast, h, today, money, openWin } from './ui.ts';
 import { margBar, margPop } from './margui.ts';
 import { pickParty } from './sale.ts';
-import { canAction, canBackdate, session } from './session.ts';
+import { canAction, canBackdate, session, NO_DATE } from './session.ts';
 import { type Ledger } from './masters.ts';
 
 interface Pending { id: number; no: string; ref: string; date: string; net: number; balance: number; days: number }
@@ -423,7 +423,7 @@ export async function receiptEntry(type: VType = 'RECEIPT') {
   w.body.append(screen);
   const $ = (s: string) => screen.querySelector(s) as HTMLInputElement;
   const dateI = $('[data-f=date]'), noI = $('[data-f=no]'), narrI = $('[data-f=narr]');
-  if (!canBackdate()) { dateI.readOnly = true; dateI.title = 'Back-dated entry is not allowed for your role'; }
+  if (!canBackdate()) { dateI.readOnly = true; dateI.title = NO_DATE; }
 
   const blank = (side: Side, amount = 0): Line => ({ side, ledger: null, amount, adj: [], pending: [] });
   let lines: Line[] = [];

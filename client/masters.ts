@@ -1,5 +1,5 @@
 import { api, openWin, GridList, formWin, confirmBox, toast, pick, money, drcr, esc, type Field } from './ui.ts';
-import { seeCost } from './session.ts';
+import { seeCost, canDelete, NO_DELETE } from './session.ts';
 import { productScreen } from './productform.ts';
 
 export interface Ledger { id: number; name: string; group_id: number; group_name: string; nature: string; city: string; phone: string; gstin: string; state: string; address: string; opening: number; opening_type: string; credit_limit: number; balance: number; is_system: number }
@@ -51,6 +51,7 @@ export async function ledgerList(group?: string) {
     if (k === 'F3' && cur) { ledgerForm(cur).then((r) => r && load()); return true; }
     if (k === 'Enter' && cur) { import('./reports.ts').then((m) => m.ledgerStatement(cur)); return true; }
     if (k === 'Delete' && cur) {
+      if (!canDelete()) { toast(NO_DELETE, true); return true; }
       confirmBox(`Delete ledger "${cur.name}" ?`, false).then(async (y) => {
         if (!y) return;
         try { await api(`/ledgers/${cur.id}`, { method: 'DELETE' }); toast('Deleted'); load(); } catch (e) { toast((e as Error).message, true); }
@@ -127,6 +128,7 @@ export async function itemList() {
     if ((k === 'F4' || k === 'Enter') && cur) { itemRegister(cur); return true; }
     if (k === 'F10') { onlyStock = !onlyStock; toast(onlyStock ? 'Showing available stock only' : 'Showing all items'); show(); return true; }
     if (k === 'Delete' && cur) {
+      if (!canDelete()) { toast(NO_DELETE, true); return true; }
       confirmBox(`Delete item "${cur.name}" ?`, false).then(async (y) => {
         if (!y) return;
         try { await api(`/items/${cur.id}`, { method: 'DELETE' }); toast('Deleted'); load(); } catch (e) { toast((e as Error).message, true); }
