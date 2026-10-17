@@ -398,6 +398,8 @@ body.boot #bootfoot { display: flex; justify-content: space-between; align-items
 .rv-lines .bal { text-align: right; color: #1f6fb0; padding-right: 8px; }
 .rv-lines .n, .rv-lines input.amt { text-align: right; }
 .win.marg .rv-lines input { font-size: 19px; width: 100%; }
+.win.marg .rv-lines input[data-l^="n"] { cursor: pointer; }
+.win.marg .rv-lines input[data-l^="n"]:focus { background: #003399; color: #fff; }
 .win.marg .rv-lines input.side { width: 34px; color: var(--marg-red); }
 .rv-narr { display: grid; grid-template-columns: 1fr 380px; border-top: 1px solid #333; font-size: 19px; }
 .rv-narr > div:first-child { padding: 8px 24px; display: flex; flex-direction: column; gap: 6px; }
