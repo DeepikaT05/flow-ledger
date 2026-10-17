@@ -3,7 +3,7 @@
 // rate & cost panel and Batch Detail), and Enter → the item's register (BILL NO. / DATE /
 // PARTICULARS / RECEIVE / ISSUE / BALANCE). Enter on a bill there opens SALE ALTERATION.
 import { api, esc, toast, h, today, money, openWin, fyStart } from './ui.ts';
-import { margBar, margPop, notExist } from './margui.ts';
+import { margBar, margPop } from './margui.ts';
 import { canAction, seeCost } from './session.ts';
 import { itemForm, type Item } from './masters.ts';
 
@@ -34,7 +34,7 @@ export function selectStore(): Promise<string[] | null> {
     w.body.innerHTML = `<div class="ss-wrap">
       <div class="ss-ctrl"><div class="bar">CONTROL BOX</div>
         <div>+ &nbsp; - Select One</div><div>- &nbsp; - Unselect One</div><div>* &nbsp; - Select All</div><div>/ &nbsp; - Unselect All</div>
-        <div>S_Bar- Select/Unselect</div><div>&#8629; &nbsp; - Select&amp; Execute</div><div>Tab - No. Selection</div><div>Esc - Exit</div></div>
+        <div>S_Bar- Select/Unselect</div><div>&#8629; &nbsp; - Select&amp; Execute</div><div>Esc - Exit</div></div>
       <div class="ss-list"><div class="bar">SELECT STORE</div><div class="rows"></div>
         <div class="find">Find ? &nbsp;<span>[</span><input autocomplete="off"><span>]</span></div></div></div>`;
     const rowsBox = w.body.querySelector('.rows') as HTMLElement;
@@ -61,7 +61,6 @@ export function selectStore(): Promise<string[] | null> {
       if (k === '*') { STORES.forEach((s) => picked.add(s)); draw(); return true; }
       if (k === '/') { picked.clear(); draw(); return true; }
       if (k === 'Space') { if (picked.has(cur)) picked.delete(cur); else picked.add(cur); draw(); return true; }
-      if (k === 'Tab') { notExist('"No. Selection"'); return true; }
       if (k === 'Enter') { finish(picked.size ? STORES.filter((s) => picked.has(s)) : [cur]); return true; }
       if (k === 'Escape') { finish(null); return true; }
       return false;
@@ -80,8 +79,8 @@ async function closingStock(initialStores: string[]) {
   let stores = initialStores;
   const w = openWin('CLOSING STOCK', 'full', '');
   w.el.classList.add('marg');
-  w.setFoot('<span><b>F3</b>-Edit</span><span><b>F5</b>-Index</span><span><b>Enter</b>-Register</span><span><b>F6</b>-Calculate Total</span>' +
-    '<span><b>F9</b>-Store</span><span><b>F10</b>-Filter</span><span><b>*</b>-Shortage</span><span><b>Ctrl+F1</b>-Ageing</span><span><b>Alt+P</b>-Print</span>');
+  w.setFoot('<span><b>F3</b>-Edit</span><span><b>Enter</b>-Register</span><span><b>F6</b>-Calculate Total</span>' +
+    '<span><b>F9</b>-Store</span><span><b>F10</b>-Filter</span><span><b>*</b>-Shortage</span><span><b>Alt+P</b>-Print</span>');
   const screen = h('div', { class: 'cs-screen' });
   screen.innerHTML = `
     <div class="cs-main">
@@ -190,7 +189,6 @@ async function closingStock(initialStores: string[]) {
     if (k === 'F10') { inStock = !inStock; applyFilter(); return true; }
     if (k === '*') { shortage = !shortage; applyFilter(); return true; }
     if (k === 'Alt+P' || k === 'Ctrl+P') { printList(); return true; }
-    if (k === 'F5' || k === 'Ctrl+F1' || k === 'Insert') { notExist(`"${k}"`); return true; }
     if (k === 'Backspace') { typed = typed.slice(0, -1); typedAt = Date.now(); draw(); return true; }
     if (k.length === 1 && !e.ctrlKey && !e.altKey) { jump(k); return true; }
     if (k === 'Space') { jump(' '); return true; }
@@ -215,8 +213,7 @@ async function itemRegister(it: Item, stores: string[], from = fyStart(), to = t
   const rows = main ? d.rows : [];
   const w = openWin('ITEM REGISTER', 'full', '');
   w.el.classList.add('marg');
-  w.setFoot('<span><b>Alt+F1</b>-L.Year</span><span><b>F2</b>-Filter</span><span><b>?</b>-Search</span><span><b>F3</b>-All</span><span><b>F4</b>-Rem</span>' +
-    '<span><b>F5</b>-Party</span><span><b>F6</b>-Index</span><span><b>Enter</b>-Bill</span><span><b>Ctrl+F1</b>-Summ</span><span><b>Alt+P</b>-Print</span>');
+  w.setFoot('<span><b>F2</b>-Filter</span><span><b>Enter</b>-Bill</span><span><b>Alt+P</b>-Print</span>');
   const screen = h('div', { class: 'ir-screen' });
   const u = (it.unit ?? '').toUpperCase();
   const s = d.summary;
@@ -271,7 +268,6 @@ async function itemRegister(it: Item, stores: string[], from = fyStart(), to = t
     }
     if (k === 'F2') { periodBox(from, to).then((p) => { if (p) { w.close(); itemRegister(it, stores, p.from, p.to); } }); return true; }
     if (k === 'Alt+P' || k === 'Ctrl+P') { print(); return true; }
-    if (['Alt+F1', 'F3', 'F4', 'F5', 'F6', 'Ctrl+F1', '?'].includes(k)) { notExist(`"${k}"`); return true; }
     return false;
   };
   draw();

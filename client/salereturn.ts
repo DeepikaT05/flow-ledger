@@ -157,7 +157,7 @@ export async function pickSold(partyId: number, initial: string): Promise<SoldIt
 /** Ctrl+W / End on a sale return: "Save In" — Bill/CR/DR Note, Separate or Challan. */
 export function saveInBox(): Promise<'note' | 'separate' | 'challan' | null> {
   return new Promise((resolve) => {
-    const opts: [string, 'note' | 'separate' | 'challan'][] = [['Save In Bill/CR/DR Note', 'note'], ['Save Separate', 'separate'], ['Save in Challan', 'challan']];
+    const opts: [string, 'note' | 'separate' | 'challan'][] = [['Save In Bill/CR/DR Note', 'note'], ['Save Separate', 'separate']];
     const p = margPop('SAVE IN', '<span><b>↑↓</b>-Move</span><span><b>Enter</b>-Select</span><span><b>Esc</b>-Back</span>', '420px');
     const box = h('div', { class: 'sr-savein' });
     p.body.append(box);

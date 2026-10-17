@@ -12,7 +12,7 @@ import { boot, login, changeCompany, isBooting } from './startup.ts';
 import { usersWindow, rolesWindow } from './admin.ts';
 import { session, canAction, isSuper, menuTickedFor } from './session.ts';
 import { menuKeyOf, leavesForAction, leavesForLabel } from '../shared/menuPerms.ts';
-import { notExist, margNumber } from './margui.ts';
+import { margNumber } from './margui.ts';
 
 // ------------------------------------------------------------------ actions
 const ACTIONS: Record<string, (arg?: string) => unknown> = {
@@ -99,11 +99,10 @@ for (const q of QUICK) ACTION_NAME.set(q.action, q.label);   // the quick button
 
 function run(action: string | undefined, label?: string) {
   closeMenu();
-  // Like MARG, an item counts as viewed even when its screen isn't built yet.
-  if (!action) { if (label) remember(label, ''); notExist(label ? `"${label}"` : ''); return; }
+  if (!action) return;
   const [name, arg] = action.split(/:(.*)/s);
   const fn = ACTIONS[name];
-  if (!fn) { notExist(); return; }
+  if (!fn) return;
   if (!canAction(action)) {
     const what = label ?? ACTION_LABELS.get(action) ?? 'this';
     toast(`Access denied — role ${session()?.role ?? ''} cannot open "${what}". Ask SuperAdmin.`, true);
@@ -341,8 +340,7 @@ function menuKey(k: string): boolean {
     if (k === 'Enter' || k === 'ArrowDown') { openTop(barFocus); return true; }
     if (k === 'Escape' || k === 'F10') { closeMenu(); return true; }
     const hit = topMenuIndex(k);
-    if (hit >= 0) { openTop(hit); return true; }
-    if (isKeyChar(k)) notExist(`Key "${k}"`);
+    if (hit >= 0) openTop(hit);
     return true;
   }
   const level = path.length - 1;
@@ -374,7 +372,6 @@ function menuKey(k: string): boolean {
     const list = hits.length ? hits : fallback;
     if (list.length === 1) activate(level, list[0].i);
     else if (list.length > 1) { const nx = list.find((x) => x.i > cur) ?? list[0]; path[level] = nx.i; renderMenu(); }
-    else if (isKeyChar(k)) notExist(`Key "${k}"`);
     return true;
   }
   return true;
@@ -682,14 +679,10 @@ document.addEventListener('keydown', async (e) => {
   if (k.length === 1) {
     const hit = topMenuIndex(k);
     if (hit >= 0) { e.preventDefault(); openTop(hit); }
-    else if (isKeyChar(k)) notExist(`Key "${k}"`);
     return;
   }
-  if (/^Alt\+[A-Z0-9]$/.test(k)) notExist(`Key "${k}"`);
 }, true);
 
-/** Letters and digits count as "a key that should do something"; punctuation doesn't. */
-function isKeyChar(k: string) { return /^[A-Z0-9]$/.test(k); }
 document.addEventListener('keyup', (e) => {
   // Tapping Alt on its own toggles the menu bar, like Windows.
   if (e.key === 'Alt' && altAlone && !winCount() && !isBooting()) {

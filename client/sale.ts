@@ -2,7 +2,7 @@
 // Date / Type), the PRODUCT grid, the item + batch pickers, MODE OF PAYMENT and
 // the "Exit W/o Save" box. Everything is driven from the keyboard.
 import { api, esc, toast, h, today, money, openWin, type Win } from './ui.ts';
-import { margBar, margPop, popList, margConfirm, margNumber, margAsk, notExist } from './margui.ts';
+import { margBar, margPop, popList, margConfirm, margNumber, margAsk } from './margui.ts';
 import { billDetails, pickBillItems, pickSold, saveInBox, type ReturnInfo } from './salereturn.ts';
 import { ledgerForm, itemForm, type Ledger, type Item } from './masters.ts';
 import { canAction, seeCost, canBackdate, session, NO_DATE } from './session.ts';
@@ -68,7 +68,7 @@ const GRID_COLS: { key: keyof Row; label: string; w: string; num?: boolean; edit
   { key: 'rate', label: 'RATE', w: '11%', num: true, edit: true },
   { key: 'disc', label: 'DIS1%', w: '8%', num: true, edit: true },
 ];
-const TOOLS = ['SALE', 'PURC', 'SC', 'PC', 'COPY', 'PASTE', 'SR', 'PR', 'O/S', 'BE', 'CASH', 'VOU', 'HOLD', 'PUSH', 'QRID', 'SAVE'];
+const TOOLS = ['SALE', 'PURC', 'SC', 'PC', 'SR', 'PR', 'O/S', 'CASH', 'VOU', 'SAVE'];
 const TOOL_TYPE: Record<string, string> = { SALE: 'SALE', PURC: 'PURCHASE', SC: 'SALE_CHALLAN', PC: 'PURCHASE_CHALLAN', SR: 'SALE_RETURN', PR: 'PURCHASE_RETURN' };
 
 // ------------------------------------------------------------------ pickers
@@ -192,9 +192,7 @@ async function pickProduct(initial: string): Promise<Item | null> {
       <div>W/oDeal: <b>${c2(r.purchase_rate)}</b></div><div>F.Rate&nbsp;: <b>${f2(r.sale_rate)}</b></div><div>Mfr. &nbsp;&nbsp;: &nbsp; Stock : <b>${r.stock}</b></div>
       <div>PurDeal:</div><div>Deal[F]:</div><div>Conv. &nbsp;: 0 &nbsp; BOX : 0</div>
       <div>PurDisc:</div><div>Scheme&nbsp;: 0</div><div>Barcode:</div>`,
-    foot: '<span><b>Alt+F1</b>-Help</span><span><b>F4</b>-Reg.</span><span><b>F5</b>-Index</span><span><b>F6</b>-Old_Rate</span>' +
-      '<span><b>F10/?</b>-Filter</span><span><b>F9</b>-Comp</span><span><b>F7/F8</b>-Salt</span><span><b>Ctrl+Tab</b>-Detail</span>' +
-      '<span><b>Ctrl+W</b>-Fast</span><span><b>F2</b>-New</span><span><b>+</b>-Label</span>',
+    foot: '<span><b>F2</b>-New</span><span><b>F3</b>-Modify</span><span><b>F4</b>-Reg.</span>',
     onKey: (k, cur, pop) => {
       if (k === 'F2') { if (!allowed('item.add', 'New Item')) return true; itemForm({ name: initial.toUpperCase() }).then(async (i) => { if (i) pop.setRows(await api('/items')); }); return true; }
       if (k === 'F3' && cur) { if (!allowed('item.list', 'Edit Item')) return true; itemForm(cur).then(async (i) => { if (i) pop.setRows(await api('/items')); }); return true; }
@@ -297,7 +295,6 @@ export async function saleEntry(type = 'SALE', billId?: number) {
             <span style="color:var(--marg-lbl)">Dt:</span> <input class="val" data-f="pdt" size="10"> <span style="color:var(--marg-lbl)">M.R.:</span> <input class="val" data-f="mr" readonly size="8"></div>`
         : '<label>Bill No.</label><div><input class="val" data-f="no" size="10"> <span style="color:var(--marg-lbl)">M.R.:</span> <input class="val" data-f="mr" readonly size="10"></div>'}
       <label>Type</label><input class="val" data-f="type" readonly>
-      ${isRet ? '<span></span><div class="sr-import">[ Import -&gt; F10-Online F11-Scan QRCode ]</div>' : ''}
     </div>
     <div class="marg-rows"><table class="marg-grid"><thead><tr>
       ${GRID_COLS.map((c) => `<th class="${c.num ? 'n' : ''}" style="width:${c.w}">${c.key === 'rate' && isPurchase(type) ? 'P.RATE' : c.label}</th>`).join('')}
@@ -306,7 +303,7 @@ export async function saleEntry(type = 'SALE', billId?: number) {
       <div class="info1"></div><div class="info2"></div><div class="info3"></div>
     </div>
     <div style="font-size:12px;padding:1px 8px" class="cal"></div>
-    <div class="marg-tools">${TOOLS.map((t) => `<span data-t="${t}" class="${t === 'SAVE' ? 'save' : t === 'QRID' ? 'hot' : ''}">${t}</span>`).join('')}</div>
+    <div class="marg-tools">${TOOLS.map((t) => `<span data-t="${t}" class="${t === 'SAVE' ? 'save' : ''}">${t}</span>`).join('')}</div>
     <div class="marg-invoice">
       <div><div class="store">Store : <b>MAIN STORE</b></div><div class="sale">${FOOT_LABEL[type]}</div><div style="font-size:13px">Last Bills :</div></div>
       <div class="amt">Invoice Value<b class="inv">0.00</b></div>
@@ -620,7 +617,6 @@ export async function saleEntry(type = 'SALE', billId?: number) {
       if (!retInfo) { toast('Fill BILL DETAILS (reason) first', true); await returnDetailsStep(); if (!retInfo) return; }
       const where = await saveInBox();
       if (!where) { focusCell(Math.max(0, rows.length - 1), 'name'); return; }
-      if (where === 'challan') { notExist('"Save in Challan"'); return; }
       if (await margConfirm('Save Changes')) await save();
       return;
     }
@@ -686,7 +682,6 @@ export async function saleEntry(type = 'SALE', billId?: number) {
     else if (t === 'CASH') finishBill();
     else if (t === 'O/S' && party) { if (allowed('report.ledger', 'Ledger statement')) import('./reports.ts').then((m) => m.ledgerStatement(party!)).catch((e) => toast((e as Error).message, true)); }
     else if (t === 'VOU') { if (allowed('voucher.menu', 'Vouchers')) import('./vouchers.ts').then((m) => m.voucherMenu()); }
-    else notExist(`"${t}"`);
   });
 
   w.onKey = (e, k) => {
@@ -715,7 +710,6 @@ export async function saleEntry(type = 'SALE', billId?: number) {
     if (t === noI && k === 'Enter') { renderRows(); focusCell(0, 'name'); return true; }
     if (refEntry && t === pnoI) {
       if (k === 'Enter') { if (pdtI && !pdtI.value) pdtI.value = dmy(today()); pdtI?.focus(); pdtI?.select(); return true; }
-      if (k === 'F10' || k === 'F11') { notExist(k === 'F10' ? '"Import Online"' : '"Scan QRCode"'); return true; }
     }
     if (refEntry && t === pdtI && k === 'Enter') { if (isRet) returnDetailsStep(); else { renderRows(); focusCell(0, 'name'); } return true; }
     if (t === mrI && k === 'Enter') { pickMR().then((m) => { if (m) { mr = m; mrI.value = m.name; } focusCell(0, 'name'); }); return true; }

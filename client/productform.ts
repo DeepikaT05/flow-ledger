@@ -3,7 +3,7 @@
 // discount fields. Enter / ↓ moves to the next field; Enter on the last one asks "Save ?".
 // Fields the item table has no column for are kept in items.details (JSON).
 import { api, esc, h, toast, confirmBox } from './ui.ts';
-import { margPop, notExist } from './margui.ts';
+import { margPop } from './margui.ts';
 import { seeCost } from './session.ts';
 import type { Item } from './masters.ts';
 
@@ -71,7 +71,7 @@ export function productScreen(existing?: Partial<Item> & { details?: string }): 
     const cost = seeCost();
 
     const title = isNew ? 'NEW PRODUCT' : 'MODIFY PRODUCT';
-    const p = margPop(title, 'F4-Item Code F5-Item Maping', '1000px');
+    const p = margPop(title, '', '1000px');
     p.el.classList.add('marg-prod');
 
     const field = (f: Fld): string => {
@@ -147,7 +147,6 @@ export function productScreen(existing?: Partial<Item> & { details?: string }): 
     p.onKey = (e, k) => {
       const t = e.target as HTMLElement;
       const i = inputs.indexOf(t as HTMLInputElement);
-      if (k === 'F4' || k === 'F5') { notExist(k === 'F4' ? 'F4 - Item Code' : 'F5 - Item Maping'); return true; }
       if (k === 'Escape') {
         if (!dirty) { finish(null); return true; }
         confirmBox('Exit W/o Save ?', false).then((y) => { if (y) finish(null); else t.focus(); });

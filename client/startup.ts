@@ -2,7 +2,7 @@
 //   User Id / User Password  →  LIST OF COMPANIES
 //   →  company menu (A MARG GATEWAY …)  →  SELECT TO EXECUTE (financial year)  →  main screen.
 import { api, esc, h, openWin, toast, alertBox, confirmBox } from './ui.ts';
-import { margBar, notExist } from './margui.ts';
+import { margBar } from './margui.ts';
 import { companyScreen } from './companyform.ts';
 import { setSession, token, isSuper, type Session } from './session.ts';
 
@@ -61,7 +61,7 @@ export async function changeCompany(): Promise<boolean> {
 async function chooseCompany(required: boolean): Promise<boolean> {
   let last: number | undefined = open?.company.id;
   for (;;) {
-    hint('F8/Enter-Select F2-New F3-Edit F5-Index F6-Hide F7-Extra Company F9-Recover Alt+P-Licence Information');
+    hint('F8/Enter-Select F2-New F3-Edit');
     const c = await companyList(last, required);
     if (!c) { if (open) setInfo(null); return false; }
     last = c.id;
@@ -70,19 +70,18 @@ async function chooseCompany(required: boolean): Promise<boolean> {
       if (!opt) break;                       // Esc: back to the list
       if (opt === 'A') {
         await api('/session/company', { method: 'POST', body: { id: c.id } });
-        hint('Enter-Run F3-Change Path');
+        hint('Enter-Run');
         const y = await selectYear();
         if (y) {
           await api('/session/year', { method: 'POST', body: { id: y.id } });
           open = { company: c, yearId: y.id };
           return true;
         }
-        hint('F8/Enter-Select F2-New F3-Edit F5-Index F6-Hide F7-Extra Company F9-Recover Alt+P-Licence Information');
+        hint('F8/Enter-Select F2-New F3-Edit');
         continue;
       }
       if (opt === 'C') await backup(c);
       else if (opt === 'E') await newYear(c);
-      else await notExist(COMPANY_MENU.find(([k]) => k === opt)![1]);
     }
   }
 }
@@ -228,7 +227,6 @@ function companyList(startId: number | undefined, required: boolean): Promise<Co
       if (k === 'Enter' || k === 'F8') { if (rows[sel]) finish(rows[sel]); return true; }
       if (k === 'F2') { edit(); return true; }
       if (k === 'F3') { if (rows[sel]) edit(rows[sel]); return true; }
-      if (['F5', 'F6', 'F7', 'F9', 'Alt+P'].includes(k)) { notExist(`Key "${k}"`); return true; }
       if (k === 'Escape') { if (!required) finish(null); return true; }
       return false;
     };
@@ -329,7 +327,6 @@ export function selectYear(): Promise<Year | null> {
       if (k === 'ArrowUp') { sel = Math.max(0, sel - 1); draw(); return true; }
       if (k === 'Enter') { finish(years[sel]); return true; }
       if (k === 'Escape') { finish(null); return true; }
-      if (k === 'F3') { notExist('F3 - Change Path'); return true; }
       return false;
     };
   });

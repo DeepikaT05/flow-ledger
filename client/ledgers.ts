@@ -3,7 +3,7 @@
 // CUSTOMER STATUS panel, and Enter → LEDGER DISPLAY (FROM / TO, then Ledger · Monthly ·
 // Daily · Summary · Cancel). As in MARG, Enter on a transaction opens it.
 import { api, esc, toast, h, today, money, openWin, fyStart } from './ui.ts';
-import { margBar, margPop, notExist } from './margui.ts';
+import { margBar, margPop } from './margui.ts';
 import { statusHtml, type Status } from './receipt.ts';
 import { canAction } from './session.ts';
 import { ledgerForm, type Ledger } from './masters.ts';
@@ -31,8 +31,7 @@ export async function allLedgers() {
   const company = await api<any>('/company');
   const w = openWin('LEDGER ACCOUNTS', 'full', '');
   w.el.classList.add('marg');
-  w.setFoot('<span><b>Alt+F1</b>-Others</span><span><b>F2</b>-Date</span><span><b>F3</b>-Edit</span><span><b>+</b>-Envelope</span><span><b>F4</b>-Interest</span>' +
-    '<span><b>F6</b>-Adjust</span><span><b>F8</b>-PDC</span><span><b>Tab</b>-Search</span><span><b>F10</b>-Filter</span><span><b>Ctrl+F1</b>-Summary</span><span><b>Alt+P</b>-Print</span>');
+  w.setFoot('<span><b>F2</b>-Date</span><span><b>F3</b>-Edit</span><span><b>Tab</b>-Search</span><span><b>F10</b>-Filter</span><span><b>Alt+P</b>-Print</span>');
   const screen = h('div', { class: 'la-screen' });
   screen.innerHTML = `
     <div class="la-main">
@@ -126,7 +125,6 @@ export async function allLedgers() {
     if (k === 'F10') { balanceOnly = !balanceOnly; toast(balanceOnly ? 'Showing ledgers with a balance only' : 'Showing all ledgers'); filter(); return true; }
     if (k === 'Alt+P' || k === 'Ctrl+P') { printList(); return true; }
     if (k === 'Tab') { find.focus(); find.select(); return true; }
-    if (['Alt+F1', 'F4', 'F6', 'F8', 'Ctrl+F1', '+'].includes(k)) { notExist(`"${k}"`); return true; }
     if (k === 'Escape' && find.value) { find.value = ''; filter(); return true; }
     return false;
   };

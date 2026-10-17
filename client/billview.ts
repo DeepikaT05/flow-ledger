@@ -3,7 +3,7 @@
 // Next · Modify · Print · Delete · Cancel · View · Amend · Detail · Email · Exit · Previous ·
 // Courier, the BILL LEVIES box (bill total / adjustment / balance) and CUSTOMER STATUS.
 import { api, esc, toast, h, money, openWin } from './ui.ts';
-import { margBar, margPop, margConfirm, margNumber, notExist } from './margui.ts';
+import { margBar, margPop, margConfirm, margNumber } from './margui.ts';
 import { FOOT_LABEL } from './sale.ts';
 import { statusHtml, type Status } from './receipt.ts';
 import { canAction, can, session } from './session.ts';
@@ -161,7 +161,6 @@ export async function billAlteration(list: BillRef[], index: number, onChange?: 
         return;
       }
       case 'detail': detailBox(); return;
-      default: notExist(`"${BUTTONS.find((x) => x[2] === act)?.[0] ?? act}"`);
     }
   }
 
