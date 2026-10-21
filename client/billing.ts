@@ -43,19 +43,263 @@ export async function billList(type: string) {
     return false;
   };
 }
+import { inWords } from './receipt.ts';
+
 // ------------------------------------------------------------------ print
 async function billHtml(id: number) {
   const [b, c] = await Promise.all([api(`/bills/${id}`), api('/company')]);
-  const p = await api<Ledger>(`/ledgers/${b.party_id}`);
-  const html = `<h2>${esc(c.name)}</h2><div style="text-align:center">${esc(c.address1)} ${esc(c.address2)}<br>GSTIN: ${esc(c.gstin)}</div>
-    <hr><div style="display:flex;justify-content:space-between"><div><b>${esc(BILL_TITLE[b.type])}</b><br>Party: <b>${esc(b.walkin_name || p.name)}</b><br>${esc(p.address)} ${esc(p.city)}<br>GSTIN: ${esc(b.walkin_gstin || p.gstin || '-')}</div>
-    <div>No: <b>${esc(b.no)}</b><br>Date: ${fmtDate(b.date)}<br>${esc(b.mode)}</div></div><hr>
-    <table class="grid"><tr><th>#</th><th>Item</th><th>Batch</th><th class="n">Qty</th><th class="n">Free</th><th class="n">Rate</th><th class="n">Disc%</th><th class="n">GST%</th><th class="n">Amount</th></tr>
-    ${b.lines.map((l: any, i: number) => `<tr><td>${i + 1}</td><td>${esc(l.item_name)}</td><td>${esc(l.batch)}</td><td class="n">${l.qty}</td><td class="n">${l.free || ''}</td>
-      <td class="n">${money(l.rate)}</td><td class="n">${l.disc_pct || ''}</td><td class="n">${l.gst_rate}</td><td class="n">${money(l.amount)}</td></tr>`).join('')}</table>
-    <div style="text-align:right;margin-top:8px;line-height:1.6">Gross: ${money(b.gross)}<br>Discount: ${money(b.discount)}<br>Taxable: ${money(b.taxable)}<br>
-    CGST: ${money(b.tax / 2)} &nbsp; SGST: ${money(b.tax / 2)}<br>Round Off: ${money(b.round_off)}<br><b style="font-size:18px">NET AMOUNT: ${money(b.net)}</b></div>
-    ${b.narration ? `<div>Narration: ${esc(b.narration)}</div>` : ''}<div style="margin-top:30px;text-align:right">For ${esc(c.name)}<br><br>Authorised Signatory</div>`;
+  const p = await api<Ledger>(`/ledgers/${b.party_id}`).catch(() => ({} as Ledger));
+  let salesmen: any[] = [];
+  try { salesmen = await api('/salesmen'); } catch { /* ignore */ }
+  const mrName = b.mr_id ? (salesmen.find((s: any) => s.id === b.mr_id)?.name || '') : (b.mr_name || 'GOLU DAU');
+
+  const pDet = JSON.parse(p.details || '{}') as Record<string, string>;
+  const cDet = JSON.parse(c.details || '{}') as Record<string, string>;
+
+  const companyName = (c.name || 'TAMRAKAR AGRO BORI').toUpperCase();
+  const companyAddress = (c.address1 || 'BAZAR CHOWK BORI').toUpperCase();
+  const companyPhone = c.phone || cDet.phone || '6267594738';
+  const companyGstin = c.gstin || '22ANYPT1907C1ZX';
+
+  const partyName = (b.walkin_name || p.name || 'CASH').toUpperCase();
+  const partyPhone = b.walkin_mobile || p.phone || pDet.mobile || '';
+  const partyGstin = b.walkin_gstin || p.gstin || '';
+  const partyState = p.state ? p.state.split('-')[0].trim() : (pDet.state ? pDet.state.split('-')[0].trim() : '22');
+
+  const isCredit = b.mode !== 'CASH';
+  const pBal = Number(p.balance) || 0;
+  const oldBal = Math.max(0, Math.round((isCredit ? pBal - b.net : pBal) * 100) / 100);
+  const todayBal = Number(b.net) || 0;
+  const totalBal = oldBal + (isCredit ? todayBal : 0);
+
+  const dmy = (iso: string) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : '');
+  const expShort = (e?: string) => (e && e.length >= 7 ? `${e.slice(5, 7)}/${e.slice(2, 4)}` : (e || ''));
+
+  // GST rate summary
+  const gstRows = [
+    { label: 'GST 5 %', rate: 5 },
+    { label: 'GST 12 %', rate: 12 },
+    { label: 'GST 18 %', rate: 18 },
+  ];
+  const byGst = new Map<number, { total: number; sch: number; disc: number; sgst: number; cgst: number; totalGst: number }>();
+  for (const g of gstRows) byGst.set(g.rate, { total: 0, sch: 0, disc: 0, sgst: 0, cgst: 0, totalGst: 0 });
+
+  for (const l of b.lines) {
+    const rate = Number(l.gst_rate) || 0;
+    const bucket = byGst.get(rate) || { total: 0, sch: 0, disc: 0, sgst: 0, cgst: 0, totalGst: 0 };
+    const taxable = Number(l.taxable) || 0;
+    const tax = Number(l.tax) || 0;
+    bucket.total += Number(l.amount) || (taxable + tax);
+    bucket.sgst += tax / 2;
+    bucket.cgst += tax / 2;
+    bucket.totalGst += tax;
+    byGst.set(rate, bucket);
+  }
+
+  let totAmt = 0, totSch = 0, totDisc = 0, totSgst = 0, totCgst = 0, totTotalGst = 0;
+  for (const g of gstRows) {
+    const v = byGst.get(g.rate)!;
+    totAmt += v.total;
+    totSch += v.sch;
+    totDisc += v.disc;
+    totSgst += v.sgst;
+    totCgst += v.cgst;
+    totTotalGst += v.totalGst;
+  }
+
+  const qrSvg = `<svg width="68" height="68" viewBox="0 0 33 33" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges">
+    <rect width="33" height="33" fill="#fff"/>
+    <rect x="2" y="2" width="7" height="7" fill="#000"/><rect x="3" y="3" width="5" height="5" fill="#fff"/><rect x="4" y="4" width="3" height="3" fill="#000"/>
+    <rect x="24" y="2" width="7" height="7" fill="#000"/><rect x="25" y="3" width="5" height="5" fill="#fff"/><rect x="26" y="4" width="3" height="3" fill="#000"/>
+    <rect x="2" y="24" width="7" height="7" fill="#000"/><rect x="3" y="25" width="5" height="5" fill="#fff"/><rect x="4" y="26" width="3" height="3" fill="#000"/>
+    <rect x="11" y="2" width="2" height="1" fill="#000"/><rect x="15" y="2" width="1" height="2" fill="#000"/><rect x="18" y="2" width="2" height="1" fill="#000"/>
+    <rect x="10" y="4" width="2" height="2" fill="#000"/><rect x="14" y="4" width="3" height="1" fill="#000"/><rect x="19" y="4" width="2" height="2" fill="#000"/>
+    <rect x="11" y="7" width="1" height="3" fill="#000"/><rect x="13" y="6" width="2" height="2" fill="#000"/><rect x="17" y="6" width="3" height="2" fill="#000"/>
+    <rect x="2" y="11" width="3" height="2" fill="#000"/><rect x="6" y="11" width="2" height="1" fill="#000"/><rect x="9" y="11" width="2" height="3" fill="#000"/>
+    <rect x="12" y="10" width="3" height="2" fill="#000"/><rect x="16" y="11" width="2" height="2" fill="#000"/><rect x="19" y="10" width="2" height="3" fill="#000"/>
+    <rect x="23" y="11" width="2" height="2" fill="#000"/><rect x="27" y="10" width="3" height="2" fill="#000"/>
+    <rect x="2" y="15" width="2" height="3" fill="#000"/><rect x="5" y="14" width="2" height="2" fill="#000"/><rect x="8" y="15" width="3" height="2" fill="#000"/>
+    <rect x="13" y="14" width="2" height="2" fill="#000"/><rect x="17" y="14" width="3" height="3" fill="#000"/><rect x="22" y="14" width="2" height="2" fill="#000"/>
+    <rect x="26" y="14" width="2" height="3" fill="#000"/><rect x="29" y="15" width="2" height="2" fill="#000"/>
+    <rect x="3" y="19" width="3" height="2" fill="#000"/><rect x="7" y="19" width="2" height="2" fill="#000"/><rect x="11" y="18" width="2" height="3" fill="#000"/>
+    <rect x="15" y="18" width="2" height="2" fill="#000"/><rect x="18" y="19" width="3" height="2" fill="#000"/><rect x="23" y="18" width="2" height="2" fill="#000"/>
+    <rect x="27" y="19" width="2" height="2" fill="#000"/>
+    <rect x="11" y="23" width="3" height="2" fill="#000"/><rect x="15" y="23" width="2" height="3" fill="#000"/><rect x="19" y="23" width="2" height="2" fill="#000"/>
+    <rect x="23" y="22" width="3" height="2" fill="#000"/><rect x="28" y="23" width="3" height="2" fill="#000"/>
+    <rect x="11" y="27" width="2" height="2" fill="#000"/><rect x="14" y="27" width="3" height="2" fill="#000"/><rect x="18" y="27" width="2" height="3" fill="#000"/>
+    <rect x="22" y="26" width="2" height="2" fill="#000"/><rect x="25" y="27" width="3" height="2" fill="#000"/><rect x="29" y="26" width="2" height="3" fill="#000"/>
+  </svg>`;
+
+  const minRows = 10;
+  const fillerCount = Math.max(0, minRows - b.lines.length);
+
+  const html = `
+    <div class="inv-page">
+      <!-- HEADER -->
+      <div class="inv-hdr">
+        <div class="inv-hdr-left">
+          <div class="co-name">${esc(companyName)}</div>
+          <div class="co-sub">${esc(companyAddress)}</div>
+          <div class="co-sub" style="margin-top:4px">Phone : ${esc(companyPhone)}</div>
+          <div class="co-line"></div>
+          <div class="co-sub">GSTIN : ${esc(companyGstin)}</div>
+          <div class="co-sub" style="margin-top:4px">SL NO.:-</div>
+        </div>
+        <div class="inv-hdr-mid">
+          <div class="title">INVOICE</div>
+          <div class="mode">${isCredit ? 'CREDIT' : 'CASH'}</div>
+        </div>
+        <div class="inv-hdr-right">
+          <div class="pty-box">
+            <div class="pty-name">${esc(partyName)} ${isCredit ? 'CR' : 'DR'}</div>
+            <div class="pty-row">State : ${esc(partyState)}</div>
+            <div class="pty-row">Ph.No.: ${esc(partyPhone)}</div>
+            <div class="pty-row">GST : ${esc(partyGstin)}</div>
+          </div>
+          <div class="inv-meta">
+            <div class="meta-row"><span>Invoice No.</span> <span>: ${esc(b.no)}</span></div>
+            <div class="meta-row" style="margin-top:3px"><span>Date</span> <span>: ${dmy(b.date)}</span></div>
+            <div class="mr-name">${esc(mrName)} MR</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ITEMS GRID -->
+      <div class="inv-grid-wrap">
+        <table class="inv-tbl">
+          <thead>
+            <tr>
+              <th style="width:28px">SN.</th>
+              <th style="width:39%;text-align:left">PRODUCT NAME &amp; PACKING</th>
+              <th style="width:9%">BATCH</th>
+              <th style="width:7%">EXP.</th>
+              <th style="width:8%">HSN.</th>
+              <th style="width:5%">QTY</th>
+              <th style="width:8%;text-align:right">RATE</th>
+              <th style="width:6%;text-align:right">DIS</th>
+              <th style="width:5%;text-align:right">SGST</th>
+              <th style="width:5%;text-align:right">CGST</th>
+              <th style="width:8%;text-align:right">AMOUNT</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${b.lines.map((l: any, i: number) => `
+              <tr>
+                <td style="text-align:center">${i + 1}.</td>
+                <td style="text-align:left;font-weight:bold">${esc(String(l.item_name).toUpperCase())} ${esc((l.pack ?? '').toUpperCase())}</td>
+                <td style="text-align:center">${esc(l.batch ?? '')}</td>
+                <td style="text-align:center">${esc(expShort(l.expiry))}</td>
+                <td style="text-align:center">${esc(l.hsn || '-BLAN')}</td>
+                <td style="text-align:center;font-weight:bold">${l.qty}</td>
+                <td style="text-align:right">${Number(l.rate).toFixed(2)}</td>
+                <td style="text-align:right">${Number(l.disc_pct || 0).toFixed(2)}</td>
+                <td style="text-align:right">${l.gst_rate ? (l.gst_rate / 2).toFixed(2) : '0.00'}</td>
+                <td style="text-align:right">${l.gst_rate ? (l.gst_rate / 2).toFixed(2) : '0.00'}</td>
+                <td style="text-align:right;font-weight:bold">${Number(l.amount).toFixed(2)}</td>
+              </tr>`).join('')}
+            ${Array.from({ length: fillerCount }, () => `
+              <tr class="blank-row">
+                <td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+
+        <!-- Healthcare QR Overlay inside blank area -->
+        <div class="inv-qr-overlay">
+          <div class="qr-vert"><span>Body Checkup</span> <span>Health Offers</span></div>
+          <div class="qr-card">
+            <div class="qr-lbl-top">Scan &amp; Book</div>
+            ${qrSvg}
+            <div class="qr-lbl-bot">Improve Your Health</div>
+          </div>
+          <div class="qr-desc">
+            <div>One QR Code for All Your Healthcare Needs</div>
+            <div style="font-weight:bold;margin-top:2px">Scan with your Mobile</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TOTAL BALANCE BAR -->
+      <div class="inv-total-bar">
+        <span class="lbl">TOTAL BALANCE</span>
+        <span class="val">${money(b.net)}</span>
+      </div>
+
+      <!-- MID SECTION: GST BREAKDOWN & RIGHT TOTALS -->
+      <div class="inv-mid">
+        <div class="gst-box">
+          <table class="gst-tbl">
+            <thead>
+              <tr>
+                <th style="width:20%">CLASS</th>
+                <th style="width:16%">TOTAL</th>
+                <th style="width:12%">SCH.</th>
+                <th style="width:12%">DISC.</th>
+                <th style="width:13%">SGST</th>
+                <th style="width:13%">CGST</th>
+                <th style="width:14%">TOTAL GST</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${gstRows.map((g) => {
+                const v = byGst.get(g.rate)!;
+                return `<tr>
+                  <td>${g.label}</td>
+                  <td>${Number(v.total).toFixed(2)}</td>
+                  <td>${Number(v.sch).toFixed(2)}</td>
+                  <td>${Number(v.disc).toFixed(2)}</td>
+                  <td>${Number(v.sgst).toFixed(2)}</td>
+                  <td>${Number(v.cgst).toFixed(2)}</td>
+                  <td>${Number(v.totalGst).toFixed(2)}</td>
+                </tr>`;
+              }).join('')}
+              <tr class="tot-row">
+                <td>TOTAL</td>
+                <td>${Number(totAmt).toFixed(2)}</td>
+                <td>${Number(totSch).toFixed(2)}</td>
+                <td>${Number(totDisc).toFixed(2)}</td>
+                <td>${Number(totSgst).toFixed(2)}</td>
+                <td>${Number(totCgst).toFixed(2)}</td>
+                <td>${Number(totTotalGst).toFixed(2)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="totals-box">
+          <div class="t-row"><span>Discount</span> <b>${Number(b.discount || 0).toFixed(2)}</b></div>
+          <div class="t-row"><span>GST</span> <b>${Number(b.tax || 0).toFixed(2)}</b></div>
+          <div class="t-row"><span>FREIGHT</span> <b>0.00</b></div>
+          <div class="t-row"><span>Paid Balance</span> <b>${Number(b.received || (b.mode === 'CASH' ? b.net : 0)).toFixed(2)}</b></div>
+          <div class="t-row pend"><span>Pending Balance</span> <b>${Number(b.net - (b.received || (b.mode === 'CASH' ? b.net : 0))).toFixed(2)}</b></div>
+        </div>
+      </div>
+
+      <!-- WORDS ROW -->
+      <div class="inv-words">Rs. ${inWords(b.net)} only</div>
+
+      <!-- BOTTOM 4-BOX SECTION -->
+      <div class="inv-btm">
+        <div class="b-box box1">
+          <div class="tc-title"><u>Terms &amp; Conditions</u></div>
+          <div>Goods once sold will not be taken back or exchanged.</div>
+          <div>Bills not paid due date will attract 24% interest.</div>
+        </div>
+        <div class="b-box box2">
+          <div class="bal-row"><span>OLD BALANCE</span> <b>${Number(oldBal).toFixed(2)}</b></div>
+          <div class="bal-row"><span>TODAY BALANCE</span> <b>${Number(todayBal).toFixed(2)}</b></div>
+          <div class="bal-row" style="font-weight:900"><span>TOTAL BALANCE</span> <b>${Number(totalBal).toFixed(2)}</b></div>
+        </div>
+        <div class="b-box box3">
+          <div class="rec-title">Reciver</div>
+        </div>
+        <div class="b-box box4">
+          <div class="auth-co">For ${esc(companyName)}</div>
+          <div class="auth-lbl">Authorised Signatory</div>
+        </div>
+      </div>
+    </div>
+    <div class="inv-footer-note">Get well soon. Scan the Healthcare QR Code for complete health services, insurance, and government benefits.</div>`;
+
   return { b, html };
 }
 

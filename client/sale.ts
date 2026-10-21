@@ -289,7 +289,7 @@ export async function saleEntry(type = 'SALE', billId?: number) {
   screen.innerHTML = `
     <div class="marg-head">
       <label>Name</label><input class="val" data-f="name" readonly>
-      <label>Date</label><input class="val date" data-f="date">
+      <label>Date</label><input class="val date" data-f="date" size="10" maxlength="10" autocomplete="off">
       ${refEntry
         ? `<label>Entry No.</label><div><input class="val" data-f="no" size="10"> <span style="color:var(--marg-lbl)">Party No:</span> <input class="val" data-f="pno" size="10" autocomplete="off">
             <span style="color:var(--marg-lbl)">Dt:</span> <input class="val" data-f="pdt" size="10"> <span style="color:var(--marg-lbl)">M.R.:</span> <input class="val" data-f="mr" readonly size="8"></div>`

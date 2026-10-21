@@ -2,31 +2,15 @@ import { api, openWin, GridList, formWin, confirmBox, toast, pick, money, drcr, 
 import { seeCost, canDelete, NO_DELETE } from './session.ts';
 import { productScreen } from './productform.ts';
 
-export interface Ledger { id: number; name: string; group_id: number; group_name: string; nature: string; city: string; phone: string; gstin: string; state: string; address: string; opening: number; opening_type: string; credit_limit: number; balance: number; is_system: number }
+export interface Ledger { id: number; name: string; group_id: number; group_name: string; nature: string; city: string; phone: string; gstin: string; state: string; address: string; opening: number; opening_type: string; credit_limit: number; balance: number; is_system: number; details?: string }
 export interface Item { id: number; name: string; company: string; unit: string; pack: string; hsn: string; gst_rate: number; mrp: number; sale_rate: number; purchase_rate: number; opening_stock: number; min_stock: number; reorder_qty: number; stock: number }
 interface Group { id: number; name: string; nature: string }
 
+import { ledgerScreen } from './ledgerform.ts';
+
 // ------------------------------------------------------------------ ledgers
 export async function ledgerForm(existing?: Partial<Ledger>, defaultGroup?: string): Promise<Ledger | null> {
-  const groups = await api<Group[]>('/groups');
-  const gDefault = groups.find((g) => g.name === (defaultGroup ?? 'Sundry Debtors'))?.id;
-  const fields: Field[] = [
-    { name: 'name', label: 'Name', required: true, upper: true },
-    { name: 'group_id', label: 'Group', type: 'select', options: groups.map((g) => ({ value: g.id, label: g.name })) },
-    { name: 'address', label: 'Address' },
-    { name: 'city', label: 'City / Station', upper: true },
-    { name: 'phone', label: 'Mobile / Phone' },
-    { name: 'gstin', label: 'GSTIN', upper: true },
-    { name: 'state', label: 'State' },
-    { name: 'opening', label: 'Opening Balance', type: 'number' },
-    { name: 'opening_type', label: 'Dr / Cr', type: 'select', options: [{ value: 'Dr', label: 'Dr' }, { value: 'Cr', label: 'Cr' }] },
-    { name: 'credit_limit', label: 'Credit Limit', type: 'number' },
-  ];
-  const values = { group_id: gDefault, state: 'Chhattisgarh', opening_type: 'Dr', ...existing };
-  const saved = await formWin(existing?.id ? `Modify Ledger : ${existing.name}` : 'Ledger Master - Add', fields, values,
-    (v) => (existing?.id ? api(`/ledgers/${existing.id}`, { method: 'PUT', body: v }) : api('/ledgers', { method: 'POST', body: v })));
-  if (!saved) return null;
-  return api<Ledger>(`/ledgers/${saved.id ?? existing?.id}`);
+  return ledgerScreen(existing, defaultGroup);
 }
 
 export async function ledgerList(group?: string) {

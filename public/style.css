@@ -168,7 +168,7 @@ table.grid td input:focus { background: var(--field-focus); outline: 2px solid #
 .marg-head label::after { content: " :"; }
 .marg-head .val { font-size: 19px; font-weight: bold; letter-spacing: 1px; min-height: 24px; }
 .marg-head .val.focus { background: #1c4f9c; color: #fff; padding: 0 6px; }
-.marg-head .val.date { font-size: 21px; }
+.marg-head .val.date { font-size: 21px; width: 145px; justify-self: start; }
 table.marg-grid { width: 100%; border-collapse: collapse; font-family: inherit; table-layout: fixed; }
 table.marg-grid th { background: #d8e7f3; color: var(--marg-lbl); font-size: 17px; text-align: left; padding: 5px 8px; border: 1px solid #b9c7d2; }
 table.marg-grid td { border: 1px solid #cfdae4; padding: 3px 8px; height: 27px; font-size: 17px; color: var(--marg-red); white-space: nowrap; overflow: hidden; }
@@ -247,7 +247,7 @@ table.marg-grid td input.num, table.marg-grid td.n input { text-align: right; }
 /* MARG fields are plain text, highlighted blue while focused */
 .win.marg input, .win.marg select { border: none; background: transparent; font: inherit; padding: 0 4px; }
 .win.marg .marg-head input { font-size: 19px; font-weight: bold; letter-spacing: 1px; width: 100%; }
-.win.marg .marg-head input[data-f=date] { font-size: 21px; width: auto; }
+.win.marg .marg-head input[data-f=date] { font-size: 21px; width: 145px; max-width: 145px; justify-self: start; }
 .win.marg input:focus, .win.marg select:focus { background: #1c4f9c; color: #fff; outline: none; }
 .win.marg .marg-head input::placeholder { color: #7a8a99; font-weight: normal; letter-spacing: 0; }
 .win.marg table.marg-grid td input::placeholder { color: #8a99a8; }
@@ -540,11 +540,11 @@ body.boot #bootfoot { display: flex; justify-content: space-between; align-items
 .la-panels > div { position: relative; padding: 14px 24px 8px; }
 .la-panels .cur { border-left: 1px solid #333; display: flex; flex-direction: column; }
 .la-panels .cap { position: absolute; top: -11px; left: 16px; background: #f2f7ee; color: var(--marg-lbl); padding: 0 6px; font-size: 16px; }
-.la-panels .ad { color: var(--marg-lbl); margin-bottom: 60px; }
-.la-panels .g { display: grid; grid-template-columns: 70px 1fr 70px 1fr; color: var(--marg-lbl); }
-.la-panels .g span:nth-child(even) { color: #222; }
-.la-panels .kv { display: grid; grid-template-columns: 90px 200px; color: var(--marg-lbl); }
-.la-panels .kv b { text-align: right; font-weight: normal; }
+.la-panels .ad { color: var(--marg-lbl); min-height: 50px; margin-bottom: 8px; font-weight: bold; }
+.la-panels .g { display: grid; grid-template-columns: 78px 1fr 78px 1.3fr; color: var(--marg-lbl); line-height: 22px; font-family: "Courier New", monospace; }
+.la-panels .g span:nth-child(even) { color: #111; font-weight: bold; }
+.la-panels .kv { display: grid; grid-template-columns: 95px 180px; color: var(--marg-lbl); line-height: 22px; font-family: "Courier New", monospace; }
+.la-panels .kv b { text-align: right; font-weight: bold; color: #111; }
 .la-panels .find { display: flex; gap: 8px; color: var(--marg-lbl); margin-top: auto; }
 .win.marg .la-panels .find input { flex: 1; font-size: 16px; }
 .ld-box { padding: 18px 24px 16px; background: var(--marg-bg); font-family: "Courier New", monospace; font-size: 19px; }
@@ -725,6 +725,347 @@ table.marg-grid tr.sel td input::placeholder { color: rgba(255, 255, 255, .78); 
 .win.marg.marg-prod .pf-v input[readonly] { color: #2a5291; }
 .win.marg.marg-prod .pf-v select { font-family: Tahoma, "Segoe UI", sans-serif; font-size: 13px; background: #fff; color: #000; border: 1px solid #8a8a8a; height: 20px; padding: 0 2px; }
 .win.marg.marg-prod .pf-v select:focus { background: #1c4f9c; color: #fff; outline: none; }
-.win.marg.marg-prod .win-body { overflow-x: hidden; }
 .marg-prod .pf-col, .marg-prod .pf-cell { min-width: 0; overflow: hidden; }
 .marg-prod .pf-c { width: 22px; }
+
+/* ---------- CREATE LEDGER / MODIFY LEDGER (F2 / F3 on the ledger list / party picker) */
+.win.marg.marg-ledger { max-width: calc(100vw - 20px); }
+.win.marg.marg-ledger .win-body { background: #e6eff8; overflow: auto; max-height: 88vh; }
+.marg-ledger .marg-bar { font-size: 15px; padding: 4px 12px; }
+.marg-ledger .lf-wrap { padding: 10px 24px 16px 24px; font-family: "Courier New", Courier, monospace; color: #10203f; }
+.marg-ledger .lf-row { display: flex; align-items: center; min-height: 24px; white-space: nowrap; margin-bottom: 2px; }
+.marg-ledger .lf-row.split { justify-content: space-between; gap: 16px; }
+.marg-ledger .lf-left, .marg-ledger .lf-right { display: flex; align-items: center; white-space: nowrap; }
+.marg-ledger .lf-l { font-family: "Courier New", Courier, monospace; font-weight: bold; font-size: 17px; color: #10203f; width: 220px; flex: none; letter-spacing: .5px; }
+.marg-ledger .lf-c { font-family: "Courier New", monospace; font-weight: bold; font-size: 17px; color: #10203f; width: 18px; flex: none; }
+.marg-ledger .lf-sub { font-family: "Courier New", Courier, monospace; font-weight: bold; font-size: 16px; color: #10203f; margin: 0 6px 0 10px; }
+.marg-ledger .lf-v { display: flex; align-items: center; min-width: 0; }
+.win.marg.marg-ledger input { font-family: "Courier New", Courier, monospace; font-weight: bold; font-size: 17px; color: #10203f; border: none; background: transparent; padding: 0 4px; outline: none; }
+.win.marg.marg-ledger input:focus { background: #1c4f9c; color: #fff; outline: none; }
+.win.marg.marg-ledger select { font-family: Tahoma, "Segoe UI", sans-serif; font-size: 12px; background: #fff; color: #000; border: 1px solid #7a7a7a; height: 21px; padding: 0 2px; margin: 0 3px; }
+.win.marg.marg-ledger select:focus { background: #1c4f9c; color: #fff; outline: none; }
+
+/* ---------- MARG INVOICE PRINT TEMPLATE (BILL FORMATE) ---------- */
+.inv-page {
+  width: 820px;
+  margin: 0 auto;
+  background: #fff;
+  color: #000;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 11.5px;
+  border: 2px solid #000;
+  box-sizing: border-box;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+.inv-hdr {
+  display: flex;
+  border-bottom: 2px solid #000;
+}
+.inv-hdr-left {
+  width: 37%;
+  padding: 8px 10px;
+}
+.inv-hdr-left .co-name {
+  color: #0b2576;
+  font-family: "Times New Roman", Georgia, serif;
+  font-weight: 900;
+  font-size: 20px;
+  letter-spacing: .5px;
+  line-height: 1.1;
+}
+.inv-hdr-left .co-sub {
+  color: #0b2576;
+  font-size: 11.5px;
+  font-weight: bold;
+  margin-top: 3px;
+}
+.inv-hdr-left .co-line {
+  border-bottom: 1.5px solid #0b2576;
+  margin: 6px 0;
+}
+.inv-hdr-mid {
+  width: 27%;
+  border-left: 2px solid #000;
+  border-right: 2px solid #000;
+  background: #cff0fb;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  padding: 10px 0;
+}
+.inv-hdr-mid .title {
+  font-size: 24px;
+  font-weight: 900;
+  letter-spacing: 1px;
+}
+.inv-hdr-mid .mode {
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  margin-top: 8px;
+}
+.inv-hdr-right {
+  width: 36%;
+  display: flex;
+  flex-direction: column;
+}
+.inv-hdr-right .pty-box {
+  padding: 6px 10px;
+  border-bottom: 1px solid #000;
+  min-height: 58px;
+}
+.inv-hdr-right .pty-name {
+  font-weight: 900;
+  font-size: 14px;
+  margin-bottom: 2px;
+}
+.inv-hdr-right .pty-row {
+  font-size: 11px;
+  line-height: 1.35;
+}
+.inv-hdr-right .inv-meta {
+  padding: 6px 10px;
+  font-size: 11.5px;
+  position: relative;
+}
+.inv-hdr-right .meta-row {
+  display: flex;
+}
+.inv-hdr-right .meta-row span:first-child {
+  width: 75px;
+}
+.inv-hdr-right .mr-name {
+  text-align: right;
+  font-size: 11px;
+  font-weight: bold;
+  margin-top: 2px;
+}
+
+.inv-grid-wrap {
+  position: relative;
+  min-height: 280px;
+}
+.inv-tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.inv-tbl thead th {
+  background: #baf2f8;
+  color: #000;
+  font-weight: bold;
+  border-top: 2px solid #000;
+  border-bottom: 2px solid #000;
+  border-right: 1px solid #000;
+  padding: 4px 3px;
+  font-size: 11px;
+  text-align: center;
+}
+.inv-tbl thead th:last-child {
+  border-right: none;
+}
+.inv-tbl tbody td {
+  border-right: 1px solid #000;
+  padding: 2px 4px;
+  height: 20px;
+  line-height: 1.2;
+}
+.inv-tbl tbody td:last-child {
+  border-right: none;
+}
+.inv-tbl tbody tr.blank-row td {
+  height: 22px;
+}
+.inv-qr-overlay {
+  position: absolute;
+  left: 20px;
+  bottom: 8px;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+}
+.inv-qr-overlay .qr-vert {
+  display: flex;
+  flex-direction: column;
+  margin-right: 8px;
+  font-size: 8.5px;
+  color: #333;
+}
+.inv-qr-overlay .qr-vert span {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  margin-bottom: 4px;
+}
+.inv-qr-overlay .qr-card {
+  border: 1px solid #000;
+  padding: 2px;
+  text-align: center;
+  background: #fff;
+  width: 76px;
+}
+.inv-qr-overlay .qr-lbl-top {
+  border-bottom: 1px solid #000;
+  font-size: 8px;
+  font-weight: bold;
+  padding-bottom: 1px;
+  margin-bottom: 2px;
+}
+.inv-qr-overlay .qr-lbl-bot {
+  border-top: 1px solid #000;
+  font-size: 7.5px;
+  padding-top: 1px;
+  margin-top: 2px;
+}
+.inv-qr-overlay .qr-desc {
+  margin-left: 8px;
+  font-size: 9px;
+  font-style: italic;
+  line-height: 1.35;
+}
+
+.inv-total-bar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  border-top: 2px solid #000;
+  border-bottom: 2px solid #000;
+  padding: 3px 6px;
+  font-size: 12.5px;
+  font-weight: 900;
+}
+.inv-total-bar .lbl {
+  margin-right: 40px;
+}
+.inv-total-bar .val {
+  min-width: 80px;
+  text-align: right;
+}
+
+.inv-mid {
+  display: flex;
+  border-bottom: 2px solid #000;
+}
+.inv-mid .gst-box {
+  width: 63%;
+  border-right: 2px solid #000;
+}
+.inv-mid .gst-tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10.5px;
+}
+.inv-mid .gst-tbl th {
+  border-bottom: 1px solid #000;
+  border-right: 1px solid #000;
+  padding: 2px 4px;
+  text-align: center;
+  font-weight: bold;
+}
+.inv-mid .gst-tbl th:last-child {
+  border-right: none;
+}
+.inv-mid .gst-tbl td {
+  border-bottom: 1px solid #000;
+  border-right: 1px solid #000;
+  padding: 2px 4px;
+  text-align: right;
+}
+.inv-mid .gst-tbl td:first-child {
+  text-align: left;
+}
+.inv-mid .gst-tbl td:last-child {
+  border-right: none;
+}
+.inv-mid .gst-tbl tr.tot-row td {
+  font-weight: bold;
+  border-bottom: none;
+}
+.inv-mid .totals-box {
+  width: 37%;
+  padding: 4px 10px;
+  font-size: 11px;
+}
+.inv-mid .t-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 2px;
+}
+.inv-mid .t-row.pend {
+  font-size: 12.5px;
+  font-weight: 900;
+  margin-top: 3px;
+  border-top: 1px solid #333;
+  padding-top: 3px;
+}
+
+.inv-words {
+  font-size: 11.5px;
+  font-weight: bold;
+  padding: 4px 8px;
+  border-bottom: 1.5px solid #000;
+}
+
+.inv-btm {
+  display: flex;
+  min-height: 68px;
+}
+.inv-btm .b-box {
+  border-right: 2px solid #000;
+  padding: 4px 6px;
+  box-sizing: border-box;
+}
+.inv-btm .b-box:last-child {
+  border-right: none;
+}
+.inv-btm .box1 {
+  width: 33%;
+  font-size: 10px;
+  line-height: 1.35;
+}
+.inv-btm .box1 .tc-title {
+  font-weight: bold;
+  font-style: italic;
+  margin-bottom: 3px;
+}
+.inv-btm .box2 {
+  width: 29%;
+  font-size: 11px;
+}
+.inv-btm .box2 .bal-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 2px;
+}
+.inv-btm .box3 {
+  width: 14%;
+  font-weight: bold;
+  font-size: 11.5px;
+}
+.inv-btm .box4 {
+  width: 24%;
+  text-align: center;
+  font-size: 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+.inv-btm .box4 .auth-co {
+  font-weight: bold;
+}
+.inv-btm .box4 .auth-lbl {
+  font-size: 9.5px;
+  margin-bottom: 2px;
+}
+.inv-footer-note {
+  width: 820px;
+  margin: 6px auto 0;
+  text-align: center;
+  font-style: italic;
+  font-size: 10px;
+  color: #333;
+}
+
+

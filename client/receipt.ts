@@ -15,6 +15,7 @@ interface Pending { id: number; no: string; ref: string; date: string; net: numb
 interface Adj { bill: Pending | null; amount: number; remark: string }
 export interface Status {
   name: string; phone: string; balance: number; bills: number; days: number;
+  mobile?: string; payid?: string; type_desc?: string;
   last_sale: { net: number; date: string; days: number } | null;
   last_receipt: { amount: number; date: string; days: number } | null;
   receipts: { date: string; amount: number; mode: string; days: number }[];
@@ -230,6 +231,9 @@ export function statusHtml(s: Status, supplier = false) {
   return `<div class="bar">&#10004; ${supplier ? 'SUPPLIER' : 'CUSTOMER'} STATUS</div>
       <div class="nm">${esc(s.name.toUpperCase())}</div>
       <div>Phone &nbsp;: ${esc(s.phone)}</div>
+      ${s.mobile ? `<div>Mobile : ${esc(s.mobile)}</div>` : ''}
+      ${s.payid ? `<div>PayID &nbsp;: ${esc(s.payid)}</div>` : ''}
+      ${s.type_desc ? `<div>Type &nbsp;&nbsp;: ${esc(s.type_desc)}</div>` : ''}
       <div class="kv"><span>Balance :</span><b>${drcr(s.balance)}</b></div>
       <div class="kv"><span>O/S Bills :</span><b>${s.bills}</b></div>
       <div class="kv"><span>Days &nbsp;&nbsp;&nbsp;:</span><b>${s.days}</b></div>

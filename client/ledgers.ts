@@ -10,7 +10,7 @@ import { ledgerForm, type Ledger } from './masters.ts';
 
 interface Acc {
   id: number; name: string; city: string; address: string; phone: string; gstin: string; state: string; group_name: string;
-  opening: number; debit: number; credit: number; balance: number; has_due: boolean;
+  opening: number; debit: number; credit: number; balance: number; has_due: boolean; details?: string;
 }
 interface Entry { source: 'BILL' | 'VOUCHER'; source_id: number; date: string; vtype: string; vno: string; debit: number; credit: number; narration: string; against: string }
 
@@ -31,7 +31,7 @@ export async function allLedgers() {
   const company = await api<any>('/company');
   const w = openWin('LEDGER ACCOUNTS', 'full', '');
   w.el.classList.add('marg');
-  w.setFoot('<span><b>F2</b>-Date</span><span><b>F3</b>-Edit</span><span><b>Tab</b>-Search</span><span><b>F10</b>-Filter</span><span><b>Alt+P</b>-Print</span>');
+  w.setFoot('<span><b>Alt+F1</b>-Others</span><span><b>F2</b>-Date</span><span><b>F3</b>-Edit</span><span><b>+</b>-Envelope</span><span><b>F4</b>-Interest</span><span><b>F6</b>-Adjust</span><span><b>F8</b>-PDC</span><span><b>Tab</b>-Search</span><span><b>F10</b>-Filter</span><span><b>Ctrl+F1</b>-Summary</span><span><b>Alt+P</b>-Print</span>');
   const screen = h('div', { class: 'la-screen' });
   screen.innerHTML = `
     <div class="la-main">
@@ -74,12 +74,25 @@ export async function allLedgers() {
       <span class="n">${a.balance > 0.004 ? f2(a.balance) : ''}</span><span class="n">${a.balance < -0.004 ? f2(-a.balance) : ''}</span></div>`).join('');
     rowsBox.querySelector('.sel')?.scrollIntoView({ block: 'nearest' });
     const a = view[sel];
+    let det: Record<string, string> = {};
+    if (a?.details) {
+      try { det = JSON.parse(a.details); } catch { /* ignore */ }
+    }
+    const phone = a?.phone || det.mobile || det.phone_off1 || '';
+    const dlNo = det.dl_no || '';
+    const gstn = a?.gstin || det.gstin || '';
+    const area = det.area_name || (det.area_on === 'Yes' ? 'YES' : '');
+    const route = det.route_name || (det.route_on === 'Yes' ? 'A(BPTDSP)' : '');
+    const mr = det.mr_name || (det.mr_on === 'Yes' ? 'YES' : '');
+    const state = (a?.state || det.state || '').toUpperCase();
+    const addrLines = (a?.address || det.address1 || a?.name || '').toUpperCase().split('\n');
+
     (screen.querySelector('.addr .body') as HTMLElement).innerHTML = !a ? '' : `
-      <div class="ad">${esc((a.address || a.name).toUpperCase())}</div>
-      <div class="g"><span>Phone:</span><span>${esc(a.phone ?? '')}</span><span></span><span></span></div>
-      <div class="g"><span>DL.No:</span><span></span><span>GSTN :</span><span>${esc(a.gstin ?? '')}</span></div>
-      <div class="g"><span>Area :</span><span></span><span>Route:</span><span></span></div>
-      <div class="g"><span>M.R. :</span><span></span><span>State:</span><span>${esc((a.state ?? '').toUpperCase())}</span></div>`;
+      <div class="ad">${addrLines.map((l) => `<div>${esc(l)}</div>`).join('')}</div>
+      <div class="g"><span>Phone:</span><span>${esc(phone)}</span><span></span><span></span></div>
+      <div class="g"><span>DL.No:</span><span>${esc(dlNo)}</span><span>GSTN :</span><span>${esc(gstn)}</span></div>
+      <div class="g"><span>Area :</span><span>${esc(area)}</span><span>Route:</span><span>${esc(route)}</span></div>
+      <div class="g"><span>M.R. :</span><span>${esc(mr)}</span><span>State:</span><span>${esc(state)}</span></div>`;
     (screen.querySelector('.cur .body') as HTMLElement).innerHTML = !a ? '' : `
       <div class="kv"><span>Opening :</span><b>${drcr(a.opening)}</b></div>
       <div class="kv"><span>Debit &nbsp;&nbsp;:</span><b>${f2(a.debit)} Dr</b></div>

@@ -40,7 +40,8 @@ CREATE TABLE IF NOT EXISTS ledgers (
   group_id INTEGER NOT NULL REFERENCES account_groups(id),
   address TEXT, city TEXT, phone TEXT, gstin TEXT, state TEXT,
   opening REAL NOT NULL DEFAULT 0, opening_type TEXT NOT NULL DEFAULT 'Dr',
-  credit_limit REAL NOT NULL DEFAULT 0, is_system INTEGER NOT NULL DEFAULT 0
+  credit_limit REAL NOT NULL DEFAULT 0, is_system INTEGER NOT NULL DEFAULT 0,
+  details TEXT NOT NULL DEFAULT '{}'
 );
 CREATE TABLE IF NOT EXISTS items (
   id INTEGER PRIMARY KEY, name TEXT NOT NULL COLLATE NOCASE,   -- unique together with pack (items_name_pack)
@@ -131,6 +132,8 @@ CREATE INDEX IF NOT EXISTS ix_vadj_bill ON voucher_adjustments(bill_id);
 const COMPANY_ALTERS = [
   // NEW PRODUCT's fields that have no column of their own (status, hide, color type, rack, schedule H1 …), as JSON.
   "ALTER TABLE items ADD COLUMN details TEXT NOT NULL DEFAULT '{}'",
+  // CREATE LEDGER's full fields (contact person, phone off/res, DL, licence, VAT, food, route …), as JSON.
+  "ALTER TABLE ledgers ADD COLUMN details TEXT NOT NULL DEFAULT '{}'",
   // SALE RETURN: the customer's Party No. / Dt, the reason, the bill returned against and the calculation type.
   'ALTER TABLE bills ADD COLUMN ref_no TEXT',
   'ALTER TABLE bills ADD COLUMN ref_date TEXT',

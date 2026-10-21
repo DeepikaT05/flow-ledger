@@ -179,18 +179,29 @@ app.get('/api/ledgers', h((req) => {
 }));
 app.get('/api/ledgers/:id', h((req) => db.prepare(`${LEDGER_BAL} WHERE l.id=?`).get(req.params.id)));
 
+function ledgerDetails(b: Row, old = '{}'): string {
+  let base: Record<string, unknown> = {};
+  try { base = JSON.parse(old || '{}'); } catch { /* start empty */ }
+  if (b.details && typeof b.details === 'object') {
+    for (const [k, v] of Object.entries(b.details as Record<string, unknown>).slice(0, 100)) {
+      if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') base[k] = v;
+    }
+  }
+  return JSON.stringify(base);
+}
 function ledgerArgs(b: Row): SQLInputValue[] {
   return [b.name, b.group_id, b.address ?? '', b.city ?? '', b.phone ?? '', b.gstin ?? '', b.state ?? '',
     num(b.opening), b.opening_type === 'Cr' ? 'Cr' : 'Dr', num(b.credit_limit)] as SQLInputValue[];
 }
 app.post('/api/ledgers', h((req) => {
-  const r = db.prepare(`INSERT INTO ledgers (name,group_id,address,city,phone,gstin,state,opening,opening_type,credit_limit)
-    VALUES (?,?,?,?,?,?,?,?,?,?)`).run(...ledgerArgs(req.body));
+  const r = db.prepare(`INSERT INTO ledgers (name,group_id,address,city,phone,gstin,state,opening,opening_type,credit_limit,details)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(...ledgerArgs(req.body), ledgerDetails(req.body));
   return { id: Number(r.lastInsertRowid) };
 }));
 app.put('/api/ledgers/:id', h((req) => {
-  db.prepare(`UPDATE ledgers SET name=?,group_id=?,address=?,city=?,phone=?,gstin=?,state=?,opening=?,opening_type=?,credit_limit=?
-    WHERE id=?`).run(...ledgerArgs(req.body), req.params.id);
+  const old = (db.prepare('SELECT details FROM ledgers WHERE id=?').get(req.params.id) as { details?: string } | undefined)?.details;
+  db.prepare(`UPDATE ledgers SET name=?,group_id=?,address=?,city=?,phone=?,gstin=?,state=?,opening=?,opening_type=?,credit_limit=?,details=?
+    WHERE id=?`).run(...ledgerArgs(req.body), ledgerDetails(req.body, old), req.params.id);
   return { ok: true };
 }));
 app.delete('/api/ledgers/:id', h((req) => {
@@ -532,8 +543,14 @@ app.get('/api/ledgers/:id/status', h((req) => {
       (SELECT l2.name FROM voucher_lines v2 JOIN ledgers l2 ON l2.id=v2.ledger_id WHERE v2.voucher_id=v.id AND v2.${other}>0 LIMIT 1) AS mode
     FROM vouchers v JOIN voucher_lines vl ON vl.voucher_id=v.id
     WHERE v.type=? AND vl.ledger_id=? AND vl.${own}>0 ORDER BY v.date DESC, v.id DESC LIMIT 6`).all(pur ? 'PAYMENT' : 'RECEIPT', id) as { date: string; amount: number; mode: string }[];
+  let det: Record<string, string> = {};
+  try { det = JSON.parse(String(l.details || '{}')); } catch { /* ignore */ }
+  const phoneStr = String(l.phone || '');
+  const mob = det.mobile || (phoneStr.length === 10 ? phoneStr : '') || '';
   return {
     name: l.name, phone: l.phone ?? '', balance: r2(l.balance),
+    mobile: mob, payid: mob ? `${mob},` : '',
+    type_desc: det.ledger_category ? `${det.ledger_category} - Indicate` : 'Manual-Only Indicate',
     bills: bills.length, days: bills.length ? bills[0].days : 0,
     last_sale: lastSale ? { ...lastSale, days: daysSince(lastSale.date) } : null,
     last_receipt: receipts[0] ? { ...receipts[0], days: daysSince(receipts[0].date) } : null,
@@ -693,7 +710,7 @@ app.get('/api/reports/ledger/:id', h((req) => {
 // balance up to a date, plus whether it has unpaid credit sale bills (shown in red).
 app.get('/api/reports/ledger-accounts', h((req) => {
   const upto = String(req.query.upto || '9999-12-31');
-  return db.prepare(`SELECT l.id, l.name, l.city, l.address, l.phone, l.gstin, l.state, g.name AS group_name,
+  return db.prepare(`SELECT l.id, l.name, l.city, l.address, l.phone, l.gstin, l.state, l.details, g.name AS group_name,
       (CASE WHEN l.opening_type='Dr' THEN l.opening ELSE -l.opening END) AS opening,
       COALESCE((SELECT SUM(debit) FROM ledger_entries e WHERE e.ledger_id=l.id AND e.date<=?),0) AS debit,
       COALESCE((SELECT SUM(credit) FROM ledger_entries e WHERE e.ledger_id=l.id AND e.date<=?),0) AS credit,
