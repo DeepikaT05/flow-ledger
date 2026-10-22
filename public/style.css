@@ -1073,8 +1073,8 @@ table.marg-grid tr.sel td input::placeholder { color: rgba(255, 255, 255, .78); 
 
 .inv-qr-overlay {
   position: absolute;
-  left: 16px;
-  bottom: 4px;
+  left: 60px;
+  bottom: 3px;
   display: flex;
   align-items: center;
   pointer-events: none;

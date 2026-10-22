@@ -223,8 +223,8 @@ async function billHtml(id: number) {
           </tfoot>
         </table>
 
-        <!-- Healthcare QR Overlay inside blank area if lines <= 5 -->
-        ${b.lines.length <= 5 ? `
+        <!-- Healthcare QR Overlay inside blank area if lines <= 3 -->
+        ${b.lines.length <= 3 ? `
         <div class="inv-qr-overlay">
           <div class="qr-vert"><span>Body Checkup</span> <span>Health Offers</span></div>
           <div class="qr-card">
@@ -289,7 +289,7 @@ async function billHtml(id: number) {
       </div>
 
       <!-- WORDS ROW -->
-      <div class="inv-words">Rs. ${inWords(b.net)} only</div>
+      <div class="inv-words">Rs. ${inWords(b.net)}</div>
 
       <!-- BOTTOM 4-BOX SECTION -->
       <div class="inv-btm">
