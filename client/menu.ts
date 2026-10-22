@@ -149,7 +149,7 @@ export const MENU: MenuItem[] = [
             label: 'Ledger', hot: 'L', children: [
               { label: 'New Ledger', hot: 'N', action: 'ledger.add' },
               { label: 'Modify Ledger', hot: 'M', action: 'ledger.list' },
-              { label: 'Delete Ledger', hot: 'D', action: 'ledger.list' },
+              { label: 'Delete Ledger', hot: 'D', action: 'ledger.delete' },
             ],
           },
           '-',
@@ -157,14 +157,14 @@ export const MENU: MenuItem[] = [
             label: 'Sale', hot: 'S', children: [
               { label: 'New Sale', hot: 'N', action: 'ledger.add' },
               { label: 'Modify Sale', hot: 'M', action: 'ledger.list:Sundry Debtors' },
-              { label: 'Delete Sale', hot: 'D', action: 'ledger.list:Sundry Debtors' },
+              { label: 'Delete Sale', hot: 'D', action: 'ledger.delete:Sundry Debtors' },
             ],
           },
           {
             label: 'Purchase', hot: 'P', children: [
               { label: 'New Purchase', hot: 'N', action: 'ledger.add' },
               { label: 'Modify Purchase', hot: 'M', action: 'ledger.list:Sundry Creditors' },
-              { label: 'Delete Purchase', hot: 'D', action: 'ledger.list:Sundry Creditors' },
+              { label: 'Delete Purchase', hot: 'D', action: 'ledger.delete:Sundry Creditors' },
             ],
           },
           '-',

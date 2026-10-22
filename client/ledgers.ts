@@ -145,14 +145,14 @@ export async function allLedgers() {
   find.focus();
 }
 
-// ------------------------------------------------------------------ LEDGER ALTRATION (Masters → Ledger Master → Modify Ledger)
-export async function ledgerAlteration(group?: string) {
+// ------------------------------------------------------------------ LEDGER ALTRATION (Masters → Ledger Master → Modify / Delete Ledger)
+export async function ledgerAlteration(group?: string, mode: 'modify' | 'delete' = 'modify') {
   let upto = today();
   const company = await api<any>('/company');
   const w = openWin('LEDGER ALTRATION', 'full', '');
   w.el.classList.add('marg');
   w.setFoot('<span>Ledgers : <b class="la-foot-cnt">0</b></span><span>Range</span><span><b>F10</b>-Filter</span><span><b>F2</b>-New</span><span><b>F3</b>-Modify</span><span><b>Tab</b>-Search</span><span><b>Ctrl+F1</b>-Summary</span>');
-  const screen = h('div', { class: 'la-screen alteration' });
+  const screen = h('div', { class: `la-screen alteration${mode === 'delete' ? ' del-mode' : ''}` });
   screen.innerHTML = `
     <div class="la-main">
       <div class="la-top"><span class="co-name">${esc(company.name.toUpperCase())}</span><span class="upto"></span></div>
@@ -240,15 +240,21 @@ export async function ledgerAlteration(group?: string) {
 
   async function openOptions(acc: Acc) {
     if (!acc) return;
-    if (!canAction('ledger.list')) {
-      toast('Access denied — your role cannot edit ledgers', true);
-      return;
-    }
     let full: Ledger;
     try {
       full = await api<Ledger>(`/ledgers/${acc.id}`);
     } catch (e) {
       toast((e as Error).message, true);
+      return;
+    }
+    if (mode === 'delete') {
+      const { deleteLedgerScreen } = await import('./ledgerform.ts');
+      const deleted = await deleteLedgerScreen(full);
+      if (deleted) await load();
+      return;
+    }
+    if (!canAction('ledger.list')) {
+      toast('Access denied — your role cannot edit ledgers', true);
       return;
     }
     const { postSaveMenu } = await import('./ledgerform.ts');
@@ -268,7 +274,7 @@ export async function ledgerAlteration(group?: string) {
     if (k in step && view.length) { sel = Math.min(view.length - 1, Math.max(0, sel + step[k])); draw(); return true; }
     if (k === 'Ctrl+Home' || k === 'Home') { sel = 0; draw(); return true; }
     if (k === 'Ctrl+End' || k === 'End') { sel = Math.max(0, view.length - 1); draw(); return true; }
-    if ((k === 'Enter' || k === 'F3') && view[sel]) { openOptions(view[sel]); return true; }
+    if ((k === 'Enter' || k === 'F3' || (mode === 'delete' && k === 'Delete')) && view[sel]) { openOptions(view[sel]); return true; }
     if (k === 'F2') {
       import('./ledgerform.ts').then(async (m) => {
         let groups: any[] = [];
@@ -281,21 +287,7 @@ export async function ledgerAlteration(group?: string) {
       return true;
     }
     if (k === 'Delete' && view[sel]) {
-      const cur = view[sel];
-      import('./session.ts').then(async ({ canDelete, NO_DELETE }) => {
-        if (!canDelete()) { toast(NO_DELETE, true); return; }
-        const { confirmBox } = await import('./ui.ts');
-        confirmBox(`Delete ledger "${cur.name}" ?`, false).then(async (y) => {
-          if (!y) return;
-          try {
-            await api(`/ledgers/${cur.id}`, { method: 'DELETE' });
-            toast('Deleted');
-            load();
-          } catch (e) {
-            toast((e as Error).message, true);
-          }
-        });
-      });
+      openOptions(view[sel]);
       return true;
     }
     if (k === 'F10') { balanceOnly = !balanceOnly; toast(balanceOnly ? 'Showing ledgers with a balance only' : 'Showing all ledgers'); filter(); return true; }

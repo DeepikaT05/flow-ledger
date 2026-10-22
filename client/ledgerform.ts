@@ -775,6 +775,431 @@ export function modifyLedgerScreen(existing: Ledger): Promise<Ledger | null> {
   });
 }
 
+/** DELETE LEDGER screen with top [Exit] [Delete] buttons (Screenshot 2) */
+export function deleteLedgerScreen(existing: Ledger): Promise<boolean> {
+  return new Promise(async (resolve) => {
+    const cur = existing;
+    let groups: Group[] = [];
+    try { groups = await api<Group[]>('/groups'); } catch { /* ignore */ }
+
+    let det: Record<string, string> = {};
+    try { det = JSON.parse(cur.details || '{}'); } catch { /* ignore */ }
+
+    const defDate = fmtDate(today()).replace(/-/g, '/');
+
+    const v: Record<string, string> = {
+      name: cur.name ?? '',
+      station_on: det.station_on ?? 'Yes',
+      city: cur.city ?? '',
+      group_id: String(cur.group_id ?? 1),
+      group_prompt: det.group_prompt ?? 'Yes',
+      balancing_method: det.balancing_method ?? 'Bill by Bill',
+      opening: cur.opening != null ? Number(cur.opening).toFixed(2) : '0.00',
+      opening_type: cur.opening_type ?? 'Dr',
+      mail_to: det.mail_to ?? cur.name ?? '',
+      address1: det.address1 ?? cur.address?.split('\n')[0] ?? '',
+      address2: det.address2 ?? cur.address?.split('\n')[1] ?? '',
+      address3: det.address3 ?? cur.address?.split('\n')[2] ?? '',
+      pin_code: det.pin_code ?? '',
+      email: det.email ?? '',
+      website: det.website ?? '',
+      contact_person: det.contact_person ?? '',
+      designation: det.designation ?? '',
+      phone_off1: det.phone_off1 ?? cur.phone ?? '',
+      phone_off2: det.phone_off2 ?? '',
+      mobile: det.mobile ?? (cur.phone && !det.phone_off1 ? cur.phone : ''),
+      phone_res: det.phone_res ?? '',
+      fax: det.fax ?? '',
+      freez_upto: det.freez_upto ?? '',
+      narco_billing: det.narco_billing ?? 'Alow All',
+      dl_no: det.dl_no ?? '',
+      dl_exp: det.dl_exp ?? '',
+      gst_heading: det.gst_heading ?? 'Local',
+      gstin: cur.gstin ?? det.gstin ?? '',
+      gst_dt: det.gst_dt ?? '',
+      vat_heading: det.vat_heading ?? '',
+      vat_no: det.vat_no ?? '',
+      vat_exp: det.vat_exp ?? '',
+      st_heading: det.st_heading ?? '',
+      st_no: det.st_no ?? '',
+      st_exp: det.st_exp ?? '',
+      food_heading: det.food_heading ?? '',
+      food_lic_no: det.food_lic_no ?? '',
+      food_exp: det.food_exp ?? '',
+      extra_heading: det.extra_heading ?? '',
+      extra_no: det.extra_no ?? '',
+      extra_exp: det.extra_exp ?? '',
+      pan_no: det.pan_no ?? '',
+      ledger_date: det.ledger_date ?? defDate,
+      bill_export: det.bill_export ?? 'GSTN',
+      bill_export_pas: det.bill_export_pas ?? '',
+      retailio_id: det.retailio_id ?? '',
+      mr_on: det.mr_on ?? 'Yes',
+      del_man_on: det.del_man_on ?? 'Yes',
+      area_on: det.area_on ?? 'Yes',
+      route_on: det.route_on ?? 'Yes',
+      ledger_category: det.ledger_category ?? 'OTHERS',
+      color: det.color ?? 'NORMAL',
+      state_on: det.state_on ?? 'Yes',
+      state: cur.state || det.state || '22-CHHATTISGARH',
+      country_on: det.country_on ?? 'Yes',
+      country: det.country ?? 'INDIA',
+      ledger_type: cur.gstin ? (det.ledger_type ?? 'REGISTERED') : 'UNREGISTERED',
+      hide: det.hide ?? 'No',
+    };
+
+    const w = openWin('DELETE LEDGER', 'full', '');
+    w.el.classList.add('marg', 'marg-ledger-screen');
+    w.setFoot('<span class="help-badge">HELP</span><span><b>Enter</b> Select</span><span><b>D</b> Delete</span><span><b>Esc</b> Exit</span>');
+
+    const getGroupName = (idStr: string) => {
+      const g = groups.find((gr) => String(gr.id) === String(idStr));
+      return g ? g.name.toUpperCase() : 'SUNDRY DEBTORS';
+    };
+
+    let focusedBtn = 0; // 0: Exit, 1: Delete
+
+    const render = () => {
+      const sel = (k: string, opts: string[], width = 'auto') =>
+        `<select data-k="${k}" style="width:${width}" disabled>${opts.map((o) => `<option${o === v[k] ? ' selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
+
+      const txt = (k: string, width = '200px', up = false, extra = '') =>
+        `<input data-k="${k}" class="lf-txt${up ? ' up' : ''}" value="${esc(v[k] ?? '')}" autocomplete="off" spellcheck="false" style="width:${width}" ${extra} readonly tabindex="-1">`;
+
+      w.body.innerHTML = `
+        <div class="marg-bar dl-bar">
+          <span class="dl-title">DELETE LEDGER</span>
+          <div class="dl-actions">
+            <button type="button" class="dl-btn act-exit${focusedBtn === 0 ? ' sel' : ''}" data-act="exit" tabindex="0">Exit</button>
+            <button type="button" class="dl-btn act-delete${focusedBtn === 1 ? ' sel' : ''}" data-act="delete" tabindex="0">Delete</button>
+          </div>
+          <span class="clock" style="margin-left:auto"></span>
+        </div>
+        <div class="lf-screen">
+          <div class="lf-main">
+            <div class="lf-row">
+              <span class="lf-l">Ledger Name</span><span class="lf-c">:</span>
+              <span class="lf-v">${txt('name', '560px', true)}</span>
+            </div>
+            <div class="lf-row">
+              <span class="lf-l">Station</span><span class="lf-c">:</span>
+              <span class="lf-v">${sel('station_on', ['Yes', 'No'], '65px')} ${txt('city', '470px', true)}</span>
+            </div>
+            <div class="lf-row">
+              <span class="lf-l">Account Group</span><span class="lf-c">:</span>
+              <span class="lf-v">
+                ${sel('group_prompt', ['Yes', 'No'], '65px')}
+                <button type="button" class="lf-grp-btn" data-k="group_id" tabindex="-1">${esc(getGroupName(v.group_id))}</button>
+              </span>
+            </div>
+            <div class="lf-row">
+              <span class="lf-l">Balancing method</span><span class="lf-c">:</span>
+              <span class="lf-v">
+                ${sel('balancing_method', ['Bill by Bill', 'On Account', 'FIFO'], '125px')}
+                <span class="lf-sub">Opening:</span>
+                <input data-k="opening" class="lf-num" value="${esc(v.opening)}" autocomplete="off" style="width:110px;text-align:right" readonly tabindex="-1">
+                ${sel('opening_type', ['Dr', 'Cr'], '56px')}
+              </span>
+            </div>
+            <div class="lf-row">
+              <span class="lf-l">Mail to</span><span class="lf-c">:</span>
+              <span class="lf-v">${txt('mail_to', '560px')}</span>
+            </div>
+            <div class="lf-row">
+              <span class="lf-l">Address</span><span class="lf-c">:</span>
+              <span class="lf-v">${txt('address1', '560px')}</span>
+            </div>
+            <div class="lf-row">
+              <span class="lf-l"></span><span class="lf-c">:</span>
+              <span class="lf-v">${txt('address2', '560px')}</span>
+            </div>
+            <div class="lf-row">
+              <span class="lf-l"></span><span class="lf-c">:</span>
+              <span class="lf-v">${txt('address3', '560px')}</span>
+            </div>
+            <div class="lf-row">
+              <span class="lf-l">Pin Code</span><span class="lf-c">:</span>
+              <span class="lf-v">${txt('pin_code', '160px')}</span>
+            </div>
+            <div class="lf-row">
+              <span class="lf-l">E-Mail</span><span class="lf-c">:</span>
+              <span class="lf-v">${txt('email', '460px')}</span>
+            </div>
+            <div class="lf-row">
+              <span class="lf-l">Web Site</span><span class="lf-c">:</span>
+              <span class="lf-v">${txt('website', '460px')}</span>
+            </div>
+            <div class="lf-row">
+              <span class="lf-l">Contact Person</span><span class="lf-c">:</span>
+              <span class="lf-v">${txt('contact_person', '460px')}</span>
+            </div>
+            <div class="lf-row">
+              <span class="lf-l">Designation</span><span class="lf-c">:</span>
+              <span class="lf-v">${txt('designation', '460px')}</span>
+            </div>
+            <div class="lf-row split">
+              <div class="lf-left">
+                <span class="lf-l">Phone No. (Off.)</span><span class="lf-c">:</span>
+                <span class="lf-v">${txt('phone_off1', '140px')} ,</span>
+              </div>
+              <div class="lf-right">
+                <span class="lf-sub">Mobile :</span>
+                ${txt('mobile', '160px')}
+              </div>
+            </div>
+            <div class="lf-row split">
+              <div class="lf-left">
+                <span class="lf-l" style="padding-left:72px">(Res.)</span><span class="lf-c">:</span>
+                <span class="lf-v">${txt('phone_res', '140px')}</span>
+              </div>
+              <div class="lf-right">
+                <span class="lf-sub">Fax No.:</span>
+                ${txt('fax', '160px')}
+              </div>
+            </div>
+            <div class="lf-row split">
+              <div class="lf-left">
+                <span class="lf-l">Freez Upto</span><span class="lf-c">:</span>
+                <span class="lf-v">${txt('freez_upto', '140px')}</span>
+              </div>
+              <div class="lf-right">
+                <span class="lf-sub">Narco/Sch-H Item Billing</span>
+                ${sel('narco_billing', ['Alow All', 'Prohibited', 'Prompt'], '100px')}
+              </div>
+            </div>
+            <div class="lf-row split">
+              <div class="lf-left">
+                <span class="lf-l">D.L.No.</span><span class="lf-c">:</span>
+                <span class="lf-v">${txt('dl_no', '260px')}</span>
+              </div>
+              <div class="lf-right">
+                <span class="lf-sub">Exp:</span>
+                ${txt('dl_exp', '140px')}
+              </div>
+            </div>
+            <div class="lf-row split">
+              <div class="lf-left">
+                <span class="lf-l">GST  Heading ${sel('gst_heading', ['Local', 'Central', 'Import'], '75px')}</span><span class="lf-c">:</span>
+                <span class="lf-blue">GSTIN &nbsp;&nbsp;&nbsp;&nbsp; No.:</span>
+                <span class="lf-v">${txt('gstin', '170px', true)}</span>
+              </div>
+              <div class="lf-right">
+                <span class="lf-sub">Dt.:</span>
+                ${txt('gst_dt', '140px')}
+              </div>
+            </div>
+            <div class="lf-row split">
+              <div class="lf-left">
+                <span class="lf-l">VAT  Heading</span><span class="lf-c">:</span>
+                <span class="lf-sub-r">No.:</span>
+                <span class="lf-v">${txt('vat_no', '170px')}</span>
+              </div>
+              <div class="lf-right">
+                <span class="lf-sub">Exp:</span>
+                ${txt('vat_exp', '140px')}
+              </div>
+            </div>
+            <div class="lf-row split">
+              <div class="lf-left">
+                <span class="lf-l">S.T. Heading</span><span class="lf-c">:</span>
+                <span class="lf-sub-r">No.:</span>
+                <span class="lf-v">${txt('st_no', '170px')}</span>
+              </div>
+              <div class="lf-right">
+                <span class="lf-sub">Exp:</span>
+                ${txt('st_exp', '140px')}
+              </div>
+            </div>
+            <div class="lf-row split">
+              <div class="lf-left">
+                <span class="lf-l">Food Heading</span><span class="lf-c">:</span>
+                <span class="lf-blue">Food Licence No.:</span>
+                <span class="lf-v">${txt('food_lic_no', '170px')}</span>
+              </div>
+              <div class="lf-right">
+                <span class="lf-sub">Exp:</span>
+                ${txt('food_exp', '140px')}
+              </div>
+            </div>
+            <div class="lf-row split">
+              <div class="lf-left">
+                <span class="lf-l">Extra Heading</span><span class="lf-c">:</span>
+                <span class="lf-sub-r">No.:</span>
+                <span class="lf-v">${txt('extra_no', '170px')}</span>
+              </div>
+              <div class="lf-right">
+                <span class="lf-sub">Exp:</span>
+                ${txt('extra_exp', '140px')}
+              </div>
+            </div>
+            <div class="lf-row split">
+              <div class="lf-left">
+                <span class="lf-l">I.T.PAN No.</span><span class="lf-c">:</span>
+                <span class="lf-v">${txt('pan_no', '180px', true)}</span>
+              </div>
+              <div class="lf-right">
+                <span class="lf-sub">Ledger Date:</span>
+                ${txt('ledger_date', '140px')}
+              </div>
+            </div>
+            <div class="lf-row split">
+              <div class="lf-left">
+                <span class="lf-l">Bill Export ${sel('bill_export', ['GSTN', 'Excel', 'CSV'], '68px')}</span><span class="lf-c">:</span>
+                <span class="lf-v"><span class="lf-sub-r" style="min-width:auto;margin-right:6px">Pas:</span> ${txt('bill_export_pas', '100px')}</span>
+              </div>
+              <div class="lf-right">
+                <span class="lf-reddot">•</span> <span class="lf-sub" style="margin-left:0">Retailio ID:</span>
+                ${txt('retailio_id', '140px')}
+              </div>
+            </div>
+            <div class="lf-row split">
+              <div class="lf-left">
+                <span class="lf-l">M.R.</span><span class="lf-c">:</span>
+                <span class="lf-v">${sel('mr_on', ['Yes', 'No'], '60px')}</span>
+              </div>
+              <div class="lf-right" style="min-width:280px">
+                <span class="lf-sub">Del.Man &nbsp;:</span>
+                ${sel('del_man_on', ['Yes', 'No'], '60px')}
+              </div>
+            </div>
+            <div class="lf-row split">
+              <div class="lf-left">
+                <span class="lf-l">Area</span><span class="lf-c">:</span>
+                <span class="lf-v">${sel('area_on', ['Yes', 'No'], '60px')}</span>
+              </div>
+              <div class="lf-right" style="min-width:280px">
+                <span class="lf-sub">Route &nbsp;&nbsp;&nbsp;:</span>
+                ${sel('route_on', ['Yes', 'No'], '60px')}
+              </div>
+            </div>
+            <div class="lf-row split">
+              <div class="lf-left">
+                <span class="lf-l">Ledger Category</span><span class="lf-c">:</span>
+                <span class="lf-v">${sel('ledger_category', ['OTHERS', 'RETAILER', 'DISTRIBUTOR', 'STOCKIST', 'HOSPITAL'], '135px')}</span>
+              </div>
+              <div class="lf-right" style="min-width:280px">
+                <span class="lf-sub">Color &nbsp;&nbsp;&nbsp;:</span>
+                ${sel('color', ['NORMAL', 'RED', 'BLUE', 'GREEN', 'PURPLE'], '100px')}
+              </div>
+            </div>
+            <div class="lf-row split">
+              <div class="lf-left">
+                <span class="lf-l">State</span><span class="lf-c">:</span>
+                <span class="lf-v">${sel('state_on', ['Yes', 'No'], '60px')} ${txt('state', '190px')}</span>
+              </div>
+              <div class="lf-right" style="min-width:280px">
+                <span class="lf-sub">Country &nbsp;:</span>
+                ${sel('country_on', ['Yes', 'No'], '60px')} ${txt('country', '120px')}
+              </div>
+            </div>
+            <div class="lf-row split">
+              <div class="lf-left">
+                <span class="lf-l">Ledger Type</span><span class="lf-c">:</span>
+                <span class="lf-v">${sel('ledger_type', ['REGISTERED', 'UNREGISTERED', 'COMPOSITION'], '135px')}</span>
+              </div>
+              <div class="lf-right" style="min-width:280px">
+                <span class="lf-sub">Hide &nbsp;&nbsp;&nbsp;&nbsp;:</span>
+                ${sel('hide', ['No', 'Yes'], '60px')}
+              </div>
+            </div>
+          </div>
+          <div class="lf-status">
+            <div class="cs-head">
+              <div class="cs-bar">&#10004; CUSTOMER STATUS</div>
+              <div class="cs-name">${esc(v.name.toUpperCase() || 'SUSPENSE A/C')}</div>
+              <div class="cs-row"><span>Phone &nbsp;:</span> <span class="cs-phone">${esc(v.phone_off1 || '')}</span></div>
+              <div class="cs-row"><span>Mobile :</span> <span class="cs-mobile">${esc(v.mobile || '')}</span></div>
+              <div class="cs-row"><span>Type &nbsp;&nbsp;:</span> <span>Manual-Only Indicate</span></div>
+            </div>
+            <div class="cs-table">
+              <div class="cs-tr cs-th">
+                <span>DESC.</span><span class="n">LIMIT</span><span class="n">PRIMARY</span><span class="n">BALANCE</span>
+              </div>
+              <div class="cs-tr">
+                <span>Amount :</span><span class="n">0</span><span class="n">0</span><span class="n">0</span>
+              </div>
+              <div class="cs-tr">
+                <span>Bills &nbsp;:</span><span class="n">0</span><span class="n">0</span><span class="n">0</span>
+              </div>
+              <div class="cs-tr">
+                <span>Days &nbsp;&nbsp;:</span><span class="n">0</span><span class="n">0</span><span class="n">0</span>
+              </div>
+            </div>
+            <div class="cs-ratio">
+              <div>Turnover Ratio :</div>
+              <div>Avg.Sale PM : &nbsp;&nbsp; PW: &nbsp;&nbsp; PD:</div>
+              <div>Avg.Coll.Day:</div>
+              <div>Last Sale &nbsp;: 0 &nbsp; Dt: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Days:0</div>
+              <div>Last Receipt: 0 &nbsp; Dt: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Days:0</div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      const btns = [...w.body.querySelectorAll<HTMLButtonElement>('.dl-btn')];
+      const btnExit = w.body.querySelector('.act-exit') as HTMLButtonElement | null;
+      const btnDel = w.body.querySelector('.act-delete') as HTMLButtonElement | null;
+
+      btnExit?.addEventListener('click', () => { w.close(); resolve(false); });
+      btnDel?.addEventListener('click', () => doDelete());
+
+      btns.forEach((b, i) => {
+        b.addEventListener('focus', () => {
+          focusedBtn = i;
+          btns.forEach((btn, idx) => btn.classList.toggle('sel', idx === focusedBtn));
+        });
+      });
+
+      if (btns[focusedBtn]) {
+        btns.forEach((b, i) => b.classList.toggle('sel', i === focusedBtn));
+        btns[focusedBtn].focus({ preventScroll: true });
+      }
+      const main = w.body.querySelector('.lf-main') as HTMLElement | null;
+      if (main) main.scrollTop = 0;
+    };
+
+    const doDelete = async () => {
+      const { canDelete, NO_DELETE } = await import('./session.ts');
+      if (!canDelete()) { toast(NO_DELETE, true); return; }
+      const ok = await confirmBox(`Delete Ledger "${cur.name}" ?`, false);
+      if (!ok) return;
+      try {
+        await api(`/ledgers/${cur.id}`, { method: 'DELETE' });
+        toast('Ledger deleted successfully');
+        w.close();
+        resolve(true);
+      } catch (e) {
+        toast((e as Error).message, true);
+      }
+    };
+
+    w.onKey = (_e, k) => {
+      if (k === 'Escape' || k === 'X' || k === 'x') { w.close(); resolve(false); return true; }
+      if (k === 'D' || k === 'd') { doDelete(); return true; }
+      const btns = [...w.body.querySelectorAll<HTMLButtonElement>('.dl-btn')];
+      if (k === 'ArrowRight' || k === 'Tab') {
+        focusedBtn = (focusedBtn + 1) % btns.length;
+        btns.forEach((b, i) => b.classList.toggle('sel', i === focusedBtn));
+        btns[focusedBtn]?.focus();
+        return true;
+      }
+      if (k === 'ArrowLeft' || k === 'Shift+Tab') {
+        focusedBtn = (focusedBtn - 1 + btns.length) % btns.length;
+        btns.forEach((b, i) => b.classList.toggle('sel', i === focusedBtn));
+        btns[focusedBtn]?.focus();
+        return true;
+      }
+      if (k === 'Enter') {
+        btns[focusedBtn]?.click();
+        return true;
+      }
+      return false;
+    };
+
+    render();
+  });
+}
+
 /** Full-screen authentic MARG CREATE LEDGER / MODIFY LEDGER screen */
 export function ledgerScreen(existing?: Partial<Ledger> & { details?: string }, defaultGroup?: string): Promise<Ledger | null> {
   return new Promise(async (resolve) => {

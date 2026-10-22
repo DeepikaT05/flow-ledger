@@ -17,7 +17,8 @@ import { margNumber } from './margui.ts';
 // ------------------------------------------------------------------ actions
 const ACTIONS: Record<string, (arg?: string) => unknown> = {
   'ledger.add': () => ledgerForm(),
-  'ledger.list': (g) => ledgerList(g),
+  'ledger.list': (g) => import('./ledgers.ts').then((m) => m.ledgerAlteration(g, 'modify')),
+  'ledger.delete': (g) => import('./ledgers.ts').then((m) => m.ledgerAlteration(g, 'delete')),
   'ledger.gst': () => partyGstList(),
   'ledger.export': () => exportLedgers(),
   'group.list': () => groupList(),
