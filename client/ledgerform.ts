@@ -657,8 +657,10 @@ export function modifyLedgerScreen(existing: Ledger): Promise<Ledger | null> {
       if (!editMode) {
         if (btns[focusedBtn]) {
           btns.forEach((b, i) => b.classList.toggle('sel', i === focusedBtn));
-          btns[focusedBtn].focus();
+          btns[focusedBtn].focus({ preventScroll: true });
         }
+        const main = w.body.querySelector('.lf-main') as HTMLElement | null;
+        if (main) main.scrollTop = 0;
       } else {
         const inpName = w.body.querySelector('[data-k="name"]') as HTMLInputElement | null;
         inpName?.focus();
