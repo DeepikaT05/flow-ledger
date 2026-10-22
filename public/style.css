@@ -728,22 +728,53 @@ table.marg-grid tr.sel td input::placeholder { color: rgba(255, 255, 255, .78); 
 .marg-prod .pf-col, .marg-prod .pf-cell { min-width: 0; overflow: hidden; }
 .marg-prod .pf-c { width: 22px; }
 
-/* ---------- CREATE LEDGER / MODIFY LEDGER (F2 / F3 on the ledger list / party picker) */
-.win.marg.marg-ledger { max-width: calc(100vw - 20px); }
-.win.marg.marg-ledger .win-body { background: #e6eff8; overflow: auto; max-height: 88vh; }
-.marg-ledger .marg-bar { font-size: 15px; padding: 4px 12px; }
-.marg-ledger .lf-wrap { padding: 10px 24px 16px 24px; font-family: "Courier New", Courier, monospace; color: #10203f; }
-.marg-ledger .lf-row { display: flex; align-items: center; min-height: 24px; white-space: nowrap; margin-bottom: 2px; }
-.marg-ledger .lf-row.split { justify-content: space-between; gap: 16px; }
-.marg-ledger .lf-left, .marg-ledger .lf-right { display: flex; align-items: center; white-space: nowrap; }
-.marg-ledger .lf-l { font-family: "Courier New", Courier, monospace; font-weight: bold; font-size: 17px; color: #10203f; width: 220px; flex: none; letter-spacing: .5px; }
-.marg-ledger .lf-c { font-family: "Courier New", monospace; font-weight: bold; font-size: 17px; color: #10203f; width: 18px; flex: none; }
-.marg-ledger .lf-sub { font-family: "Courier New", Courier, monospace; font-weight: bold; font-size: 16px; color: #10203f; margin: 0 6px 0 10px; }
-.marg-ledger .lf-v { display: flex; align-items: center; min-width: 0; }
-.win.marg.marg-ledger input { font-family: "Courier New", Courier, monospace; font-weight: bold; font-size: 17px; color: #10203f; border: none; background: transparent; padding: 0 4px; outline: none; }
-.win.marg.marg-ledger input:focus { background: #1c4f9c; color: #fff; outline: none; }
-.win.marg.marg-ledger select { font-family: Tahoma, "Segoe UI", sans-serif; font-size: 12px; background: #fff; color: #000; border: 1px solid #7a7a7a; height: 21px; padding: 0 2px; margin: 0 3px; }
-.win.marg.marg-ledger select:focus { background: #1c4f9c; color: #fff; outline: none; }
+/* ---------- CREATE LEDGER / MODIFY LEDGER & UNDER GROUP ---------- */
+.win.marg.marg-ledger-screen { width: 100%; height: 100%; max-width: 100vw; max-height: 100vh; border: none; }
+.win.marg.marg-ledger-screen .win-body { background: #eaf1ea; height: 100%; padding: 0; display: flex; flex-direction: column; overflow: hidden; }
+.marg-ledger-screen .marg-bar { font-size: 15px; padding: 4px 12px; }
+
+.lf-screen { flex: 1; display: grid; grid-template-columns: 1fr 340px; height: calc(100% - 30px); background: #eaf1ea; min-height: 0; }
+.lf-main { overflow-y: auto; padding: 12px 24px 24px; font-family: "Courier New", Consolas, monospace; border-right: 1px solid #777; min-height: 0; }
+.lf-status { overflow-y: auto; background: #f3f6f3; padding: 8px 12px; font-family: Tahoma, sans-serif; font-size: 13px; color: #000; min-height: 0; }
+
+.cs-bar { background: #1e4a2c; color: #fff; font-weight: bold; font-size: 13px; padding: 2px 6px; }
+.cs-name { color: #1f3fbf; font-weight: bold; font-size: 14px; margin: 4px 0 6px; text-transform: uppercase; }
+.cs-row { display: flex; gap: 8px; font-size: 13px; line-height: 1.4; color: #000; }
+.cs-table { margin: 12px 0 8px; border-top: 1px solid #999; border-bottom: 1px solid #999; padding: 4px 0; }
+.cs-tr { display: grid; grid-template-columns: 80px 1fr 1fr 1fr; font-size: 12px; line-height: 1.5; color: #000; }
+.cs-th { font-weight: bold; color: #333; }
+.cs-tr .n { text-align: right; }
+.cs-ratio { margin-top: 10px; font-size: 12px; line-height: 1.6; color: #222; font-family: Tahoma, sans-serif; }
+
+.lf-row { display: flex; align-items: center; min-height: 25px; margin-bottom: 2px; white-space: nowrap; }
+.lf-row.split { justify-content: space-between; gap: 16px; }
+.lf-left, .lf-right { display: flex; align-items: center; white-space: nowrap; }
+.lf-l { font-family: "Courier New", Consolas, monospace; font-weight: bold; font-size: 17px; color: #000; width: 220px; flex: none; letter-spacing: .3px; }
+.lf-c { font-family: "Courier New", monospace; font-weight: bold; font-size: 17px; color: #000; width: 18px; flex: none; }
+.lf-v { display: flex; align-items: center; min-width: 0; }
+.lf-sub { font-family: "Courier New", Consolas, monospace; font-weight: bold; font-size: 16px; color: #000; margin: 0 4px 0 8px; }
+.lf-sub-r { font-family: "Courier New", Consolas, monospace; font-weight: bold; font-size: 16px; color: #000; min-width: 140px; text-align: right; margin-right: 6px; }
+.lf-blue { color: #0a3a7a; font-family: "Courier New", Consolas, monospace; font-weight: bold; font-size: 16px; margin: 0 4px 0 8px; }
+.lf-reddot { color: #d32f2f; font-weight: bold; font-size: 18px; margin-right: 4px; }
+
+.win.marg.marg-ledger-screen input { font-family: "Courier New", Consolas, monospace; font-weight: bold; font-size: 17px; color: #000; border: none; background: transparent; padding: 1px 4px; outline: none; }
+.win.marg.marg-ledger-screen input:focus { background: #1e4a2c !important; color: #ffffff !important; outline: none !important; }
+.win.marg.marg-ledger-screen select { font-family: Tahoma, "Segoe UI", sans-serif; font-size: 12px; background: #fff; color: #000; border: 1px solid #777; height: 21px; padding: 0 2px; margin: 0 4px; }
+.win.marg.marg-ledger-screen select:focus { background: #1e4a2c !important; color: #ffffff !important; outline: none !important; }
+.lf-grp-btn { font-family: "Courier New", Consolas, monospace; font-weight: bold; font-size: 17px; color: #000; background: transparent; border: 1px dotted #777; padding: 1px 8px; cursor: pointer; text-align: left; margin-left: 6px; }
+.lf-grp-btn:focus { background: #1e4a2c !important; color: #ffffff !important; outline: none !important; }
+
+/* UNDER GROUP POPUP */
+.win.marg.marg-undergroup { width: 560px !important; border: 2px solid #1e4a2c !important; box-shadow: 0 8px 24px rgba(0,0,0,0.5) !important; z-index: 1000 !important; }
+.win.marg.marg-undergroup .win-body { background: #e8ebf7; overflow: hidden; padding: 0; }
+.ug-container { display: flex; flex-direction: column; height: 440px; background: #e8ebf7; }
+.ug-list { flex: 1; overflow-y: auto; padding: 10px 14px; font-family: "Courier New", Consolas, monospace; font-size: 17px; font-weight: bold; line-height: 1.35; }
+.ug-item { padding: 2px 8px; cursor: pointer; color: #000; white-space: nowrap; }
+.ug-item.sel { background: #1e4a2c; color: #fff; }
+.ug-find-row { border-top: 1px solid #aaa; padding: 8px 14px; display: flex; align-items: center; gap: 8px; font-family: "Courier New", Consolas, monospace; font-size: 17px; font-weight: bold; background: #dfe3f2; }
+.ug-find-lbl { color: #000; }
+.ug-bracket { color: #555; }
+.ug-find-input { background: transparent; border: none; outline: none; font-family: "Courier New", Consolas, monospace; font-size: 17px; font-weight: bold; color: #000; flex: 1; width: 220px; }
 
 /* ---------- MARG INVOICE PRINT TEMPLATE (BILL FORMATE) ---------- */
 .inv-page {

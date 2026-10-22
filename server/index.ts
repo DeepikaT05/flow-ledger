@@ -155,7 +155,46 @@ app.post('/api/session/year', h((req) => {
   setSessionYear(req, Number(y.id));
   return y;
 }));
-app.get('/api/groups', h(() => db.prepare('SELECT * FROM account_groups ORDER BY name').all()));
+const MARG_GROUPS: [string, string][] = [
+  ['Sundry Debtors', 'ASSET'],
+  ['Sundry Debtors (E-Commerce)', 'ASSET'],
+  ['Sundry Debtors (Field Staff)', 'ASSET'],
+  ['Sundry Creditors', 'LIABILITY'],
+  ['Cash-in-hand', 'ASSET'],
+  ['Bank Accounts', 'ASSET'],
+  ['Bank O/D Account', 'LIABILITY'],
+  ['Sales Accounts', 'INCOME'],
+  ['Purchase Accounts', 'EXPENSE'],
+  ['Duties & Taxes', 'LIABILITY'],
+  ['Tax - CGST', 'LIABILITY'],
+  ['Tax - IGST', 'LIABILITY'],
+  ['Tax - SGST', 'LIABILITY'],
+  ['Direct Expenses', 'EXPENSE'],
+  ['Indirect Expenses', 'EXPENSE'],
+  ['Direct Incomes', 'INCOME'],
+  ['Indirect Incomes', 'INCOME'],
+  ['Capital Account', 'LIABILITY'],
+  ['Loans (Liability)', 'LIABILITY'],
+  ['Secured Loans', 'LIABILITY'],
+  ['Unsecured Loans', 'LIABILITY'],
+  ['Fixed Assets', 'ASSET'],
+  ['Tangible Assets', 'ASSET'],
+  ['Current Assets', 'ASSET'],
+  ['Current Liabilities', 'LIABILITY'],
+  ['Suspense Account (Temporary A/cs)', 'LIABILITY'],
+  ['Investments', 'ASSET'],
+];
+
+app.get('/api/groups', h(() => {
+  const existing = new Set((db.prepare('SELECT name FROM account_groups').all() as any[]).map((r) => String(r.name).toLowerCase()));
+  const ins = db.prepare('INSERT INTO account_groups (name,nature,is_system) VALUES (?,?,1)');
+  for (const [n, t] of MARG_GROUPS) {
+    if (!existing.has(n.toLowerCase())) {
+      ins.run(n, t);
+    }
+  }
+  return db.prepare('SELECT * FROM account_groups ORDER BY name').all();
+}));
 app.post('/api/groups', h((req) => {
   const { name, nature } = req.body;
   const r = db.prepare('INSERT INTO account_groups (name,nature) VALUES (?,?)').run(name, nature);
