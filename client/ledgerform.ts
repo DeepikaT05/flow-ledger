@@ -1286,7 +1286,7 @@ export function ledgerScreen(existing?: Partial<Ledger> & { details?: string }, 
     const title = 'CREATE LEDGER';
     const w = openWin(title, 'full', '');
     w.el.classList.add('marg', 'marg-ledger-screen');
-    w.setFoot('<span class="help-badge">HELP</span><span><b>F7</b>-All Groups</span><span><b>?</b>-Search</span><span><b>Tab</b>-Multiple Select</span><span><b>Ctrl+W</b>-Save</span><span><b>Esc</b>-Close</span>');
+    w.setFoot('<span class="help-badge">HELP</span><span><b>F7</b>-All Groups</span><span><b>?</b>-Search</span><span><b>Tab</b>-Next</span><span><b>Ctrl+W/S</b>-Save</span><span><b>Esc</b>-Cancel</span>');
 
     const getGroupName = (idStr: string) => {
       const g = groups.find((gr) => String(gr.id) === String(idStr));
@@ -1527,6 +1527,10 @@ export function ledgerScreen(existing?: Partial<Ledger> & { details?: string }, 
             ${sel('hide', ['No', 'Yes'], '60px')}
           </div>
         </div>
+        <div class="cl-bottom-actions">
+          <button type="button" class="cl-btn act-save" data-act="save" tabindex="0">Save</button>
+          <button type="button" class="cl-btn act-cancel" data-act="cancel" tabindex="0">Cancel</button>
+        </div>
       </div>
       <div class="lf-status">
         <div class="cs-head">
@@ -1564,8 +1568,11 @@ export function ledgerScreen(existing?: Partial<Ledger> & { details?: string }, 
     w.body.append(margBar(title));
     w.body.append(screen);
 
-    const inputs = [...w.body.querySelectorAll('input:not([readonly]), select, .lf-grp-btn')] as (HTMLInputElement | HTMLSelectElement | HTMLButtonElement)[];
+    const inputs = [...w.body.querySelectorAll('input:not([readonly]), select, .lf-grp-btn, .cl-btn')] as (HTMLInputElement | HTMLSelectElement | HTMLButtonElement)[];
     const byKey = (k: string) => w.body.querySelector(`[data-k="${k}"]`) as HTMLInputElement | HTMLSelectElement | HTMLButtonElement;
+
+    const btnSave = w.body.querySelector('.act-save') as HTMLButtonElement | null;
+    const btnCancel = w.body.querySelector('.act-cancel') as HTMLButtonElement | null;
 
     const nameEl = byKey('name') as HTMLInputElement;
     const phoneEl = byKey('phone_off1') as HTMLInputElement;
@@ -1596,6 +1603,33 @@ export function ledgerScreen(existing?: Partial<Ledger> & { details?: string }, 
     let done = false;
     const finish = (r: Ledger | null) => { if (done) return; done = true; w.close(); resolve(r); };
 
+    const cancelAction = () => {
+      if (!dirty) { finish(null); return; }
+      confirmBox('Exit W/o Save ?', false).then((y) => {
+        if (y) finish(null);
+        else (document.activeElement as HTMLElement)?.focus();
+      });
+    };
+
+    btnSave?.addEventListener('click', () => { save(); });
+    btnCancel?.addEventListener('click', () => { cancelAction(); });
+
+    btnSave?.addEventListener('focus', () => {
+      btnSave.classList.add('sel');
+      btnCancel?.classList.remove('sel');
+    });
+    btnSave?.addEventListener('blur', () => {
+      btnSave.classList.remove('sel');
+    });
+
+    btnCancel?.addEventListener('focus', () => {
+      btnCancel.classList.add('sel');
+      btnSave?.classList.remove('sel');
+    });
+    btnCancel?.addEventListener('blur', () => {
+      btnCancel.classList.remove('sel');
+    });
+
     const pickGroupAction = async () => {
       const g = await pickUnderGroup(groups, Number(v.group_id));
       if (g) {
@@ -1616,7 +1650,6 @@ export function ledgerScreen(existing?: Partial<Ledger> & { details?: string }, 
     const save = async () => {
       const name = (byKey('name') as HTMLInputElement).value.trim();
       if (!name) { toast('Enter the Ledger name', true); byKey('name').focus(); return; }
-      if (!(await confirmBox('Save ?'))) { inputs[inputs.length - 1].focus(); return; }
 
       const out: Record<string, string> = {};
       for (const el of w.body.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-k]:not(.lf-grp-btn)')) {
@@ -1661,12 +1694,14 @@ export function ledgerScreen(existing?: Partial<Ledger> & { details?: string }, 
       }
     };
 
-    w.onKey = (_e, k) => {
+    w.onKey = (e, k) => {
       const t = document.activeElement as HTMLElement;
-      if (k === 'Ctrl+W') { save(); return true; }
+      if (k === 'Ctrl+W' || k === 'Ctrl+S' || (e.ctrlKey && (e.key === 's' || e.key === 'S' || e.key === 'w' || e.key === 'W'))) {
+        save();
+        return true;
+      }
       if (k === 'Escape') {
-        if (!dirty) { finish(null); return true; }
-        confirmBox('Exit W/o Save ?', false).then((y) => { if (y) finish(null); else t?.focus(); });
+        cancelAction();
         return true;
       }
 
@@ -1675,17 +1710,44 @@ export function ledgerScreen(existing?: Partial<Ledger> & { details?: string }, 
         return true;
       }
 
+      if (t === btnSave) {
+        if (k === 'Enter' || k === 'Space') { save(); return true; }
+        if (k === 'ArrowRight' || k === 'Tab') { btnCancel?.focus(); return true; }
+        if (k === 'ArrowLeft' || k === 'ArrowUp' || k === 'Shift+Tab') {
+          const hideEl = byKey('hide');
+          hideEl?.focus();
+          return true;
+        }
+        return false;
+      }
+
+      if (t === btnCancel) {
+        if (k === 'Enter' || k === 'Space') { cancelAction(); return true; }
+        if (k === 'ArrowLeft' || k === 'Shift+Tab') { btnSave?.focus(); return true; }
+        if (k === 'ArrowUp') {
+          const hideEl = byKey('hide');
+          hideEl?.focus();
+          return true;
+        }
+        if (k === 'Tab' || k === 'ArrowRight') {
+          btnSave?.focus();
+          return true;
+        }
+        return false;
+      }
+
       const i = inputs.indexOf(t as any);
       if (i < 0) return false;
       const isSel = t.tagName === 'SELECT';
 
       if (k === 'Enter' || k === 'Tab' || (k === 'ArrowDown' && !isSel)) {
-        if (i === inputs.length - 1) {
-          save();
-        } else {
+        if (i < inputs.length - 1) {
           const n = inputs[i + 1];
           n.focus();
           if (n instanceof HTMLInputElement) n.select();
+          if (n === btnSave || n === btnCancel) {
+            n.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+          }
         }
         return true;
       }
