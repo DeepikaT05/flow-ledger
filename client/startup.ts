@@ -40,8 +40,33 @@ export async function boot(): Promise<User> {
   const lic = await api<{ user: string }>('/licence').catch(() => ({ user: '' }));
   document.getElementById('boot-user')!.textContent = lic.user;
   hint('Enter-Next   F2-User List');
-  const u = await login();
-  await chooseCompany(true);
+
+  let u: User | null = null;
+  if (token()) {
+    try {
+      const me = await api<User & { company_id?: number; year_id?: number }>('/me');
+      u = me;
+      setSession(me);
+      if (me.company_id && me.year_id) {
+        const comps = await api<Company[]>('/companies').catch(() => []);
+        const found = comps.find((c) => c.id === me.company_id);
+        if (found) {
+          open = { company: found, yearId: me.year_id };
+          setInfo(found);
+        }
+      }
+    } catch {
+      setSession(null);
+      u = null;
+    }
+  }
+
+  if (!u) {
+    u = await login();
+  }
+  if (!open) {
+    await chooseCompany(true);
+  }
   document.body.classList.remove('boot');
   hint(MAIN_HINT);
   booting = false;

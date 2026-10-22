@@ -68,32 +68,8 @@ const itemCols = [
 ];
 
 export async function itemList() {
-  const w = openWin('Item List', 'wide', '<span><b>F2</b> Add</span><span><b>F3</b> Modify</span><span><b>F4 / Enter</b> Item Register</span><span><b>F10</b> Available stock only</span><span><b>Del</b> Delete</span><span><b>Esc</b> Close</span>');
-  w.body.style.height = '100%';
-  const g = new GridList<Item>(w.body, itemCols, (r) => `${r.name} ${r.company}`);
-  let onlyStock = false;
-  let all: Item[] = [];
-  const show = () => g.setRows(onlyStock ? all.filter((i) => i.stock > 0) : all, true);
-  const load = async () => { all = await api<Item[]>('/items'); show(); };
-  await load();
-  g.focus();
-  w.onKey = (_e, k) => {
-    if (g.nav(k)) return true;
-    const cur = g.current;
-    if (k === 'F2') { itemForm().then((r) => r && load()); return true; }
-    if (k === 'F3' && cur) { itemForm(cur).then((r) => r && load()); return true; }
-    if ((k === 'F4' || k === 'Enter') && cur) { itemRegister(cur); return true; }
-    if (k === 'F10') { onlyStock = !onlyStock; toast(onlyStock ? 'Showing available stock only' : 'Showing all items'); show(); return true; }
-    if (k === 'Delete' && cur) {
-      if (!canDelete()) { toast(NO_DELETE, true); return true; }
-      confirmBox(`Delete item "${cur.name}" ?`, false).then(async (y) => {
-        if (!y) return;
-        try { await api(`/items/${cur.id}`, { method: 'DELETE' }); toast('Deleted'); load(); } catch (e) { toast((e as Error).message, true); }
-      });
-      return true;
-    }
-    return false;
-  };
+  const m = await import('./stock.ts');
+  return m.closingStock(['MAIN STORE']);
 }
 
 // ------------------------------------------------------------------ price list (rate updation)

@@ -6,7 +6,7 @@ import { saleEntry } from './sale.ts';
 import { voucherEntry, voucherList, voucherMenu } from './vouchers.ts';
 import { receiptEntry, type VType } from './receipt.ts';
 import { bookScreen } from './daybook.ts';
-import { currentStock } from './stock.ts';
+import { currentStock, closingStock } from './stock.ts';
 import * as R from './reports.ts';
 import { boot, login, changeCompany, isBooting } from './startup.ts';
 import { usersWindow, rolesWindow } from './admin.ts';
@@ -24,7 +24,7 @@ const ACTIONS: Record<string, (arg?: string) => unknown> = {
   'group.list': () => groupList(),
   'group.add': () => groupForm(),
   'item.add': () => itemForm(),
-  'item.list': () => itemList(),
+  'item.list': () => closingStock(['MAIN STORE']),
   'item.prices': (by) => priceList(by === 'company'),
   'item.register': () => itemRegister(),
   'company.edit': () => companyForm(),

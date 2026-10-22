@@ -2,9 +2,9 @@
 // CONTROL BOX, then "<STORE> : CLOSING STOCK" (DESCRIPTION / PACKING / STOCK / UNIT with the
 // rate & cost panel and Batch Detail), and Enter → the item's register (BILL NO. / DATE /
 // PARTICULARS / RECEIVE / ISSUE / BALANCE). Enter on a bill there opens SALE ALTERATION.
-import { api, esc, toast, h, today, money, openWin, fyStart } from './ui.ts';
+import { api, esc, toast, h, today, money, openWin, fyStart, confirmBox } from './ui.ts';
 import { margBar, margPop } from './margui.ts';
-import { canAction, seeCost } from './session.ts';
+import { canAction, seeCost, canDelete, NO_DELETE } from './session.ts';
 import { itemForm, type Item } from './masters.ts';
 
 /** This edition keeps all stock in one store; MARG lists every store maintained. */
@@ -75,12 +75,12 @@ export async function currentStock() {
   if (stores) await closingStock(stores);
 }
 
-async function closingStock(initialStores: string[]) {
+export async function closingStock(initialStores: string[] = ['MAIN STORE']) {
   let stores = initialStores;
   const w = openWin('CLOSING STOCK', 'full', '');
   w.el.classList.add('marg');
-  w.setFoot('<span><b>F3</b>-Edit</span><span><b>Enter</b>-Register</span><span><b>F6</b>-Calculate Total</span>' +
-    '<span><b>F9</b>-Store</span><span><b>F10</b>-Filter</span><span><b>*</b>-Shortage</span><span><b>Alt+P</b>-Print</span>');
+  w.setFoot('<span><b>F2</b>-New</span><span><b>F3</b>-Edit</span><span><b>Enter</b>-Register</span><span><b>F6</b>-Total</span>' +
+    '<span><b>F9</b>-Store</span><span><b>F10</b>-Filter</span><span><b>*</b>-Shortage</span><span><b>Del</b>-Delete</span><span><b>Alt+P</b>-Print</span>');
   const screen = h('div', { class: 'cs-screen' });
   screen.innerHTML = `
     <div class="cs-main">
@@ -179,9 +179,28 @@ async function closingStock(initialStores: string[]) {
     if (k === 'Home' || k === 'Ctrl+Home') { sel = 0; draw(); return true; }
     if (k === 'End' || k === 'Ctrl+End') { sel = Math.max(0, view.length - 1); draw(); return true; }
     if (k === 'Enter' && view[sel]) { itemRegister(view[sel], stores); return true; }
+    if (k === 'F2') {
+      itemForm().then((r) => { if (r) load(); });
+      return true;
+    }
     if (k === 'F3' && view[sel]) {
       if (!canAction('item.list')) { toast('Access denied — your role cannot edit items', true); return true; }
       itemForm(view[sel]).then((r) => { if (r) load(); });
+      return true;
+    }
+    if (k === 'Delete' && view[sel]) {
+      const cur = view[sel];
+      if (!canDelete()) { toast(NO_DELETE, true); return true; }
+      confirmBox(`Delete item "${cur.name}" ?`, false).then(async (y) => {
+        if (!y) return;
+        try {
+          await api(`/items/${cur.id}`, { method: 'DELETE' });
+          toast('Deleted');
+          load();
+        } catch (e) {
+          toast((e as Error).message, true);
+        }
+      });
       return true;
     }
     if (k === 'F6') { totals(); return true; }

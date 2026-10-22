@@ -14,9 +14,71 @@ import { GRANTABLE, featurePerms } from '../shared/menuPerms.ts';
 /** perms = feature permissions derived from the role's ticks; menu = the ticked menu items + special powers. */
 export interface AuthCtx { userId: number; name: string; role: string; isSuper: boolean; perms: Set<string>; menu: string[]; companyId?: number; yearId?: number }
 
-const SESSION_TTL = 12 * 3600 * 1000;
-/** companyId / yearId: what this user picked on LIST OF COMPANIES and SELECT TO EXECUTE. */
-const sessions = new Map<string, { userId: number; seen: number; companyId?: number; yearId?: number }>();
+// Ensure sessions table exists in sysDb for persistence across server restarts
+sysDb.exec(`
+  CREATE TABLE IF NOT EXISTS sessions (
+    token TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    seen INTEGER NOT NULL,
+    company_id INTEGER,
+    year_id INTEGER
+  );
+  CREATE INDEX IF NOT EXISTS ix_sessions_seen ON sessions(seen);
+`);
+
+interface SessionRecord {
+  userId: number;
+  seen: number;
+  companyId?: number;
+  yearId?: number;
+}
+
+const SESSION_TTL = 12 * 3600 * 1000; // 12 hours
+/** Memory cache of active sessions — synced with sysDb so server restarts never lose sessions. */
+const sessions = new Map<string, SessionRecord>();
+
+function loadSessionsFromDb() {
+  try {
+    const cutoff = Date.now() - SESSION_TTL;
+    sysDb.prepare('DELETE FROM sessions WHERE seen < ?').run(cutoff);
+    const rows = sysDb.prepare('SELECT * FROM sessions WHERE seen >= ?').all() as any[];
+    for (const r of rows) {
+      sessions.set(r.token, {
+        userId: r.user_id,
+        seen: r.seen,
+        companyId: r.company_id ?? undefined,
+        yearId: r.year_id ?? undefined,
+      });
+    }
+  } catch (e) {
+    console.error('Failed to load sessions from db:', e);
+  }
+}
+loadSessionsFromDb();
+
+function saveSessionToDb(token: string, s: SessionRecord) {
+  try {
+    sysDb.prepare(`
+      INSERT INTO sessions (token, user_id, seen, company_id, year_id)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(token) DO UPDATE SET
+        user_id=excluded.user_id,
+        seen=excluded.seen,
+        company_id=excluded.company_id,
+        year_id=excluded.year_id
+    `).run(token, s.userId, s.seen, s.companyId ?? null, s.yearId ?? null);
+  } catch (e) {
+    console.error('Failed to save session to db:', e);
+  }
+}
+
+function deleteSessionFromDb(token: string) {
+  try {
+    sysDb.prepare('DELETE FROM sessions WHERE token=?').run(token);
+  } catch (e) {
+    console.error('Failed to delete session from db:', e);
+  }
+}
 
 const today = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 
@@ -122,24 +184,59 @@ export function bindCompany(req: Request) {
 
 /** LIST OF COMPANIES → company chosen. Clears the year until SELECT TO EXECUTE. */
 export function setSessionCompany(req: Request, companyId: number) {
-  const s = sessionOf(req)!;
-  s.companyId = companyId;
-  s.yearId = undefined;
+  const token = (req.headers.authorization ?? '').replace(/^Bearer /, '');
+  const s = sessionOf(req);
+  if (s) {
+    s.companyId = companyId;
+    s.yearId = undefined;
+    saveSessionToDb(token, s);
+  }
 }
-export function setSessionYear(req: Request, yearId: number) { sessionOf(req)!.yearId = yearId; }
+export function setSessionYear(req: Request, yearId: number) {
+  const token = (req.headers.authorization ?? '').replace(/^Bearer /, '');
+  const s = sessionOf(req);
+  if (s) {
+    s.yearId = yearId;
+    saveSessionToDb(token, s);
+  }
+}
 
 export function authMiddleware(req: Request, res: Response, next: NextFunction) {
   if (PUBLIC.has(`${req.method} ${req.path}`)) return next();
   const token = (req.headers.authorization ?? '').replace(/^Bearer /, '');
-  const s = sessions.get(token);
+  let s = sessions.get(token);
+  if (!s && token) {
+    const row = sysDb.prepare('SELECT * FROM sessions WHERE token=?').get(token) as any;
+    if (row && Date.now() - row.seen <= SESSION_TTL) {
+      s = {
+        userId: row.user_id,
+        seen: row.seen,
+        companyId: row.company_id ?? undefined,
+        yearId: row.year_id ?? undefined,
+      };
+      sessions.set(token, s);
+    }
+  }
   if (!s || Date.now() - s.seen > SESSION_TTL) {
-    sessions.delete(token);
+    if (token) {
+      sessions.delete(token);
+      deleteSessionFromDb(token);
+    }
     res.status(401).json({ error: 'Session expired — please log in again (Ctrl+U)' });
     return;
   }
   const a = loadUser(s.userId);
-  if (!a) { sessions.delete(token); res.status(401).json({ error: 'User no longer exists' }); return; }
-  s.seen = Date.now();
+  if (!a) {
+    sessions.delete(token);
+    deleteSessionFromDb(token);
+    res.status(401).json({ error: 'User no longer exists' });
+    return;
+  }
+  // Refresh seen timestamp in DB if more than 60s has passed since last update
+  if (Date.now() - s.seen > 60000) {
+    s.seen = Date.now();
+    saveSessionToDb(token, s);
+  }
   a.companyId = s.companyId;
   a.yearId = s.yearId;
   (req as unknown as { auth: AuthCtx }).auth = a;
@@ -179,7 +276,17 @@ export function maskCost(req: Request, data: unknown): unknown {
 type H = (req: Request, res: Response) => unknown;
 
 export function registerAuthRoutes(app: Express, h: (fn: H) => (req: Request, res: Response, next: NextFunction) => void) {
-  const session = (a: AuthCtx) => ({ id: a.userId, name: a.name, role: a.role, is_super: a.isSuper, perms: a.isSuper ? PERM_KEYS : [...a.perms], menu: a.isSuper ? [...GRANTABLE] : a.menu });
+  const session = (a: AuthCtx, token?: string) => ({
+    id: a.userId,
+    name: a.name,
+    role: a.role,
+    is_super: a.isSuper,
+    perms: a.isSuper ? PERM_KEYS : [...a.perms],
+    menu: a.isSuper ? [...GRANTABLE] : a.menu,
+    company_id: a.companyId,
+    year_id: a.yearId,
+    ...(token ? { token } : {}),
+  });
 
   app.get('/api/login/users', h(() => sysDb.prepare('SELECT name FROM users ORDER BY name').all()));
   app.post('/api/login', h((req, res) => {
@@ -195,11 +302,26 @@ export function registerAuthRoutes(app: Express, h: (fn: H) => (req: Request, re
     const token = randomBytes(32).toString('hex');
     // Ctrl+U (change user) keeps the company and year that are open.
     const companyId = companyRow(req.body?.company_id)?.id;
-    sessions.set(token, { userId: u.id, seen: Date.now(), companyId, yearId: companyId ? Number(req.body?.year_id) || undefined : undefined });
-    return { token, ...session(a) };
+    const sess: SessionRecord = {
+      userId: u.id,
+      seen: Date.now(),
+      companyId,
+      yearId: companyId ? Number(req.body?.year_id) || undefined : undefined,
+    };
+    sessions.set(token, sess);
+    saveSessionToDb(token, sess);
+    return { token, ...session(a, token) };
   }));
-  app.post('/api/logout', h((req) => { sessions.delete((req.headers.authorization ?? '').replace(/^Bearer /, '')); return { ok: true }; }));
-  app.get('/api/me', h((req) => session(authOf(req))));
+  app.post('/api/logout', h((req) => {
+    const token = (req.headers.authorization ?? '').replace(/^Bearer /, '');
+    sessions.delete(token);
+    deleteSessionFromDb(token);
+    return { ok: true };
+  }));
+  app.get('/api/me', h((req) => {
+    const token = (req.headers.authorization ?? '').replace(/^Bearer /, '');
+    return session(authOf(req), token);
+  }));
   app.get('/api/perms', h(() => PERMS));
 
   // ---- roles (SuperAdmin only — enforced in needsFor)

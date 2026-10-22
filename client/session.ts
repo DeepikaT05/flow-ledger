@@ -5,14 +5,29 @@ import { permsForAction, SUPER } from '../shared/perms.ts';
 /** perms = feature permissions (derived on the server); menu = the menu items ticked for the role. */
 export interface Session { token: string; id: number; name: string; role: string; is_super: boolean; perms: string[]; menu?: string[] }
 
-let current: Session | null = null;
-let granted = new Set<string>();
-let menuTicked = new Set<string>();
+const SESSION_KEY = 'flow_session_v1';
+
+let current: Session | null = (() => {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    const s = JSON.parse(raw) as Session;
+    return s && s.token ? s : null;
+  } catch {
+    return null;
+  }
+})();
+let granted = new Set<string>(current?.perms ?? []);
+let menuTicked = new Set<string>(current?.menu ?? []);
 
 export function setSession(s: Session | null) {
   current = s;
   granted = new Set(s?.perms ?? []);
   menuTicked = new Set(s?.menu ?? []);
+  try {
+    if (s && s.token) localStorage.setItem(SESSION_KEY, JSON.stringify(s));
+    else localStorage.removeItem(SESSION_KEY);
+  } catch { /* ignore */ }
   document.dispatchEvent(new Event('session-changed'));
 }
 export const session = () => current;
