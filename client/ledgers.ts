@@ -145,6 +145,172 @@ export async function allLedgers() {
   find.focus();
 }
 
+// ------------------------------------------------------------------ LEDGER ALTRATION (Masters → Ledger Master → Modify Ledger)
+export async function ledgerAlteration(group?: string) {
+  let upto = today();
+  const company = await api<any>('/company');
+  const w = openWin('LEDGER ALTRATION', 'full', '');
+  w.el.classList.add('marg');
+  w.setFoot('<span>Ledgers : <b class="la-foot-cnt">0</b></span><span>Range</span><span><b>F10</b>-Filter</span><span><b>F2</b>-New</span><span><b>F3</b>-Modify</span><span><b>Tab</b>-Search</span><span><b>Ctrl+F1</b>-Summary</span>');
+  const screen = h('div', { class: 'la-screen alteration' });
+  screen.innerHTML = `
+    <div class="la-main">
+      <div class="la-top"><span class="co-name">${esc(company.name.toUpperCase())}</span><span class="upto"></span></div>
+      <div class="la-cols"><span></span><span></span><span>DEBIT</span><span>CREDIT</span></div>
+      <div class="la-rows"></div>
+      <div class="la-panels">
+        <div class="addr"><div class="cap">Address</div><div class="body"></div></div>
+        <div class="cur"><div class="cap">Current Status</div><div class="body"></div>
+          <div class="find"><span>Name ? &gt;&gt;</span><span>[</span><input autocomplete="off" spellcheck="false"><span>]</span> <span class="search-ico">&#128269;</span></div></div>
+      </div>
+    </div>
+    <div class="rv-status"></div>`;
+  screen.prepend(margBar('LEDGER ALTRATION'));
+  w.body.append(screen);
+  const rowsBox = screen.querySelector('.la-rows') as HTMLElement;
+  const find = screen.querySelector('.find input') as HTMLInputElement;
+  const footCnt = w.el.querySelector('.la-foot-cnt') as HTMLElement;
+  let all: Acc[] = [];
+  let view: Acc[] = [];
+  let sel = 0;
+  let balanceOnly = false;
+
+  const load = async () => {
+    const raw = await api<Acc[]>(`/reports/ledger-accounts?upto=${upto}`);
+    if (group) {
+      const gList = group.split(',').map((s) => s.trim().toLowerCase());
+      all = raw.filter((a) => gList.includes((a.group_name || '').toLowerCase()));
+    } else {
+      all = raw;
+    }
+    filter();
+  };
+  function filter() {
+    const q = find.value.trim().toLowerCase();
+    const base = balanceOnly ? all.filter((a) => Math.abs(a.balance) > 0.004) : all;
+    view = !q ? base : [...base.filter((a) => a.name.toLowerCase().startsWith(q)), ...base.filter((a) => !a.name.toLowerCase().startsWith(q) && a.name.toLowerCase().includes(q))];
+    sel = Math.min(sel, Math.max(0, view.length - 1));
+    if (q) sel = 0;
+    if (footCnt) footCnt.textContent = String(view.length);
+    draw();
+  }
+  let statusSeq = 0;
+  function draw() {
+    (screen.querySelector('.upto') as HTMLElement).textContent = `Upto : ${dmy(upto)}`;
+    rowsBox.innerHTML = view.map((a, i) => `<div class="r${i === sel ? ' sel' : ''}${a.has_due ? ' due' : ''}${CASH_BANK.includes(a.group_name) ? ' cb' : ''}" data-i="${i}">
+      <span class="nm">${esc(a.name.toUpperCase())}</span><span class="st">${esc((a.city ?? '').toUpperCase())}</span>
+      <span class="n">${a.balance > 0.004 ? f2(a.balance) : ''}</span><span class="n">${a.balance < -0.004 ? f2(-a.balance) : ''}</span></div>`).join('');
+    rowsBox.querySelector('.sel')?.scrollIntoView({ block: 'nearest' });
+    const a = view[sel];
+    let det: Record<string, string> = {};
+    if (a?.details) {
+      try { det = JSON.parse(a.details); } catch { /* ignore */ }
+    }
+    const phone = a?.phone || det.mobile || det.phone_off1 || '';
+    const dlNo = det.dl_no || '';
+    const gstn = a?.gstin || det.gstin || '';
+    const area = det.area_name || (det.area_on === 'Yes' ? 'YES' : '');
+    const route = det.route_name || (det.route_on === 'Yes' ? 'A(BPTDSP)' : '');
+    const mr = det.mr_name || (det.mr_on === 'Yes' ? 'YES' : '');
+    const state = (a?.state || det.state || '').toUpperCase();
+    const addrLines = (a?.address || det.address1 || a?.name || '').toUpperCase().split('\n');
+
+    (screen.querySelector('.addr .body') as HTMLElement).innerHTML = !a ? '' : `
+      <div class="ad">${addrLines.map((l) => `<div>${esc(l)}</div>`).join('')}</div>
+      <div class="g"><span>Phone:</span><span>${esc(phone)}</span><span></span><span></span></div>
+      <div class="g"><span>DL.No:</span><span>${esc(dlNo)}</span><span>GSTN :</span><span>${esc(gstn)}</span></div>
+      <div class="g"><span>Area :</span><span>${esc(area)}</span><span>Route:</span><span>${esc(route)}</span></div>
+      <div class="g"><span>M.R. :</span><span>${esc(mr)}</span><span>State:</span><span>${esc(state)}</span></div>`;
+    (screen.querySelector('.cur .body') as HTMLElement).innerHTML = !a ? '' : `
+      <div class="kv"><span>Opening :</span><b>${drcr(a.opening)}</b></div>
+      <div class="kv"><span>Debit &nbsp;&nbsp;:</span><b>${f2(a.debit)} Dr</b></div>
+      <div class="kv"><span>Credit &nbsp;:</span><b>${f2(a.credit)} Cr</b></div>
+      <div class="kv"><span>Balance :</span><b>${drcr(a.balance)}</b></div>
+      <div class="kv"><span>P.D.C. &nbsp;:</span><b></b></div>
+      <div class="kv"><span>Net &nbsp;&nbsp;&nbsp;&nbsp;:</span><b>${drcr(a.balance)}</b></div>
+      <div class="kv"><span>Type &nbsp;&nbsp;&nbsp;:</span><b>${esc(a.group_name)}</b></div>`;
+    const panel = screen.querySelector('.rv-status') as HTMLElement;
+    const seq = ++statusSeq;
+    if (!a) { panel.innerHTML = ''; return; }
+    setTimeout(() => {
+      if (seq !== statusSeq) return;
+      api<Status>(`/ledgers/${a.id}/status`).then((s) => { if (seq === statusSeq) panel.innerHTML = statusHtml(s); }).catch(() => {});
+    }, 150);
+  }
+
+  async function openOptions(acc: Acc) {
+    if (!acc) return;
+    if (!canAction('ledger.list')) {
+      toast('Access denied — your role cannot edit ledgers', true);
+      return;
+    }
+    let full: Ledger;
+    try {
+      full = await api<Ledger>(`/ledgers/${acc.id}`);
+    } catch (e) {
+      toast((e as Error).message, true);
+      return;
+    }
+    const { postSaveMenu } = await import('./ledgerform.ts');
+    const updated = await postSaveMenu(full);
+    if (updated) await load();
+  }
+
+  find.addEventListener('input', filter);
+  rowsBox.addEventListener('click', (e) => {
+    const el = (e.target as HTMLElement).closest('[data-i]') as HTMLElement | null;
+    if (el) { sel = Number(el.dataset.i); draw(); find.focus(); }
+  });
+  rowsBox.addEventListener('dblclick', () => view[sel] && openOptions(view[sel]));
+  w.onKey = (_e, k) => {
+    const page = Math.max(1, Math.floor(rowsBox.clientHeight / 26) - 1);
+    const step: Record<string, number> = { ArrowDown: 1, ArrowUp: -1, PageDown: page, PageUp: -page };
+    if (k in step && view.length) { sel = Math.min(view.length - 1, Math.max(0, sel + step[k])); draw(); return true; }
+    if (k === 'Ctrl+Home' || k === 'Home') { sel = 0; draw(); return true; }
+    if (k === 'Ctrl+End' || k === 'End') { sel = Math.max(0, view.length - 1); draw(); return true; }
+    if ((k === 'Enter' || k === 'F3') && view[sel]) { openOptions(view[sel]); return true; }
+    if (k === 'F2') {
+      import('./ledgerform.ts').then(async (m) => {
+        let groups: any[] = [];
+        try { groups = await api<any[]>('/groups'); } catch { /* ignore */ }
+        const ug = await m.pickUnderGroup(groups);
+        if (!ug) return;
+        const created = await m.ledgerScreen(undefined, ug.name);
+        if (created) await load();
+      });
+      return true;
+    }
+    if (k === 'Delete' && view[sel]) {
+      const cur = view[sel];
+      import('./session.ts').then(async ({ canDelete, NO_DELETE }) => {
+        if (!canDelete()) { toast(NO_DELETE, true); return; }
+        const { confirmBox } = await import('./ui.ts');
+        confirmBox(`Delete ledger "${cur.name}" ?`, false).then(async (y) => {
+          if (!y) return;
+          try {
+            await api(`/ledgers/${cur.id}`, { method: 'DELETE' });
+            toast('Deleted');
+            load();
+          } catch (e) {
+            toast((e as Error).message, true);
+          }
+        });
+      });
+      return true;
+    }
+    if (k === 'F10') { balanceOnly = !balanceOnly; toast(balanceOnly ? 'Showing ledgers with a balance only' : 'Showing all ledgers'); filter(); return true; }
+    if (k === 'Tab') { find.focus(); find.select(); return true; }
+    if (k === 'Escape') {
+      if (find.value) { find.value = ''; filter(); return true; }
+      w.close();
+      return true;
+    }
+    return false;
+  };
+  await load();
+  find.focus();
+}
+
 /** F2 on LEDGER ACCOUNTS: the "Upto" date for the balances. */
 function askUpto(cur: string): Promise<string | null> {
   return new Promise((resolve) => {

@@ -351,6 +351,7 @@ export function modifyLedgerScreen(existing: Ledger): Promise<Ledger | null> {
     };
 
     let editMode = false;
+    let focusedBtn = 0; // 0: Exit, 1: Modify, 2: GSTN Verification, 3: ATTACH DOCUMENTS
 
     const render = () => {
       const ro = !editMode ? ' readonly' : '';
@@ -363,14 +364,8 @@ export function modifyLedgerScreen(existing: Ledger): Promise<Ledger | null> {
         `<input data-k="${k}" class="lf-txt${up ? ' up' : ''}" value="${esc(v[k] ?? '')}" autocomplete="off" spellcheck="false" style="width:${width}" ${extra}${ro}>`;
 
       w.body.innerHTML = `
-        <div class="marg-bar ml-bar">
+        <div class="marg-bar">
           <span class="bar-title">MODIFY LEDGER</span>
-          <div class="ml-actions">
-            <button class="ml-btn act-exit${!editMode ? ' sel' : ''}" data-act="exit" tabindex="0">Exit</button>
-            <button class="ml-btn act-modify" data-act="modify" tabindex="0">Modify</button>
-            <button class="ml-btn act-gstn" data-act="gstn" tabindex="0">GSTN Verification</button>
-            <button class="ml-btn act-attach" data-act="attach" tabindex="0">ATTACH DOCUMENTS</button>
-          </div>
           <span class="clock"></span>
         </div>
         <div class="lf-screen">
@@ -600,6 +595,12 @@ export function modifyLedgerScreen(existing: Ledger): Promise<Ledger | null> {
                 ${sel('hide', ['No', 'Yes'], '60px')}
               </div>
             </div>
+            <div class="ml-bottom-actions">
+              <button type="button" class="ml-btn act-exit${!editMode && focusedBtn === 0 ? ' sel' : ''}" data-act="exit" tabindex="${editMode ? '-1' : '0'}">Exit</button>
+              <button type="button" class="ml-btn act-modify${!editMode && focusedBtn === 1 ? ' sel' : ''}" data-act="modify" tabindex="${editMode ? '-1' : '0'}">Modify</button>
+              <button type="button" class="ml-btn act-gstn${!editMode && focusedBtn === 2 ? ' sel' : ''}" data-act="gstn" tabindex="${editMode ? '-1' : '0'}">GSTN Verification</button>
+              <button type="button" class="ml-btn act-attach${!editMode && focusedBtn === 3 ? ' sel' : ''}" data-act="attach" tabindex="${editMode ? '-1' : '0'}">ATTACH DOCUMENTS</button>
+            </div>
           </div>
           <div class="lf-status">
             <div class="cs-head">
@@ -634,7 +635,8 @@ export function modifyLedgerScreen(existing: Ledger): Promise<Ledger | null> {
         </div>
       `;
 
-      // Wire top actions
+      // Wire bottom actions
+      const btns = [...w.body.querySelectorAll<HTMLButtonElement>('.ml-btn')];
       const btnExit = w.body.querySelector('.act-exit') as HTMLButtonElement | null;
       const btnMod = w.body.querySelector('.act-modify') as HTMLButtonElement | null;
       const btnGstn = w.body.querySelector('.act-gstn') as HTMLButtonElement | null;
@@ -645,8 +647,18 @@ export function modifyLedgerScreen(existing: Ledger): Promise<Ledger | null> {
       btnGstn?.addEventListener('click', () => { gstnVerifyDialog(cur); });
       btnAttach?.addEventListener('click', () => { attachDocsDialog(cur); });
 
+      btns.forEach((b, i) => {
+        b.addEventListener('focus', () => {
+          focusedBtn = i;
+          btns.forEach((btn, idx) => btn.classList.toggle('sel', idx === focusedBtn));
+        });
+      });
+
       if (!editMode) {
-        btnExit?.focus();
+        if (btns[focusedBtn]) {
+          btns.forEach((b, i) => b.classList.toggle('sel', i === focusedBtn));
+          btns[focusedBtn].focus();
+        }
       } else {
         const inpName = w.body.querySelector('[data-k="name"]') as HTMLInputElement | null;
         inpName?.focus();
@@ -690,6 +702,7 @@ export function modifyLedgerScreen(existing: Ledger): Promise<Ledger | null> {
         toast('Ledger updated');
         cur = await api<Ledger>(`/ledgers/${cur.id}`);
         editMode = false;
+        focusedBtn = 0;
         render();
       } catch (e) {
         toast((e as Error).message, true);
@@ -699,25 +712,26 @@ export function modifyLedgerScreen(existing: Ledger): Promise<Ledger | null> {
     w.onKey = (_e, k) => {
       const t = document.activeElement as HTMLElement;
       if (!editMode) {
-        if (k === 'Escape') { w.close(); resolve(cur); return true; }
+        if (k === 'Escape' || k === 'X' || k === 'x') { w.close(); resolve(cur); return true; }
         if (k === 'M' || k === 'm') { editMode = true; render(); return true; }
         if (k === 'G' || k === 'g') { gstnVerifyDialog(cur); return true; }
         if (k === 'A' || k === 'a') { attachDocsDialog(cur); return true; }
-        const btns = [...w.body.querySelectorAll('.ml-btn')] as HTMLButtonElement[];
-        const bi = btns.indexOf(t as HTMLButtonElement);
-        if (bi >= 0) {
-          if (k === 'ArrowRight' || k === 'Tab') {
-            btns[(bi + 1) % btns.length].focus();
-            return true;
-          }
-          if (k === 'ArrowLeft') {
-            btns[(bi - 1 + btns.length) % btns.length].focus();
-            return true;
-          }
-          if (k === 'Enter') {
-            (t as HTMLButtonElement).click();
-            return true;
-          }
+        const btns = [...w.body.querySelectorAll<HTMLButtonElement>('.ml-btn')];
+        if (k === 'ArrowRight' || k === 'Tab') {
+          focusedBtn = (focusedBtn + 1) % btns.length;
+          btns.forEach((b, i) => b.classList.toggle('sel', i === focusedBtn));
+          btns[focusedBtn]?.focus();
+          return true;
+        }
+        if (k === 'ArrowLeft' || k === 'Shift+Tab') {
+          focusedBtn = (focusedBtn - 1 + btns.length) % btns.length;
+          btns.forEach((b, i) => b.classList.toggle('sel', i === focusedBtn));
+          btns[focusedBtn]?.focus();
+          return true;
+        }
+        if (k === 'Enter') {
+          btns[focusedBtn]?.click();
+          return true;
         }
         return false;
       }

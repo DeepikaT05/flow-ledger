@@ -93,7 +93,7 @@ function needsFor(req: Request, a: AuthCtx): { need: Need | null; backdate?: { d
   const r = p.match(/^\/reports\/([a-z0-9-]+)/)?.[1];
   if (r) {
     const map: Record<string, string[]> = {
-      ledger: ['books.ledger', 'reports.outstanding'], 'ledger-accounts': ['books.ledger', 'reports.outstanding'],
+      ledger: ['books.ledger', 'reports.outstanding'], 'ledger-accounts': ['books.ledger', 'reports.outstanding', 'ledger.list'],
       'trial-balance': ['reports.final'], 'stock-value': ['reports.final'],
       outstanding: ['reports.outstanding'],
       stock: ['reports.stock'], reorder: ['reports.stock'], 'batch-stock': ['reports.stock'],

@@ -228,18 +228,26 @@ function billAdjustment(party: Ledger, amount: number, bills: Pending[], start: 
 
 /** The CUSTOMER STATUS panel (receipt entry, sale alteration) — SUPPLIER STATUS for payment / debit note. */
 export function statusHtml(s: Status, supplier = false) {
+  const balAmt = s.balance ? Math.abs(s.balance) : 0;
   return `<div class="bar">&#10004; ${supplier ? 'SUPPLIER' : 'CUSTOMER'} STATUS</div>
       <div class="nm">${esc(s.name.toUpperCase())}</div>
       <div>Phone &nbsp;: ${esc(s.phone)}</div>
       ${s.mobile ? `<div>Mobile : ${esc(s.mobile)}</div>` : ''}
-      ${s.payid ? `<div>PayID &nbsp;: ${esc(s.payid)}</div>` : ''}
-      ${s.type_desc ? `<div>Type &nbsp;&nbsp;: ${esc(s.type_desc)}</div>` : ''}
-      <div class="kv"><span>Balance :</span><b>${drcr(s.balance)}</b></div>
-      <div class="kv"><span>O/S Bills :</span><b>${s.bills}</b></div>
-      <div class="kv"><span>Days &nbsp;&nbsp;&nbsp;:</span><b>${s.days}</b></div>
-      <div>${supplier ? 'Last Purc.' : 'Last Sale'} &nbsp;&nbsp;: ${s.last_sale ? `${f2(s.last_sale.net)} Dt:${dmy(s.last_sale.date)} Days:${s.last_sale.days}` : ''}</div>
-      <div>${supplier ? 'Last Paymnt' : 'Last Receipt'}: ${s.last_receipt ? `${f2(s.last_receipt.amount)} Dt:${dmy(s.last_receipt.date)} Days:${s.last_receipt.days}` : ''}</div>
-      <div class="bar sub"><span>CHQ/CASH</span><span>DATE</span><span>AMOUNT</span><span>DAYS</span></div>
+      <div>Type &nbsp;&nbsp;: ${esc(s.type_desc || 'Manual-Only Indicate')}</div>
+      <div class="cs-table">
+        <div class="cs-tr cs-th"><span>DESC.</span><span class="n">LIMIT</span><span class="n">PRIMARY</span><span class="n">BALANCE</span></div>
+        <div class="cs-tr"><span>Amount :</span><span class="n">0</span><span class="n">0</span><span class="n">${balAmt ? Math.round(balAmt) : 0}</span></div>
+        <div class="cs-tr"><span>Bills &nbsp;:</span><span class="n">0</span><span class="n">0</span><span class="n">${s.bills || 0}</span></div>
+        <div class="cs-tr"><span>Days &nbsp;&nbsp;:</span><span class="n">0</span><span class="n">0</span><span class="n">${s.days || 0}</span></div>
+      </div>
+      <div class="cs-ratio">
+        <div>Turnover Ratio :</div>
+        <div>Avg.Sale PM : &nbsp;&nbsp; PW: &nbsp;&nbsp; PD:</div>
+        <div>Avg.Coll.Day:</div>
+        <div>${supplier ? 'Last Purc.' : 'Last Sale'} &nbsp;: ${s.last_sale ? `${f2(s.last_sale.net)} Dt:${dmy(s.last_sale.date)} Days:${s.last_sale.days}` : '0 Dt:               Days:0'}</div>
+        <div>${supplier ? 'Last Paymnt' : 'Last Receipt'}: ${s.last_receipt ? `${f2(s.last_receipt.amount)} Dt:${dmy(s.last_receipt.date)} Days:${s.last_receipt.days}` : '0 Dt:             Days:0'}</div>
+      </div>
+      <div class="bar sub"><span>${supplier ? 'CR.NOTE' : 'CHQ/CASH'}</span><span>DATE</span><span>AMOUNT</span><span>DAYS</span></div>
       ${s.receipts.map((r) => `<div class="g"><span>${esc((r.mode ?? '').toUpperCase())}</span><span>${dmy(r.date)}</span><span>${f2(r.amount)}</span><span>${r.days}</span></div>`).join('')}
       <div class="bar sub"><span>O/S BILL</span><span>DATE</span><span>AMOUNT</span><span>DAYS</span></div>
       ${s.os_bills.map((b) => `<div class="g ${b.days > 30 ? 'old' : ''}"><span>${esc(b.ref)}</span><span>${dmy(b.date)}</span><span>${f2(b.balance)}</span><span>${b.days}</span></div>`).join('')}`;

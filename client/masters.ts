@@ -14,37 +14,10 @@ export async function ledgerForm(existing?: Partial<Ledger>, defaultGroup?: stri
 }
 
 export async function ledgerList(group?: string) {
-  const w = openWin(group ? `Ledger List - ${group}` : 'List of Accounts', 'wide',
-    '<span><b>F2</b> Add</span><span><b>F3</b> Modify</span><span><b>Enter</b> Ledger A/c</span><span><b>Del</b> Delete</span><span><b>Esc</b> Close</span>');
-  w.body.style.height = '100%';
-  const g = new GridList<Ledger>(w.body, [
-    { title: 'Ledger Name', get: (r) => r.name },
-    { title: 'Group', get: (r) => r.group_name },
-    { title: 'Station', get: (r) => r.city },
-    { title: 'Phone', get: (r) => r.phone },
-    { title: 'GSTIN', get: (r) => r.gstin },
-    { title: 'Balance', get: (r) => drcr(r.balance), num: true },
-  ], (r) => r.name);
-  const load = async () => g.setRows(await api<Ledger[]>(`/ledgers${group ? `?group=${encodeURIComponent(group)}` : ''}`), true);
-  await load();
-  g.focus();
-  w.onKey = (_e, k) => {
-    if (g.nav(k)) return true;
-    const cur = g.current;
-    if (k === 'F2') { ledgerForm(undefined, group).then((r) => r && load()); return true; }
-    if (k === 'F3' && cur) { ledgerForm(cur).then((r) => r && load()); return true; }
-    if (k === 'Enter' && cur) { import('./reports.ts').then((m) => m.ledgerStatement(cur)); return true; }
-    if (k === 'Delete' && cur) {
-      if (!canDelete()) { toast(NO_DELETE, true); return true; }
-      confirmBox(`Delete ledger "${cur.name}" ?`, false).then(async (y) => {
-        if (!y) return;
-        try { await api(`/ledgers/${cur.id}`, { method: 'DELETE' }); toast('Deleted'); load(); } catch (e) { toast((e as Error).message, true); }
-      });
-      return true;
-    }
-    return false;
-  };
+  const m = await import('./ledgers.ts');
+  return m.ledgerAlteration(group);
 }
+
 
 export async function pickLedger(title = 'Select Party', group?: string, initial = ''): Promise<Ledger | null> {
   const rows = await api<Ledger[]>(`/ledgers${group ? `?group=${encodeURIComponent(group)}` : ''}`);
