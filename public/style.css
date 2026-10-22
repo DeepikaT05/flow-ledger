@@ -776,6 +776,56 @@ table.marg-grid tr.sel td input::placeholder { color: rgba(255, 255, 255, .78); 
 .ug-bracket { color: #555; }
 .ug-find-input { background: transparent; border: none; outline: none; font-family: "Courier New", Consolas, monospace; font-size: 17px; font-weight: bold; color: #000; flex: 1; width: 220px; }
 
+/* POST-SAVE OPTIONS MENU (Screenshot 1) */
+.win.marg.marg-ledger-opts { width: 480px !important; border: 2px solid #1e4a2c !important; box-shadow: 0 8px 24px rgba(0,0,0,0.5) !important; z-index: 1000 !important; }
+.win.marg.marg-ledger-opts .win-body { background: #e8ebf7; overflow: hidden; padding: 0; }
+.lo-list { padding: 12px 18px; display: flex; flex-direction: column; gap: 2px; }
+.lo-item { padding: 3px 10px; font-family: "Courier New", Consolas, monospace; font-size: 16px; font-weight: bold; cursor: pointer; color: #000; white-space: pre; }
+.lo-item.sel { background: #1e4a2c; color: #ffffff; }
+
+/* UNREGISTERED BADGE NOTIFICATION (Screenshot 1) */
+.lf-unreg-badge {
+  position: absolute; right: 360px; top: 75px; z-index: 100;
+  background: #fff; border: 1px solid #777; padding: 6px 14px;
+  font-family: "Courier New", Consolas, monospace; font-size: 15px; font-weight: bold;
+  color: #000; box-shadow: 2px 2px 6px rgba(0,0,0,0.25);
+  animation: badgePop 0.3s ease-out;
+}
+@keyframes badgePop {
+  0% { transform: scale(0.9); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* MODIFY LEDGER TOP ACTIONS (Screenshot 2) */
+.ml-bar { display: flex; align-items: center; justify-content: space-between; }
+.ml-actions { display: flex; gap: 8px; align-items: center; margin-left: 20px; flex: 1; }
+.ml-btn {
+  background: #e4e7ee; color: #000; border: 1px solid #888; padding: 2px 14px;
+  font-family: Tahoma, "Segoe UI", sans-serif; font-size: 13px; font-weight: bold;
+  cursor: pointer; transition: all 0.1s ease;
+}
+.ml-btn:hover { background: #f0f2f8; }
+.ml-btn:focus, .ml-btn.sel {
+  background: #fff !important; color: #000 !important;
+  border: 2px solid #1c6ef2 !important; outline: none !important;
+  box-shadow: 0 0 5px rgba(28, 110, 242, 0.6) !important;
+}
+
+/* SUB DIALOGS (Bank, UPI, Notes) */
+.win.marg.marg-subbox { width: 520px !important; border: 2px solid #1e4a2c !important; }
+.win.marg.marg-subbox .win-body { background: #eaf1ea; padding: 0; }
+.sb-wrap { padding: 16px 20px; font-family: "Courier New", Consolas, monospace; font-size: 16px; font-weight: bold; }
+.sb-row { display: flex; align-items: center; min-height: 30px; margin-bottom: 4px; }
+.sb-l { width: 170px; flex: none; color: #000; }
+.sb-c { width: 18px; flex: none; color: #000; }
+.win.marg.marg-subbox input {
+  font-family: "Courier New", Consolas, monospace; font-weight: bold; font-size: 16px;
+  border: 1px solid #888; background: #fff; padding: 2px 6px; outline: none;
+}
+.win.marg.marg-subbox input:focus {
+  background: #1e4a2c !important; color: #fff !important; border-color: #1e4a2c !important;
+}
+
 /* ---------- MARG INVOICE PRINT TEMPLATE (BILL FORMATE) ---------- */
 .inv-page {
   width: 820px;
