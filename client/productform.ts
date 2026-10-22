@@ -127,7 +127,8 @@ export function productScreen(existing?: Partial<Item> & { details?: string }): 
       const out: Record<string, string> = {};
       for (const el of p.body.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-k]')) out[el.dataset.k!] = el.value.trim();
       const { sgst: _s, cgst: _c, igst, ...rest } = out;
-      const body: Record<string, unknown> = { gst_rate: Number(igst) || 0, opening_stock: existing?.opening_stock ?? 0 };
+      const gstVal = Number(igst) || (Number(_s) * 2) || (Number(_c) * 2) || 0;
+      const body: Record<string, unknown> = { gst_rate: gstVal, opening_stock: existing?.opening_stock ?? 0 };
       const details: Record<string, string> = { ...det };
       for (const [k, val] of Object.entries(rest)) {
         if (ITEM_COLS.includes(k)) body[k] = ['mrp', 'sale_rate', 'purchase_rate', 'min_stock', 'reorder_qty'].includes(k) ? Number(val) || 0 : val;

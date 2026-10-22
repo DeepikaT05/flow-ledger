@@ -384,8 +384,15 @@ app.get('/api/bills', h((req) => {
 app.get('/api/bills/:id', h((req) => {
   const bill = db.prepare('SELECT b.*, l.name AS party FROM bills b JOIN ledgers l ON l.id=b.party_id WHERE b.id=?').get(req.params.id);
   if (!bill) throw new Error('Bill not found');
-  const lines = db.prepare(`SELECT bi.*, i.name AS item_name, i.unit, i.pack, i.hsn FROM bill_items bi JOIN items i ON i.id=bi.item_id
-    WHERE bill_id=? ORDER BY bi.id`).all(req.params.id);
+  const lines = db.prepare(`SELECT bi.*, i.name AS item_name, i.unit, i.pack, i.hsn, i.gst_rate AS item_gst FROM bill_items bi JOIN items i ON i.id=bi.item_id
+    WHERE bill_id=? ORDER BY bi.id`).all(req.params.id) as any[];
+  for (const l of lines) {
+    if ((!l.gst_rate || Number(l.gst_rate) === 0) && l.item_gst) l.gst_rate = l.item_gst;
+    if ((!l.tax || Number(l.tax) === 0) && l.gst_rate) {
+      const taxable = Number(l.taxable) || (Number(l.qty) * Number(l.rate));
+      l.tax = Math.round(taxable * Number(l.gst_rate) / 100 * 100) / 100;
+    }
+  }
   const payments = db.prepare(`SELECT bp.*, l.name AS ledger FROM bill_payments bp JOIN ledgers l ON l.id=bp.ledger_id
     WHERE bill_id=? ORDER BY bp.id`).all(req.params.id);
   // Money received against the bill so far: paid on the bill + receipts adjusted to it (BILL LEVIES).
@@ -406,7 +413,12 @@ interface BillIn {
 
 function computeBill(b: BillIn) {
   const lines = b.lines.filter((l) => l.item_id && num(l.qty) + num(l.free) > 0).map((l) => {
-    const qty = num(l.qty), rate = num(l.rate), disc = num(l.disc_pct), gst = num(l.gst_rate);
+    let gst = num(l.gst_rate);
+    if (!gst) {
+      const it = db.prepare('SELECT gst_rate FROM items WHERE id=?').get(l.item_id) as { gst_rate: number } | undefined;
+      if (it?.gst_rate) gst = num(it.gst_rate);
+    }
+    const qty = num(l.qty), rate = num(l.rate), disc = num(l.disc_pct);
     const gross = r2(qty * rate);
     const taxable = r2(gross * (1 - disc / 100));
     const tax = r2(taxable * gst / 100);

@@ -47,7 +47,7 @@ import { inWords } from './receipt.ts';
 
 // ------------------------------------------------------------------ print
 async function billHtml(id: number) {
-  const [b, c] = await Promise.all([api(`/bills/${id}`), api('/company')]);
+  const [b, c] = await Promise.all([api<any>(`/bills/${id}`), api<any>('/company')]);
   const p = await api<Ledger>(`/ledgers/${b.party_id}`).catch(() => ({} as Ledger));
   let salesmen: any[] = [];
   try { salesmen = await api('/salesmen'); } catch { /* ignore */ }
@@ -75,25 +75,38 @@ async function billHtml(id: number) {
   const dmy = (iso: string) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : '');
   const expShort = (e?: string) => (e && e.length >= 7 ? `${e.slice(5, 7)}/${e.slice(2, 4)}` : (e || ''));
 
-  // GST rate summary
-  const gstRows = [
-    { label: 'GST 5 %', rate: 5 },
-    { label: 'GST 12 %', rate: 12 },
-    { label: 'GST 18 %', rate: 18 },
-  ];
+  // Collect all GST rates (standard 5, 12, 18, 28 + any rates from lines)
+  const ratesSet = new Set<number>([5, 12, 18]);
+  for (const l of b.lines) {
+    const r = Number(l.gst_rate) || Number(l.item_gst) || 0;
+    if (r > 0) ratesSet.add(r);
+  }
+  const gstRows = [...ratesSet].sort((a, b) => a - b).map((rate) => ({ label: `GST ${rate} %`, rate }));
   const byGst = new Map<number, { total: number; sch: number; disc: number; sgst: number; cgst: number; totalGst: number }>();
   for (const g of gstRows) byGst.set(g.rate, { total: 0, sch: 0, disc: 0, sgst: 0, cgst: 0, totalGst: 0 });
 
   for (const l of b.lines) {
-    const rate = Number(l.gst_rate) || 0;
-    const bucket = byGst.get(rate) || { total: 0, sch: 0, disc: 0, sgst: 0, cgst: 0, totalGst: 0 };
-    const taxable = Number(l.taxable) || 0;
-    const tax = Number(l.tax) || 0;
-    bucket.total += Number(l.amount) || (taxable + tax);
-    bucket.sgst += tax / 2;
-    bucket.cgst += tax / 2;
+    let rate = Number(l.gst_rate) || Number(l.item_gst) || 0;
+    let taxable = Number(l.taxable) || (Number(l.qty) * Number(l.rate));
+    let tax = Number(l.tax) || 0;
+    if (rate > 0 && tax === 0) {
+      tax = Math.round(taxable * rate / 100 * 100) / 100;
+      l.tax = tax;
+    }
+    l.gst_rate = rate;
+    const amt = Number(l.amount) || (taxable + tax);
+
+    let bucket = byGst.get(rate);
+    if (!bucket) {
+      bucket = { total: 0, sch: 0, disc: 0, sgst: 0, cgst: 0, totalGst: 0 };
+      byGst.set(rate, bucket);
+      gstRows.push({ label: `GST ${rate} %`, rate });
+    }
+    bucket.total += amt;
+    bucket.disc += (Number(l.disc_pct) ? Math.round(taxable * Number(l.disc_pct) / 100 * 100) / 100 : 0);
+    bucket.sgst += Math.round((tax / 2) * 100) / 100;
+    bucket.cgst += Math.round((tax / 2) * 100) / 100;
     bucket.totalGst += tax;
-    byGst.set(rate, bucket);
   }
 
   let totAmt = 0, totSch = 0, totDisc = 0, totSgst = 0, totCgst = 0, totTotalGst = 0;
@@ -107,7 +120,7 @@ async function billHtml(id: number) {
     totTotalGst += v.totalGst;
   }
 
-  const qrSvg = `<svg width="68" height="68" viewBox="0 0 33 33" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges">
+  const qrSvg = `<svg width="56" height="56" viewBox="0 0 33 33" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges">
     <rect width="33" height="33" fill="#fff"/>
     <rect x="2" y="2" width="7" height="7" fill="#000"/><rect x="3" y="3" width="5" height="5" fill="#fff"/><rect x="4" y="4" width="3" height="3" fill="#000"/>
     <rect x="24" y="2" width="7" height="7" fill="#000"/><rect x="25" y="3" width="5" height="5" fill="#fff"/><rect x="26" y="4" width="3" height="3" fill="#000"/>
@@ -130,7 +143,7 @@ async function billHtml(id: number) {
     <rect x="22" y="26" width="2" height="2" fill="#000"/><rect x="25" y="27" width="3" height="2" fill="#000"/><rect x="29" y="26" width="2" height="3" fill="#000"/>
   </svg>`;
 
-  const minRows = 10;
+  const minRows = 5;
   const fillerCount = Math.max(0, minRows - b.lines.length);
 
   const html = `
@@ -140,10 +153,10 @@ async function billHtml(id: number) {
         <div class="inv-hdr-left">
           <div class="co-name">${esc(companyName)}</div>
           <div class="co-sub">${esc(companyAddress)}</div>
-          <div class="co-sub" style="margin-top:4px">Phone : ${esc(companyPhone)}</div>
+          <div class="co-sub">Phone : ${esc(companyPhone)}</div>
           <div class="co-line"></div>
           <div class="co-sub">GSTIN : ${esc(companyGstin)}</div>
-          <div class="co-sub" style="margin-top:4px">SL NO.:-</div>
+          <div class="co-sub">SL NO - </div>
         </div>
         <div class="inv-hdr-mid">
           <div class="title">INVOICE</div>
@@ -153,12 +166,12 @@ async function billHtml(id: number) {
           <div class="pty-box">
             <div class="pty-name">${esc(partyName)} ${isCredit ? 'CR' : 'DR'}</div>
             <div class="pty-row">State : ${esc(partyState)}</div>
-            <div class="pty-row">Ph.No.: ${esc(partyPhone)}</div>
+            <div class="pty-row">Ph No.: ${esc(partyPhone)}</div>
             <div class="pty-row">GST : ${esc(partyGstin)}</div>
           </div>
           <div class="inv-meta">
             <div class="meta-row"><span>Invoice No.</span> <span>: ${esc(b.no)}</span></div>
-            <div class="meta-row" style="margin-top:3px"><span>Date</span> <span>: ${dmy(b.date)}</span></div>
+            <div class="meta-row"><span>Date</span> <span>: ${dmy(b.date)}</span></div>
             <div class="mr-name">${esc(mrName)} MR</div>
           </div>
         </div>
@@ -169,17 +182,17 @@ async function billHtml(id: number) {
         <table class="inv-tbl">
           <thead>
             <tr>
-              <th style="width:28px">SN.</th>
-              <th style="width:39%;text-align:left">PRODUCT NAME &amp; PACKING</th>
-              <th style="width:9%">BATCH</th>
+              <th style="width:26px">SN.</th>
+              <th style="width:36%;text-align:left">PRODUCT NAME &amp; PACKING</th>
+              <th style="width:8%">BATCH</th>
               <th style="width:7%">EXP.</th>
-              <th style="width:8%">HSN.</th>
+              <th style="width:7%">HSN.</th>
               <th style="width:5%">QTY</th>
               <th style="width:8%;text-align:right">RATE</th>
               <th style="width:6%;text-align:right">DIS</th>
-              <th style="width:5%;text-align:right">SGST</th>
-              <th style="width:5%;text-align:right">CGST</th>
-              <th style="width:8%;text-align:right">AMOUNT</th>
+              <th style="width:6%;text-align:right">SGST</th>
+              <th style="width:6%;text-align:right">CGST</th>
+              <th style="width:9%;text-align:right">AMOUNT</th>
             </tr>
           </thead>
           <tbody>
@@ -202,9 +215,16 @@ async function billHtml(id: number) {
                 <td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
               </tr>`).join('')}
           </tbody>
+          <tfoot>
+            <tr class="inv-tot-row">
+              <td colspan="10" class="tot-lbl">TOTAL BALANCE</td>
+              <td class="tot-val">${Number(b.net).toFixed(2)}</td>
+            </tr>
+          </tfoot>
         </table>
 
-        <!-- Healthcare QR Overlay inside blank area -->
+        <!-- Healthcare QR Overlay inside blank area if lines <= 5 -->
+        ${b.lines.length <= 5 ? `
         <div class="inv-qr-overlay">
           <div class="qr-vert"><span>Body Checkup</span> <span>Health Offers</span></div>
           <div class="qr-card">
@@ -216,13 +236,7 @@ async function billHtml(id: number) {
             <div>One QR Code for All Your Healthcare Needs</div>
             <div style="font-weight:bold;margin-top:2px">Scan with your Mobile</div>
           </div>
-        </div>
-      </div>
-
-      <!-- TOTAL BALANCE BAR -->
-      <div class="inv-total-bar">
-        <span class="lbl">TOTAL BALANCE</span>
-        <span class="val">${money(b.net)}</span>
+        </div>` : ''}
       </div>
 
       <!-- MID SECTION: GST BREAKDOWN & RIGHT TOTALS -->
@@ -231,13 +245,13 @@ async function billHtml(id: number) {
           <table class="gst-tbl">
             <thead>
               <tr>
-                <th style="width:20%">CLASS</th>
+                <th style="width:19%">CLASS</th>
                 <th style="width:16%">TOTAL</th>
-                <th style="width:12%">SCH.</th>
-                <th style="width:12%">DISC.</th>
-                <th style="width:13%">SGST</th>
-                <th style="width:13%">CGST</th>
-                <th style="width:14%">TOTAL GST</th>
+                <th style="width:11%">SCH.</th>
+                <th style="width:11%">DISC.</th>
+                <th style="width:14%">SGST</th>
+                <th style="width:14%">CGST</th>
+                <th style="width:15%">TOTAL GST</th>
               </tr>
             </thead>
             <tbody>
@@ -266,8 +280,8 @@ async function billHtml(id: number) {
           </table>
         </div>
         <div class="totals-box">
-          <div class="t-row"><span>Discount</span> <b>${Number(b.discount || 0).toFixed(2)}</b></div>
-          <div class="t-row"><span>GST</span> <b>${Number(b.tax || 0).toFixed(2)}</b></div>
+          <div class="t-row"><span>Discount</span> <b>${Number(b.discount || totDisc || 0).toFixed(2)}</b></div>
+          <div class="t-row"><span>GST</span> <b>${Number(totTotalGst || b.tax || 0).toFixed(2)}</b></div>
           <div class="t-row"><span>FREIGHT</span> <b>0.00</b></div>
           <div class="t-row"><span>Paid Balance</span> <b>${Number(b.received || (b.mode === 'CASH' ? b.net : 0)).toFixed(2)}</b></div>
           <div class="t-row pend"><span>Pending Balance</span> <b>${Number(b.net - (b.received || (b.mode === 'CASH' ? b.net : 0))).toFixed(2)}</b></div>
@@ -306,10 +320,17 @@ async function billHtml(id: number) {
 export async function printBill(id: number) {
   const { b, html } = await billHtml(id);
   const w = openWin(`Print - ${b.no}`, 'wide', '<span><b>Enter / Ctrl+P</b> Print</span><span><b>Esc</b> Close</span>');
-  const area = h('div', { class: 'print-area' });
+  w.el.classList.add('marg-print-win');
+  const area = h('div', { class: 'print-preview-wrap' });
   area.innerHTML = html;
   w.body.append(area);
-  w.onKey = (_e, k) => { if (k === 'Enter' || k === 'Ctrl+P') { window.print(); return true; } return false; };
+  w.onKey = (_e, k) => {
+    if (k === 'Enter' || k === 'Ctrl+P') {
+      printHtml(html, 1);
+      return true;
+    }
+    return false;
+  };
 }
 
 /**
@@ -324,10 +345,14 @@ export async function printCopies(id: number, copies: number) {
 export function printHtml(html: string, copies: number) {
   let root = document.getElementById('print-root');
   if (!root) { root = h('div', { id: 'print-root' }); document.body.append(root); }
-  root.innerHTML = Array.from({ length: copies }, () => `<div class="print-area bill-copy">${html}</div>`).join('');
+  root.innerHTML = Array.from({ length: copies }, () => `<div class="print-sheet">${html}</div>`).join('');
   document.body.classList.add('print-bill');
-  try { window.print(); } finally {
+  const cleanup = () => {
     document.body.classList.remove('print-bill');
-    root.innerHTML = '';
-  }
+    if (root) root.innerHTML = '';
+  };
+  window.addEventListener('afterprint', cleanup, { once: true });
+  setTimeout(() => {
+    try { window.print(); } catch { cleanup(); }
+  }, 50);
 }
