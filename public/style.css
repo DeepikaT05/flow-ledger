@@ -1382,15 +1382,15 @@ table.marg-grid tr.sel td input::placeholder { color: rgba(255, 255, 255, .78); 
   background: #eef5e9;
 }
 .cf-grid {
-  padding: 12px 24px 24px 24px;
+  padding: 6px 18px 10px 18px;
   background: #eef5e9;
 }
 .cf-row {
   display: flex;
   align-items: center;
-  min-height: 27px;
-  line-height: 27px;
-  margin-bottom: 2px;
+  min-height: 25px;
+  line-height: 25px;
+  margin-bottom: 1px;
 }
 .cf-row.full {
   width: 100%;
@@ -1418,7 +1418,7 @@ table.marg-grid tr.sel td input::placeholder { color: rgba(255, 255, 255, .78); 
 .cf-l {
   color: #1a4f8a;
   font-weight: bold;
-  font-size: 17px;
+  font-size: 16.5px;
   font-family: "Courier New", Consolas, monospace;
   letter-spacing: 0.5px;
   width: 145px;
@@ -1429,7 +1429,7 @@ table.marg-grid tr.sel td input::placeholder { color: rgba(255, 255, 255, .78); 
 .cf-star {
   color: #1a4f8a;
   font-weight: bold;
-  font-size: 17px;
+  font-size: 16.5px;
   font-family: "Courier New", Consolas, monospace;
   width: 12px;
   min-width: 12px;
@@ -1440,7 +1440,7 @@ table.marg-grid tr.sel td input::placeholder { color: rgba(255, 255, 255, .78); 
 .cf-c {
   color: #1a4f8a;
   font-weight: bold;
-  font-size: 17px;
+  font-size: 16.5px;
   font-family: "Courier New", Consolas, monospace;
   width: 14px;
   min-width: 14px;
@@ -1456,12 +1456,12 @@ table.marg-grid tr.sel td input::placeholder { color: rgba(255, 255, 255, .78); 
   background: transparent;
   border: none;
   font-family: "Courier New", Consolas, monospace;
-  font-size: 17px;
+  font-size: 16.5px;
   font-weight: bold;
   color: #000000;
-  padding: 1px 4px;
-  height: 25px;
-  line-height: 25px;
+  padding: 0 4px;
+  height: 23px;
+  line-height: 23px;
   box-sizing: border-box;
 }
 .cf-txt:focus {
@@ -1474,11 +1474,11 @@ table.marg-grid tr.sel td input::placeholder { color: rgba(255, 255, 255, .78); 
   background: #ffffff;
   border: 1px solid #777;
   font-family: "Courier New", Consolas, monospace;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: bold;
   color: #000000;
-  padding: 1px 4px;
-  height: 25px;
+  padding: 0 3px;
+  height: 23px;
   box-sizing: border-box;
   border-radius: 0;
 }
