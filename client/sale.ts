@@ -406,7 +406,17 @@ export async function saleEntry(type = 'SALE', billId?: number) {
         if (wk) walkin = wk;
       }
       if (!noI.value) noI.value = (await api<{ no: string }>(`/bills/next-no?type=${type}`)).no;
-      const m = await pickMR();
+      let partyMR: Salesman | null = null;
+      if (l.details) {
+        try {
+          const pDet = JSON.parse(l.details);
+          if (pDet.mr_id || pDet.mr_name) {
+            const salesmen = await api<Salesman[]>('/salesmen');
+            partyMR = salesmen.find((s) => String(s.id) === String(pDet.mr_id)) || (pDet.mr_name ? { id: Number(pDet.mr_id) || 0, name: pDet.mr_name, area: '' } : null);
+          }
+        } catch { /* ignore */ }
+      }
+      const m = partyMR || (await pickMR());
       if (m) { mr = m; mrI.value = m.name; }
       renderRows();
       if (refEntry && pnoI) { pnoI.focus(); pnoI.select(); } else focusCell(0, 'name');

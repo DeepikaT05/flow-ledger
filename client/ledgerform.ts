@@ -125,6 +125,159 @@ export function pickUnderGroup(groups: Group[], currentId?: number): Promise<Gro
   });
 }
 
+export interface Salesman { id: number; name: string; area?: string }
+
+/** UNDER M.R. popup: floating window to pick Salesman / M.R. */
+export function pickSalesmanPopup(currentId?: number | string, currentName?: string, initialFilter = ''): Promise<Salesman | null> {
+  return new Promise(async (resolve) => {
+    let list: Salesman[] = [];
+    try { list = await api<Salesman[]>('/salesmen'); } catch { list = []; }
+    let sorted = [...list].sort((a, b) => a.name.localeCompare(b.name));
+    let filter = initialFilter;
+    const filtered = () => filter.trim()
+      ? sorted.filter((s) => s.name.toLowerCase().includes(filter.toLowerCase().trim()) || (s.area && s.area.toLowerCase().includes(filter.toLowerCase().trim())))
+      : sorted;
+
+    let selIdx = 0;
+    if (currentId) {
+      const idx = sorted.findIndex((s) => String(s.id) === String(currentId));
+      if (idx >= 0) selIdx = idx;
+    } else if (currentName) {
+      const idx = sorted.findIndex((s) => s.name.toLowerCase() === currentName.toLowerCase());
+      if (idx >= 0) selIdx = idx;
+    }
+
+    const p = openWin('UNDER M.R.', 'mid', '');
+    p.el.classList.add('marg', 'marg-undergroup');
+    p.setFoot('<span class="help-badge">HELP</span><span><b>F2</b>-New M.R.</span><span><b>Enter</b>-Select</span><span><b>?</b>-Search</span><span><b>Esc</b>-Exit</span>');
+
+    const container = h('div', { class: 'ug-container' });
+    p.body.innerHTML = '';
+    p.body.append(margBar('UNDER M.R.'));
+    p.body.append(container);
+
+    const createNewMR = async () => {
+      const name = prompt('Enter New M.R. (Salesman) Name:');
+      if (!name || !name.trim()) return;
+      try {
+        const area = prompt('Enter Area (optional):') || '';
+        const res = await api<{ id: number }>('/salesmen', {
+          method: 'POST',
+          body: { name: name.trim().toUpperCase(), area: area.trim().toUpperCase() }
+        });
+        const newMR: Salesman = { id: res.id, name: name.trim().toUpperCase(), area: area.trim().toUpperCase() };
+        list.push(newMR);
+        sorted = [...list].sort((a, b) => a.name.localeCompare(b.name));
+        const newIdx = sorted.findIndex((s) => s.id === newMR.id);
+        if (newIdx >= 0) selIdx = newIdx;
+        draw();
+      } catch (err) {
+        toast((err as Error).message, true);
+      }
+    };
+
+    let done = false;
+    const choose = () => {
+      if (done) return;
+      done = true;
+      const rows = filtered();
+      const chosen = rows[selIdx] || null;
+      p.close();
+      resolve(chosen);
+    };
+
+    const cancel = () => {
+      if (done) return;
+      done = true;
+      p.close();
+      resolve(null);
+    };
+
+    const draw = () => {
+      const rows = filtered();
+      if (selIdx >= rows.length) selIdx = Math.max(0, rows.length - 1);
+      container.innerHTML = `
+        <div class="ug-list">
+          ${rows.length === 0 ? '<div style="padding:16px;color:#888;text-align:center">No M.R. Found. Press <b>F2</b> to Add New.</div>' : rows.map((s, i) => `
+            <div class="ug-item${i === selIdx ? ' sel' : ''}" data-idx="${i}" data-id="${s.id}" style="display:flex;justify-content:space-between">
+              <span>${esc(s.name.toUpperCase())}</span>
+              <span style="font-size:14px;color:${i === selIdx ? '#fff' : '#666'}">${esc(s.area ? s.area.toUpperCase() : '')}</span>
+            </div>
+          `).join('')}
+        </div>
+        <div class="ug-find-row" style="justify-content:space-between">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="ug-find-lbl">Find ?</span>
+            <span class="ug-bracket">[</span>
+            <input class="ug-find-input" value="${esc(filter)}" autocomplete="off" spellcheck="false">
+            <span class="ug-bracket">]</span>
+          </div>
+          <button type="button" class="ug-new-btn" style="background:#1e4a2c;color:#fff;border:1px solid #fff;padding:2px 10px;cursor:pointer;font-family:inherit;font-weight:bold;font-size:14px">+ F2 New</button>
+        </div>
+      `;
+
+      const selEl = container.querySelector('.ug-item.sel') as HTMLElement | null;
+      selEl?.scrollIntoView({ block: 'nearest' });
+
+      const inp = container.querySelector('.ug-find-input') as HTMLInputElement | null;
+      if (inp) {
+        inp.focus();
+        inp.setSelectionRange(inp.value.length, inp.value.length);
+        inp.addEventListener('input', () => {
+          filter = inp.value;
+          selIdx = 0;
+          draw();
+        });
+      }
+
+      container.querySelector('.ug-new-btn')?.addEventListener('click', () => {
+        createNewMR();
+      });
+
+      container.querySelectorAll<HTMLElement>('.ug-item').forEach((el) => {
+        el.addEventListener('click', () => {
+          selIdx = Number(el.dataset.idx);
+          draw();
+        });
+        el.addEventListener('dblclick', () => {
+          selIdx = Number(el.dataset.idx);
+          choose();
+        });
+      });
+    };
+
+    p.onKey = (_e, k) => {
+      const rows = filtered();
+      if (k === 'Escape') { cancel(); return true; }
+      if (k === 'Enter') { choose(); return true; }
+      if (k === 'F2') { createNewMR(); return true; }
+      if (k === 'ArrowDown') {
+        if (selIdx < rows.length - 1) { selIdx++; draw(); }
+        return true;
+      }
+      if (k === 'ArrowUp') {
+        if (selIdx > 0) { selIdx--; draw(); }
+        return true;
+      }
+      if (k === 'PageDown') {
+        selIdx = Math.min(rows.length - 1, selIdx + 8);
+        draw();
+        return true;
+      }
+      if (k === 'PageUp') {
+        selIdx = Math.max(0, selIdx - 8);
+        draw();
+        return true;
+      }
+      if (k === 'Home') { selIdx = 0; draw(); return true; }
+      if (k === 'End') { selIdx = Math.max(0, rows.length - 1); draw(); return true; }
+      return false;
+    };
+
+    draw();
+  });
+}
+
 /** Options shown right after saving a ledger (Screenshot 1) */
 const POST_SAVE_OPTIONS = [
   { key: 'A', label: 'A  LEDGER DETAIL' },
@@ -328,6 +481,8 @@ export function modifyLedgerScreen(existing: Ledger): Promise<Ledger | null> {
       bill_export_pas: det.bill_export_pas ?? '',
       retailio_id: det.retailio_id ?? '',
       mr_on: det.mr_on ?? 'Yes',
+      mr_name: det.mr_name ?? '',
+      mr_id: det.mr_id ?? '',
       del_man_on: det.del_man_on ?? 'Yes',
       area_on: det.area_on ?? 'Yes',
       route_on: det.route_on ?? 'Yes',
@@ -548,7 +703,10 @@ export function modifyLedgerScreen(existing: Ledger): Promise<Ledger | null> {
             <div class="lf-row split">
               <div class="lf-left">
                 <span class="lf-l">M.R.</span><span class="lf-c">:</span>
-                <span class="lf-v">${sel('mr_on', ['Yes', 'No'], '60px')}</span>
+                <span class="lf-v">
+                  ${sel('mr_on', ['Yes', 'No'], '60px')}
+                  <button type="button" class="lf-mr-btn" data-k="mr_name" tabindex="0"${dis} style="${v.mr_on === 'No' ? 'display:none;' : ''}">${esc(v.mr_name || (editMode ? '<Select M.R.>' : ''))}</button>
+                </span>
               </div>
               <div class="lf-right" style="min-width:280px">
                 <span class="lf-sub">Del.Man &nbsp;:</span>
@@ -665,6 +823,47 @@ export function modifyLedgerScreen(existing: Ledger): Promise<Ledger | null> {
         const inpName = w.body.querySelector('[data-k="name"]') as HTMLInputElement | null;
         inpName?.focus();
         inpName?.select();
+
+        const grpBtn = w.body.querySelector('.lf-grp-btn') as HTMLElement | null;
+        const mrBtn = w.body.querySelector('.lf-mr-btn') as HTMLButtonElement | null;
+        const mrSelect = w.body.querySelector('[data-k="mr_on"]') as HTMLSelectElement | null;
+
+        const pickMRModAction = async () => {
+          if (!editMode) return;
+          const chosen = await pickSalesmanPopup(v.mr_id, v.mr_name);
+          if (chosen) {
+            v.mr_id = String(chosen.id);
+            v.mr_name = chosen.name;
+            v.mr_on = 'Yes';
+            if (mrSelect) mrSelect.value = 'Yes';
+            if (mrBtn) {
+              mrBtn.textContent = chosen.name;
+              mrBtn.style.display = '';
+            }
+          }
+        };
+
+        const pickGrpModAction = async () => {
+          if (!editMode) return;
+          const g = await pickUnderGroup(groups, Number(v.group_id));
+          if (g) {
+            v.group_id = String(g.id);
+            if (grpBtn) grpBtn.textContent = g.name.toUpperCase();
+          }
+        };
+
+        grpBtn?.addEventListener('click', () => { pickGrpModAction(); });
+        mrBtn?.addEventListener('click', () => { pickMRModAction(); });
+        mrSelect?.addEventListener('change', () => {
+          if (mrSelect.value === 'No') {
+            v.mr_on = 'No';
+            if (mrBtn) mrBtn.style.display = 'none';
+          } else {
+            v.mr_on = 'Yes';
+            if (mrBtn) mrBtn.style.display = '';
+            if (!v.mr_name) pickMRModAction();
+          }
+        });
       }
     };
 
@@ -675,10 +874,13 @@ export function modifyLedgerScreen(existing: Ledger): Promise<Ledger | null> {
       if (!(await confirmBox('Save Changes ?'))) return;
 
       const out: Record<string, string> = {};
-      for (const el of w.body.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-k]:not(.lf-grp-btn)')) {
+      for (const el of w.body.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-k]:not(.lf-grp-btn):not(.lf-mr-btn)')) {
         out[el.dataset.k!] = el.value.trim();
       }
       out.group_id = v.group_id;
+      out.mr_on = v.mr_on;
+      out.mr_name = v.mr_name || '';
+      out.mr_id = v.mr_id || '';
 
       const fullAddress = [out.address1, out.address2, out.address3].filter(Boolean).join('\n');
       const phone = out.mobile || out.phone_off1 || out.phone_off2 || out.phone_res || '';
@@ -696,7 +898,7 @@ export function modifyLedgerScreen(existing: Ledger): Promise<Ledger | null> {
         credit_limit: cur.credit_limit ?? 0,
       };
 
-      const details: Record<string, string> = { ...det, ...out };
+      const details: Record<string, string> = { ...det, ...out, mr_on: v.mr_on, mr_name: v.mr_name || '', mr_id: v.mr_id || '' };
       body.details = details;
 
       try {
@@ -747,22 +949,59 @@ export function modifyLedgerScreen(existing: Ledger): Promise<Ledger | null> {
         return true;
       }
 
-      const inputs = [...w.body.querySelectorAll('input:not([readonly]), select, .lf-grp-btn')] as HTMLElement[];
-      const i = inputs.indexOf(t);
+      const grpBtn = w.body.querySelector('.lf-grp-btn') as HTMLElement | null;
+      const mrBtn = w.body.querySelector('.lf-mr-btn') as HTMLButtonElement | null;
+      const mrSelect = w.body.querySelector('[data-k="mr_on"]') as HTMLSelectElement | null;
+
+      const pickMRModAction = async () => {
+        const chosen = await pickSalesmanPopup(v.mr_id, v.mr_name);
+        if (chosen) {
+          v.mr_id = String(chosen.id);
+          v.mr_name = chosen.name;
+          v.mr_on = 'Yes';
+          if (mrSelect) mrSelect.value = 'Yes';
+          if (mrBtn) {
+            mrBtn.textContent = chosen.name;
+            mrBtn.style.display = '';
+          }
+        }
+      };
+
+      if (t === mrBtn && (k === 'Enter' || k === 'Space')) {
+        pickMRModAction();
+        return true;
+      }
+      if (t === grpBtn && (k === 'Enter' || k === 'Space')) {
+        pickUnderGroup(groups, Number(v.group_id)).then((g) => {
+          if (g) {
+            v.group_id = String(g.id);
+            if (grpBtn) grpBtn.textContent = g.name.toUpperCase();
+          }
+        });
+        return true;
+      }
+      if (t === mrSelect && k === 'Enter' && mrSelect?.value === 'Yes' && !v.mr_name) {
+        pickMRModAction();
+        return true;
+      }
+
+      const visibleInputs = [...w.body.querySelectorAll('input:not([readonly]), select, .lf-grp-btn, .lf-mr-btn')]
+        .filter((el) => (el as HTMLElement).style.display !== 'none') as HTMLElement[];
+      const i = visibleInputs.indexOf(t);
       if (i >= 0) {
         const isSel = t.tagName === 'SELECT';
         if (k === 'Enter' || k === 'Tab' || (k === 'ArrowDown' && !isSel)) {
-          if (i === inputs.length - 1) {
+          if (i === visibleInputs.length - 1) {
             saveChanges();
           } else {
-            const n = inputs[i + 1];
+            const n = visibleInputs[i + 1];
             n.focus();
             if (n instanceof HTMLInputElement) n.select();
           }
           return true;
         }
         if (k === 'ArrowUp' && !isSel && i > 0) {
-          const n = inputs[i - 1];
+          const n = visibleInputs[i - 1];
           n.focus();
           if (n instanceof HTMLInputElement) n.select();
           return true;
@@ -835,6 +1074,8 @@ export function deleteLedgerScreen(existing: Ledger): Promise<boolean> {
       bill_export_pas: det.bill_export_pas ?? '',
       retailio_id: det.retailio_id ?? '',
       mr_on: det.mr_on ?? 'Yes',
+      mr_name: det.mr_name ?? '',
+      mr_id: det.mr_id ?? '',
       del_man_on: det.del_man_on ?? 'Yes',
       area_on: det.area_on ?? 'Yes',
       route_on: det.route_on ?? 'Yes',
@@ -1055,7 +1296,10 @@ export function deleteLedgerScreen(existing: Ledger): Promise<boolean> {
             <div class="lf-row split">
               <div class="lf-left">
                 <span class="lf-l">M.R.</span><span class="lf-c">:</span>
-                <span class="lf-v">${sel('mr_on', ['Yes', 'No'], '60px')}</span>
+                <span class="lf-v">
+                  ${sel('mr_on', ['Yes', 'No'], '60px')}
+                  <span class="lf-mr-disp">${esc(v.mr_name || '')}</span>
+                </span>
               </div>
               <div class="lf-right" style="min-width:280px">
                 <span class="lf-sub">Del.Man &nbsp;:</span>
@@ -1270,6 +1514,8 @@ export function ledgerScreen(existing?: Partial<Ledger> & { details?: string }, 
       bill_export_pas: det.bill_export_pas ?? '',
       retailio_id: det.retailio_id ?? '',
       mr_on: det.mr_on ?? 'Yes',
+      mr_name: det.mr_name ?? '',
+      mr_id: det.mr_id ?? '',
       del_man_on: det.del_man_on ?? 'Yes',
       area_on: det.area_on ?? 'Yes',
       route_on: det.route_on ?? 'Yes',
@@ -1480,7 +1726,10 @@ export function ledgerScreen(existing?: Partial<Ledger> & { details?: string }, 
         <div class="lf-row split">
           <div class="lf-left">
             <span class="lf-l">M.R.</span><span class="lf-c">:</span>
-            <span class="lf-v">${sel('mr_on', ['Yes', 'No'], '60px')}</span>
+            <span class="lf-v">
+              ${sel('mr_on', ['Yes', 'No'], '60px')}
+              <button type="button" class="lf-mr-btn" data-k="mr_name" tabindex="0" style="${v.mr_on === 'No' ? 'display:none;' : ''}">${esc(v.mr_name || '<Select M.R.>')}</button>
+            </span>
           </div>
           <div class="lf-right" style="min-width:280px">
             <span class="lf-sub">Del.Man &nbsp;:</span>
@@ -1568,7 +1817,7 @@ export function ledgerScreen(existing?: Partial<Ledger> & { details?: string }, 
     w.body.append(margBar(title));
     w.body.append(screen);
 
-    const inputs = [...w.body.querySelectorAll('input:not([readonly]), select, .lf-grp-btn, .cl-btn')] as (HTMLInputElement | HTMLSelectElement | HTMLButtonElement)[];
+    const inputs = [...w.body.querySelectorAll('input:not([readonly]), select, .lf-grp-btn, .lf-mr-btn, .cl-btn')] as (HTMLInputElement | HTMLSelectElement | HTMLButtonElement)[];
     const byKey = (k: string) => w.body.querySelector(`[data-k="${k}"]`) as HTMLInputElement | HTMLSelectElement | HTMLButtonElement;
 
     const btnSave = w.body.querySelector('.act-save') as HTMLButtonElement | null;
@@ -1638,24 +1887,65 @@ export function ledgerScreen(existing?: Partial<Ledger> & { details?: string }, 
         if (grpBtn) grpBtn.textContent = g.name.toUpperCase();
         dirty = true;
       }
-      const idx = inputs.indexOf(byKey('group_id'));
-      if (idx >= 0 && idx < inputs.length - 1) {
-        inputs[idx + 1].focus();
+      const visibleInputs = [...w.body.querySelectorAll('input:not([readonly]), select, .lf-grp-btn, .lf-mr-btn, .cl-btn')].filter((el) => (el as HTMLElement).style.display !== 'none') as (HTMLInputElement | HTMLSelectElement | HTMLButtonElement)[];
+      const idx = visibleInputs.indexOf(byKey('group_id'));
+      if (idx >= 0 && idx < visibleInputs.length - 1) {
+        visibleInputs[idx + 1].focus();
       }
     };
 
     const grpBtn = w.body.querySelector('.lf-grp-btn') as HTMLElement | null;
     grpBtn?.addEventListener('click', () => { pickGroupAction(); });
 
+    const mrBtn = w.body.querySelector('.lf-mr-btn') as HTMLButtonElement | null;
+    const mrSelect = byKey('mr_on') as HTMLSelectElement | null;
+
+    const pickMRAction = async (initialFilter = '') => {
+      const chosen = await pickSalesmanPopup(v.mr_id, v.mr_name, initialFilter);
+      if (chosen) {
+        v.mr_id = String(chosen.id);
+        v.mr_name = chosen.name;
+        v.mr_on = 'Yes';
+        if (mrSelect) mrSelect.value = 'Yes';
+        if (mrBtn) {
+          mrBtn.textContent = chosen.name;
+          mrBtn.style.display = '';
+        }
+        dirty = true;
+      }
+      const visibleInputs = [...w.body.querySelectorAll('input:not([readonly]), select, .lf-grp-btn, .lf-mr-btn, .cl-btn')].filter((el) => (el as HTMLElement).style.display !== 'none') as (HTMLInputElement | HTMLSelectElement | HTMLButtonElement)[];
+      const idx = visibleInputs.indexOf(mrBtn as any);
+      if (idx >= 0 && idx < visibleInputs.length - 1) {
+        visibleInputs[idx + 1].focus();
+      }
+    };
+
+    mrBtn?.addEventListener('click', () => { pickMRAction(); });
+
+    mrSelect?.addEventListener('change', () => {
+      if (mrSelect.value === 'No') {
+        v.mr_on = 'No';
+        if (mrBtn) mrBtn.style.display = 'none';
+      } else {
+        v.mr_on = 'Yes';
+        if (mrBtn) mrBtn.style.display = '';
+        if (!v.mr_name) pickMRAction();
+      }
+      dirty = true;
+    });
+
     const save = async () => {
       const name = (byKey('name') as HTMLInputElement).value.trim();
       if (!name) { toast('Enter the Ledger name', true); byKey('name').focus(); return; }
 
       const out: Record<string, string> = {};
-      for (const el of w.body.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-k]:not(.lf-grp-btn)')) {
+      for (const el of w.body.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-k]:not(.lf-grp-btn):not(.lf-mr-btn)')) {
         out[el.dataset.k!] = el.value.trim();
       }
       out.group_id = v.group_id;
+      out.mr_on = v.mr_on;
+      out.mr_name = v.mr_name || '';
+      out.mr_id = v.mr_id || '';
 
       // In Marg: if GSTIN is not entered, shift to UNREGISTERED
       const isUnreg = !out.gstin && out.ledger_type !== 'COMPOSITION';
@@ -1677,7 +1967,7 @@ export function ledgerScreen(existing?: Partial<Ledger> & { details?: string }, 
         credit_limit: existing?.credit_limit ?? 0,
       };
 
-      const details: Record<string, string> = { ...det, ...out };
+      const details: Record<string, string> = { ...det, ...out, mr_on: v.mr_on, mr_name: v.mr_name || '', mr_id: v.mr_id || '' };
       body.details = details;
 
       try {
@@ -1710,6 +2000,16 @@ export function ledgerScreen(existing?: Partial<Ledger> & { details?: string }, 
         return true;
       }
 
+      if (t === mrBtn && (k === 'Enter' || k === 'Space')) {
+        pickMRAction();
+        return true;
+      }
+
+      if (t === mrSelect && k === 'Enter' && mrSelect.value === 'Yes' && !v.mr_name) {
+        pickMRAction();
+        return true;
+      }
+
       if (t === btnSave) {
         if (k === 'Enter' || k === 'Space') { save(); return true; }
         if (k === 'ArrowRight' || k === 'Tab') { btnCancel?.focus(); return true; }
@@ -1736,13 +2036,15 @@ export function ledgerScreen(existing?: Partial<Ledger> & { details?: string }, 
         return false;
       }
 
-      const i = inputs.indexOf(t as any);
+      const visibleInputs = [...w.body.querySelectorAll('input:not([readonly]), select, .lf-grp-btn, .lf-mr-btn, .cl-btn')]
+        .filter((el) => (el as HTMLElement).style.display !== 'none') as (HTMLInputElement | HTMLSelectElement | HTMLButtonElement)[];
+      const i = visibleInputs.indexOf(t as any);
       if (i < 0) return false;
       const isSel = t.tagName === 'SELECT';
 
       if (k === 'Enter' || k === 'Tab' || (k === 'ArrowDown' && !isSel)) {
-        if (i < inputs.length - 1) {
-          const n = inputs[i + 1];
+        if (i < visibleInputs.length - 1) {
+          const n = visibleInputs[i + 1];
           n.focus();
           if (n instanceof HTMLInputElement) n.select();
           if (n === btnSave || n === btnCancel) {
@@ -1753,7 +2055,7 @@ export function ledgerScreen(existing?: Partial<Ledger> & { details?: string }, 
       }
 
       if (k === 'ArrowUp' && !isSel && i > 0) {
-        const n = inputs[i - 1];
+        const n = visibleInputs[i - 1];
         n.focus();
         if (n instanceof HTMLInputElement) n.select();
         return true;

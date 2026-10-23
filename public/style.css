@@ -775,8 +775,10 @@ table.marg-grid tr.sel td input::placeholder { color: rgba(255, 255, 255, .78); 
 .win.marg.marg-ledger-screen input:focus { background: #1e4a2c !important; color: #ffffff !important; outline: none !important; }
 .win.marg.marg-ledger-screen select { font-family: Tahoma, "Segoe UI", sans-serif; font-size: 12px; background: #fff; color: #000; border: 1px solid #777; height: 21px; padding: 0 2px; margin: 0 4px; }
 .win.marg.marg-ledger-screen select:focus { background: #1e4a2c !important; color: #ffffff !important; outline: none !important; }
-.lf-grp-btn { font-family: "Courier New", Consolas, monospace; font-weight: bold; font-size: 17px; color: #000; background: transparent; border: 1px dotted #777; padding: 1px 8px; cursor: pointer; text-align: left; margin-left: 6px; }
-.lf-grp-btn:focus { background: #1e4a2c !important; color: #ffffff !important; outline: none !important; }
+.lf-grp-btn, .lf-mr-btn { font-family: "Courier New", Consolas, monospace; font-weight: bold; font-size: 17px; color: #000; background: transparent; border: 1px dotted #777; padding: 1px 8px; cursor: pointer; text-align: left; margin-left: 6px; }
+.lf-grp-btn:focus, .lf-mr-btn:focus { background: #1e4a2c !important; color: #ffffff !important; outline: none !important; }
+.lf-mr-btn { min-width: 140px; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
+.lf-mr-disp { font-family: "Courier New", Consolas, monospace; font-weight: bold; font-size: 17px; color: #000; margin-left: 6px; }
 
 /* UNDER GROUP POPUP */
 .win.marg.marg-undergroup { width: 560px !important; border: 2px solid #1e4a2c !important; box-shadow: 0 8px 24px rgba(0,0,0,0.5) !important; z-index: 1000 !important; }

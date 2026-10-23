@@ -51,10 +51,9 @@ async function billHtml(id: number) {
   const p = await api<Ledger>(`/ledgers/${b.party_id}`).catch(() => ({} as Ledger));
   let salesmen: any[] = [];
   try { salesmen = await api('/salesmen'); } catch { /* ignore */ }
-  const mrName = b.mr_id ? (salesmen.find((s: any) => s.id === b.mr_id)?.name || '') : (b.mr_name || 'GOLU DAU');
-
   const pDet = JSON.parse(p.details || '{}') as Record<string, string>;
   const cDet = JSON.parse(c.details || '{}') as Record<string, string>;
+  const mrName = b.mr_id ? (salesmen.find((s: any) => s.id === b.mr_id)?.name || '') : (b.mr_name || pDet.mr_name || 'GOLU DAU');
 
   const companyName = (c.name || 'TAMRAKAR AGRO BORI').toUpperCase();
   const companyAddress = (c.address1 || 'BAZAR CHOWK BORI').toUpperCase();
