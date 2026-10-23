@@ -695,30 +695,7 @@ table.marg-grid tr.sel td input::placeholder { color: rgba(255, 255, 255, .78); 
 #ctxmenu .ctx-item { padding: 5px 16px; cursor: default; white-space: nowrap; color: #111; }
 #ctxmenu .ctx-item:hover { background: var(--menu-hi); color: #fff; }
 
-/* ---------- COMPANY CREATION / ALTERATION (F2 / F3 on LIST OF COMPANIES) */
-.win.marg.marg-coform { border: 2px solid #555; }
-.win.marg.marg-coform .win-body { display: flex; background: #f1f7ea; }
-.marg-coform .cf-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-.marg-coform .marg-bar { font-size: 17px; padding: 4px 12px; }
-.marg-coform .cf-grid { flex: 1; overflow: auto; padding: 4px 26px; }
-.marg-coform .cf-row { display: grid; grid-template-columns: 210px 30px minmax(0, 1fr) 145px 20px minmax(0, 260px); align-items: center; min-height: 23px; }
-.marg-coform .cf-l, .marg-coform .cf-c { font-family: "Courier New", Courier, monospace; font-weight: bold; font-size: 19px; color: var(--marg-lbl); letter-spacing: .5px; white-space: nowrap; }
-.marg-coform .cf-c { text-align: right; padding-right: 6px; }
-.marg-coform .cf-val { min-width: 0; }
-.win.marg.marg-coform .cf-val input { font-family: "Courier New", Courier, monospace; font-weight: bold; font-size: 18px; color: #1d2f4f; width: 100%; padding: 0 4px; }
-.win.marg.marg-coform .cf-val input.cf-date { width: 150px; }
-.win.marg.marg-coform .cf-val input:focus { background: #1c4f9c; color: #fff; }
-.win.marg.marg-coform .cf-val select { font-family: Segoe UI, Tahoma, sans-serif; font-size: 14px; background: #fff; color: #000; border: 1px solid #888; height: 21px; max-width: 100%; }
-.win.marg.marg-coform .cf-val select:focus { background: #1c4f9c; color: #fff; }
-.marg-coform .cf-fy { display: inline-flex; align-items: center; font-family: "Courier New", monospace; font-weight: bold; font-size: 20px; color: #000; }
-.win.marg.marg-coform .cf-fy input { width: 140px; font-size: 20px; color: #000; }
-.marg-coform .cf-ro { font-family: "Courier New", monospace; font-weight: bold; font-size: 19px; color: #1d2f4f; padding: 0 4px; }
-.marg-coform .cf-states { width: 240px; border-left: 1px solid #999; display: flex; flex-direction: column; background: #fff; }
-.marg-coform .cf-states-head { background: var(--marg-bar); color: #fff; font-family: "Courier New", monospace; font-size: 13px; padding: 5px 8px; }
-.marg-coform .cf-states-list { flex: 1; overflow: auto; font-family: "Courier New", monospace; font-size: 12px; }
-.marg-coform .cf-states-list div { padding: 0 6px; line-height: 15px; cursor: default; white-space: nowrap; }
-.marg-coform .cf-states-list div:nth-child(even) { background: #eeeeee; }
-.marg-coform .cf-states-list div.sel { background: #1c4f9c; color: #fff; }
+/* ---------- COMPANY CREATION / ALTERATION (see unified MARG COMPANY CREATION section below) */
 
 /* ---------- NEW PRODUCT / MODIFY PRODUCT (F2 / F3 on the item list) */
 .win.marg.marg-prod { max-width: calc(100vw - 20px); }
