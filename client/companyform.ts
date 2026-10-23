@@ -3,6 +3,7 @@
 // "Save ?" after the last one.
 import { api, esc, h, toast, confirmBox, openWin, triggerEsc } from './ui.ts';
 import { margBar } from './margui.ts';
+import { session } from './session.ts';
 
 export interface CompanyRec {
   id: number; name: string; station: string; address1: string; address2: string; gstin: string; state: string;
@@ -102,11 +103,24 @@ export function companyScreen(c?: CompanyRec): Promise<number | null> {
     const w = openWin(isNew ? 'COMPANY CREATION' : 'COMPANY ALTERATION', 'full');
     w.el.classList.add('marg', 'marg-coform');
     w.setFoot(
-      `<span class="help-badge">HELP</span>` +
-      `<span><b>F8/Enter</b>-Select</span><span><b>F2/Ctrl+W</b>-Save</span><span><b>Esc</b>-Exit</span>` +
-      `<div class="cf-foot-actions" style="margin-left:auto;display:flex;gap:10px">` +
-        `<button type="button" class="cf-btn-save">Save</button>` +
-        `<button type="button" class="cf-btn-cancel">Cancel</button>` +
+      `<div class="cf-foot-wrap">` +
+        `<div class="cf-foot-keys">` +
+          `<span class="cf-help-badge">HELP</span>` +
+          `<span><b>F8/Enter</b>-Select</span>` +
+          `<span><b>F2</b>-New</span>` +
+          `<span><b>F3</b>-Edit</span>` +
+          `<span><b>F5</b>-Index</span>` +
+          `<span><b>Ctrl+W</b>-Save</span>` +
+          `<span><b>Esc</b>-Exit</span>` +
+          `<div class="cf-foot-actions" style="margin-left:auto;display:flex;gap:10px">` +
+            `<button type="button" class="cf-btn-save">Save</button>` +
+            `<button type="button" class="cf-btn-cancel">Cancel</button>` +
+          `</div>` +
+        `</div>` +
+        `<div class="cf-foot-sub">` +
+          `<span>Authorised MARG MASTER PARTNER</span>` +
+          `<span>Authorised User : <b>${esc(session()?.name || 'SUPERADMIN')}</b></span>` +
+        `</div>` +
       `</div>`
     );
 
