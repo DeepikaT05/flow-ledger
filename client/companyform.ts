@@ -1,7 +1,7 @@
 // LIST OF COMPANIES → F2 COMPANY CREATION / F3 COMPANY ALTERATION, laid out as in MARG:
 // two columns of fields, the State Code's list on the right, Enter / ↓ to the next field,
 // "Save ?" after the last one.
-import { api, esc, h, toast, confirmBox, openWin } from './ui.ts';
+import { api, esc, h, toast, confirmBox, openWin, triggerEsc } from './ui.ts';
 import { margBar } from './margui.ts';
 
 export interface CompanyRec {
@@ -71,63 +71,79 @@ export function companyScreen(c?: CompanyRec): Promise<number | null> {
     };
     if (c && !det.style_alt) v.style_alt = v.style === STYLES_NEW[0] ? STYLES_ALT[0] : `${v.selection || 'Self'}-Secondary`;
 
-    // [left field, right field] per row, top to bottom — the Enter order.
+    // [left field, right field] per row, top to bottom — matching Marg screenshot
     const L = (k: string, label: string, o: Partial<F> = {}): F => ({ k, label, ...o });
     const rows: [F | null, F | null][] = [
-      [L('name', 'Company Name', { star: true, upper: true }), null],
-      [L('address1', 'Address', { star: true }), null],
-      [L('address2', '', { star: true }), null],
-      [L('address3', '', { star: true }), null],
-      [L('phone', 'Phone No.', { star: true }), null],
-      [L('branch', 'Branch Code', { star: true, upper: true, w: '220px' }), null],
-      [L('fax', 'Fax No.'), null],
-      [L('website', 'Website'), null],
-      [L('email', 'E-Mail'), null],
-      [L('country', 'Country', { opts: COUNTRIES, w: '175px' }), L('state', 'State')],
+      [L('name', 'Company Name', { star: true, upper: true, w: '620px' }), null],
+      [L('address1', 'Address', { star: true, w: '620px' }), null],
+      [L('address2', '', { star: true, w: '620px' }), null],
+      [L('address3', '', { star: true, w: '620px' }), null],
+      [L('phone', 'Phone No.', { star: true, w: '240px' }), null],
+      [L('branch', 'Branch Code', { star: true, upper: true, w: '200px' }), null],
+      [L('fax', 'Fax No.', { w: '240px' }), null],
+      [L('website', 'Website', { w: '380px' }), null],
+      [L('email', 'E-Mail', { w: '380px' }), null],
+      [L('country', 'Country', { opts: COUNTRIES, w: '145px' }), L('state', 'State', { w: '220px' })],
       ...(isNew
-        ? [[L('business', 'Business Type', { opts: BUSINESS_TYPES, w: '400px' }), L('date_type', 'Date Type', { opts: DATE_TYPES, w: '200px' })],
-           [L('style', 'Working Style', { opts: STYLES_NEW, w: '400px' }), L('selection', 'Selection', { opts: SELECTIONS, w: '160px' })]] as [F, F][]
-        : [[L('style_alt', 'Working Style', { opts: STYLES_ALT, w: '210px' }), L('date_type', 'Date Type', { opts: DATE_TYPES, w: '150px' })]] as [F, F][]),
-      [L('gstin', 'GSTIN', { upper: true }), L('gst_date', isNew ? 'Exp.Date' : 'Date', { date: true })],
-      ...LICENCES.map(([k, label]) => [L(k, label, { upper: true }), L(`${k}_exp`, 'Exp.Date', { date: true })] as [F, F]),
-      [L('jurisdiction', 'Jurisdiction', { upper: true }), L('co_type', 'Company', { opts: CO_TYPES, w: '120px' })],
+        ? [[L('business', 'Business Type', { opts: BUSINESS_TYPES, w: '340px' }), L('date_type', 'Date Type', { opts: DATE_TYPES, w: '160px' })],
+           [L('style', 'Working Style', { opts: STYLES_NEW, w: '340px' }), L('selection', 'Selection', { opts: SELECTIONS, w: '130px' })]] as [F, F][]
+        : [[L('style_alt', 'Working Style', { opts: STYLES_ALT, w: '240px' }), L('date_type', 'Date Type', { opts: DATE_TYPES, w: '160px' })]] as [F, F][]),
+      [L('gstin', 'GSTIN', { upper: true, w: '240px' }), L('gst_date', isNew ? 'Exp.Date' : 'Date', { date: true, w: '130px' })],
+      ...LICENCES.map(([k, label]) => [L(k, label, { upper: true, w: '240px' }), L(`${k}_exp`, 'Exp.Date', { date: true, w: '130px' })] as [F, F]),
+      [L('jurisdiction', 'Jurisdiction', { upper: true, w: '240px' }), L('co_type', 'Company', { opts: CO_TYPES, w: '130px' })],
       ...(isNew
-        ? [[L('tax_structure', 'Tax Structure', { opts: TAX_STRUCT, w: '400px' }), L('stock_value', 'Valuation', { opts: STOCK_VALUE, w: '160px' })]] as [F, F][]
-        : [[L('tax_structure', 'Tax Structure', { opts: TAX_STRUCT, w: '210px' }), L('inventory', 'Inventory', { opts: ['Yes', 'No'], w: '58px' })],
-           [L('stock_value', 'Stock Value', { opts: STOCK_VALUE, w: '210px' }), null]] as [F, F | null][]),
-      [L('fy', isNew ? 'Financial Year' : 'Current F.Year'), null],
-      [L('datadir', 'Data Directory', { ro: true }), L('password', 'Password', { pass: true })],
+        ? [[L('tax_structure', 'Tax Structure', { opts: TAX_STRUCT, w: '340px' }), L('stock_value', 'Valuation', { opts: STOCK_VALUE, w: '140px' })]] as [F, F][]
+        : [[L('tax_structure', 'Tax Structure', { opts: TAX_STRUCT, w: '240px' }), L('inventory', 'Inventory', { opts: ['Yes', 'No'], w: '58px' })],
+           [L('stock_value', 'Stock Value', { opts: STOCK_VALUE, w: '240px' }), null]] as [F, F | null][]),
+      [L('fy', isNew ? 'Financial Year' : 'Current F.Year'), L('password', 'Password', { pass: true, w: '160px' })],
+      [L('datadir', 'Data Directory', { ro: true }), null],
     ];
 
     const w = openWin(isNew ? 'COMPANY CREATION' : 'COMPANY ALTERATION', 'full');
     w.el.classList.add('marg', 'marg-coform');
-    w.setFoot('');
+    w.setFoot(
+      `<span class="help-badge">HELP</span>` +
+      `<span><b>F8/Enter</b>-Select</span><span><b>F2/Ctrl+W</b>-Save</span><span><b>Esc</b>-Exit</span>` +
+      `<div class="cf-foot-actions" style="margin-left:auto;display:flex;gap:10px">` +
+        `<button type="button" class="cf-btn-save">Save</button>` +
+        `<button type="button" class="cf-btn-cancel">Cancel</button>` +
+      `</div>`
+    );
+
     const main = h('div', { class: 'cf-main' });
     main.append(margBar(isNew ? 'COMPANY CREATION' : 'COMPANY ALTERATION'));
     const grid = h('div', { class: 'cf-grid' });
     main.append(grid);
     const side = h('div', { class: 'cf-states' });
     side.innerHTML = `<div class="cf-states-head">State Code's</div><div class="cf-states-list">${STATE_CODES.map(([code, n]) =>
-      `<div data-s="${esc(n)}">${n ? `${code}-${esc(n)}` : '&nbsp;'}</div>`).join('')}</div>`;
+      `<div data-s="${esc(n)}" class="${n === v.state ? 'sel' : ''}">${n ? `${code}-${esc(n)}` : '&nbsp;'}</div>`).join('')}</div>`;
     w.body.append(main, side);
 
+    const padLabel = (txt: string, len = 14) => txt.padEnd(len, ' ');
     const cell = (f: F | null, right: boolean) => {
-      if (!f) return '<div></div><div></div><div></div>';
-      const lbl = `<div class="cf-l${right ? ' r' : ''}">${esc(f.label)}</div><div class="cf-c">${f.star ? '*' : ''}:</div>`;
+      if (!f) return '<div class="cf-cell right empty"></div>';
+      const labelText = padLabel(f.label, 14);
+      const star = f.star ? '*' : ' ';
+      const lbl = `<span class="cf-l">${esc(labelText)}</span><span class="cf-star">${star}</span><span class="cf-c">:</span>`;
       let val: string;
       if (f.k === 'fy') {
-        val = `<span class="cf-v cf-fy"><input data-k="fy_from" value="${esc(v.fy_from)}" ${isNew ? '' : 'readonly tabindex="-1"'}>-<input data-k="fy_to" value="${esc(v.fy_to)}" ${isNew ? '' : 'readonly tabindex="-1"'}></span>`;
+        val = `<span class="cf-v cf-fy"><input data-k="fy_from" value="${esc(v.fy_from)}" class="cf-txt" style="width:125px"${isNew ? '' : ' readonly tabindex="-1"'}> -<input data-k="fy_to" value="${esc(v.fy_to)}" class="cf-txt" style="width:125px"${isNew ? '' : ' readonly tabindex="-1"'}></span>`;
       } else if (f.k === 'datadir') {
         val = '<span class="cf-v cf-ro">data</span>';
       } else if (f.opts) {
-        val = `<select data-k="${f.k}" style="width:${f.w}">${f.opts.map((o) => `<option${o === v[f.k] ? ' selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
+        val = `<select data-k="${f.k}" class="cf-sel" style="width:${f.w || 'auto'}">${f.opts.map((o) => `<option${o === v[f.k] ? ' selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
       } else {
         const shown = f.k === 'state' ? stateLabel(v.state ?? '') : (v[f.k] ?? '');
-        val = `<input data-k="${f.k}" class="cf-v${f.date ? ' cf-date' : ''}" ${f.pass ? 'type="password"' : ''} value="${esc(shown)}" autocomplete="off" spellcheck="false"${f.w ? ` style="width:${f.w}"` : ''}>`;
+        const defW = right ? '140px' : (f.star && (f.k === 'name' || f.k.startsWith('address')) ? '620px' : (f.w || '240px'));
+        val = `<input data-k="${f.k}" class="cf-txt${f.date ? ' cf-date' : ''}" ${f.pass ? 'type="password"' : ''} value="${esc(shown)}" autocomplete="off" spellcheck="false" style="width:${f.w || defW}">`;
       }
-      return `${lbl}<div class="cf-val">${val}</div>`;
+      return `<div class="cf-cell ${right ? 'right' : 'left'}">${lbl}<div class="cf-val">${val}</div></div>`;
     };
-    grid.innerHTML = rows.map(([a, b]) => `<div class="cf-row">${cell(a, false)}${cell(b, true)}</div>`).join('');
+
+    grid.innerHTML = rows.map(([a, b]) => {
+      if (!b) return `<div class="cf-row full">${cell(a, false)}</div>`;
+      return `<div class="cf-row split">${cell(a, false)}${cell(b, true)}</div>`;
+    }).join('');
 
     const inputs = [...grid.querySelectorAll('input:not([readonly]), select')] as (HTMLInputElement | HTMLSelectElement)[];
     const live = () => inputs.filter((el) => !el.disabled);
@@ -138,7 +154,7 @@ export function companyScreen(c?: CompanyRec): Promise<number | null> {
     const syncSel = () => { if (styleSel && selSel) selSel.disabled = styleSel.value === STYLES_NEW[0]; };
     styleSel?.addEventListener('change', syncSel);
     for (const f of rows.flat()) {
-      if (f?.upper) { const el = byKey(f.k) as HTMLInputElement; el.addEventListener('input', () => { const p = el.selectionStart; el.value = el.value.toUpperCase(); el.setSelectionRange(p, p); }); }
+      if (f?.upper) { const el = byKey(f.k) as HTMLInputElement; el?.addEventListener('input', () => { const p = el.selectionStart; el.value = el.value.toUpperCase(); el.setSelectionRange(p, p); }); }
     }
     const stateI = byKey('state') as HTMLInputElement;
     const pickState = (name: string) => {
@@ -150,7 +166,18 @@ export function companyScreen(c?: CompanyRec): Promise<number | null> {
       side.querySelectorAll('[data-s]').forEach((d) => d.classList.toggle('sel', (d as HTMLElement).dataset.s === name));
     };
     pickState(v.state ?? '');
-    stateI.addEventListener('focus', () => { stateI.value = stateCode(v.state) || v.state; stateI.select(); });
+    stateI.addEventListener('focus', () => {
+      stateI.value = stateCode(v.state) || v.state;
+      stateI.select();
+      side.querySelector(`[data-s="${CSS.escape(v.state)}"]`)?.scrollIntoView({ block: 'nearest' });
+    });
+    stateI.addEventListener('input', () => {
+      const s = findState(stateI.value);
+      if (s) {
+        side.querySelectorAll('[data-s]').forEach((d) => d.classList.toggle('sel', (d as HTMLElement).dataset.s === s));
+        side.querySelector('[data-s].sel')?.scrollIntoView({ block: 'nearest' });
+      }
+    });
     const commitState = () => {
       const s = findState(stateI.value);
       if (s === null) { toast('Enter a State Code from the list on the right', true); return false; }
@@ -171,6 +198,11 @@ export function companyScreen(c?: CompanyRec): Promise<number | null> {
 
     let done = false;
     const finish = (id: number | null) => { if (done) return; done = true; w.close(); resolve(id); };
+
+    const btnSave = w.el.querySelector('.cf-btn-save');
+    const btnCancel = w.el.querySelector('.cf-btn-cancel');
+    btnSave?.addEventListener('click', (e) => { e.preventDefault(); save(); });
+    btnCancel?.addEventListener('click', (e) => { e.preventDefault(); triggerEsc(w); });
 
     const collect = () => {
       const out: Record<string, string> = {};

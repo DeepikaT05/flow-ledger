@@ -7,6 +7,7 @@ export interface Item { id: number; name: string; company: string; unit: string;
 interface Group { id: number; name: string; nature: string }
 
 import { ledgerScreen } from './ledgerform.ts';
+import { companyScreen } from './companyform.ts';
 
 // ------------------------------------------------------------------ ledgers
 export async function ledgerForm(existing?: Partial<Ledger>, defaultGroup?: string): Promise<Ledger | null> {
@@ -176,16 +177,8 @@ export async function itemRegister(item?: Item) {
 // ------------------------------------------------------------------ misc masters
 export async function companyForm() {
   const c = await api('/company');
-  await formWin('Company Profile (F1)', [
-    { name: 'name', label: 'Company Name', required: true, upper: true },
-    { name: 'address1', label: 'Address 1', upper: true },
-    { name: 'address2', label: 'Address 2', upper: true },
-    { name: 'gstin', label: 'GSTIN', upper: true },
-    { name: 'state', label: 'State' },
-    { name: 'phone', label: 'Phone' },
-    { name: 'email', label: 'E-Mail' },
-  ], c, (v) => api('/company', { method: 'PUT', body: v }));
-  document.dispatchEvent(new Event('company-changed'));
+  const res = await companyScreen(c);
+  if (res) document.dispatchEvent(new Event('company-changed'));
 }
 
 export async function partyGstList() {
