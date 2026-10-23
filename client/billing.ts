@@ -143,7 +143,7 @@ async function billHtml(id: number) {
     <rect x="22" y="26" width="2" height="2" fill="#000"/><rect x="25" y="27" width="3" height="2" fill="#000"/><rect x="29" y="26" width="2" height="3" fill="#000"/>
   </svg>`;
 
-  const minRows = 5;
+  const minRows = 8;
   const fillerCount = Math.max(0, minRows - b.lines.length);
 
   const html = `
@@ -182,17 +182,17 @@ async function billHtml(id: number) {
         <table class="inv-tbl">
           <thead>
             <tr>
-              <th style="width:26px">SN.</th>
-              <th style="width:36%;text-align:left">PRODUCT NAME &amp; PACKING</th>
-              <th style="width:8%">BATCH</th>
+              <th style="width:20px">SN.</th>
+              <th style="width:33%;text-align:left">PRODUCT NAME &amp; PACKING</th>
+              <th style="width:9%">BATCH</th>
               <th style="width:7%">EXP.</th>
-              <th style="width:7%">HSN.</th>
-              <th style="width:5%">QTY</th>
-              <th style="width:8%;text-align:right">RATE</th>
-              <th style="width:6%;text-align:right">DIS</th>
+              <th style="width:8%">HSN.</th>
+              <th style="width:6%">QTY</th>
+              <th style="width:9%;text-align:right">RATE</th>
+              <th style="width:5%;text-align:right">DIS</th>
               <th style="width:6%;text-align:right">SGST</th>
               <th style="width:6%;text-align:right">CGST</th>
-              <th style="width:9%;text-align:right">AMOUNT</th>
+              <th style="width:11%;text-align:right">AMOUNT</th>
             </tr>
           </thead>
           <tbody>
