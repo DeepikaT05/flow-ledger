@@ -84,7 +84,7 @@ export async function closingStock(initialStores: string[] = ['MAIN STORE']) {
   const screen = h('div', { class: 'cs-screen' });
   screen.innerHTML = `
     <div class="cs-main">
-      <div class="cs-cols"><span>DESCRIPTION</span><span>PACKING</span><span class="n">STOCK</span><span>UNIT</span></div>
+      <div class="cs-cols"><span>DESCRIPTION</span><span>PACKING</span><span class="n">M.R.P.</span><span class="n">STOCK</span><span>UNIT</span></div>
       <div class="cs-rows"></div>
       <div class="cs-detail"></div>
     </div>
@@ -117,7 +117,7 @@ export async function closingStock(initialStores: string[] = ['MAIN STORE']) {
   function draw() {
     setTitle();
     rowsBox.innerHTML = view.map((it, i) => `<div class="r${i === sel ? ' sel' : ''}" data-i="${i}"><span>${esc(it.name.toUpperCase())}</span>
-      <span>${esc((it.pack ?? '').toUpperCase())}</span><span class="n">${qty(stockOf(it))}</span><span>${esc(it.unit ?? '')}</span></div>`).join('')
+      <span>${esc((it.pack ?? '').toUpperCase())}</span><span class="n">${f2(it.mrp)}</span><span class="n">${qty(stockOf(it))}</span><span>${esc(it.unit ?? '')}</span></div>`).join('')
       || '<div class="empty">No items</div>';
     rowsBox.querySelector('.sel')?.scrollIntoView({ block: 'nearest' });
     const it = view[sel];
@@ -165,8 +165,8 @@ export async function closingStock(initialStores: string[] = ['MAIN STORE']) {
 
   function printList() {
     const html = `<h3 style="text-align:center">${esc(stores.join(', '))} : CLOSING STOCK : ${dmy(today())}</h3>
-      <table class="grid"><tr><th>Description</th><th>Packing</th><th class="n">Stock</th><th>Unit</th><th class="n">MRP</th></tr>
-      ${view.map((it) => `<tr><td>${esc(it.name)}</td><td>${esc(it.pack ?? '')}</td><td class="n">${qty(stockOf(it))}</td><td>${esc(it.unit ?? '')}</td><td class="n">${f2(it.mrp)}</td></tr>`).join('')}</table>`;
+      <table class="grid"><tr><th>Description</th><th>Packing</th><th class="n">M.R.P.</th><th class="n">Stock</th><th>Unit</th></tr>
+      ${view.map((it) => `<tr><td>${esc(it.name)}</td><td>${esc(it.pack ?? '')}</td><td class="n">${f2(it.mrp)}</td><td class="n">${qty(stockOf(it))}</td><td>${esc(it.unit ?? '')}</td></tr>`).join('')}</table>`;
     import('./billing.ts').then((m) => m.printHtml(html, 1));
   }
 

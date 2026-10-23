@@ -597,7 +597,7 @@ body.boot #bootfoot { display: flex; justify-content: space-between; align-items
 .cs-screen, .ir-screen { font-family: "Courier New", Consolas, monospace; height: 100%; display: grid; grid-template-columns: 1fr 340px; grid-template-rows: auto 1fr; background: #f5f7ee; font-weight: bold; }
 .cs-screen > .marg-bar, .ir-screen > .marg-bar { grid-column: 1 / -1; font-size: 18px; padding: 5px 12px; font-weight: bold; }
 .cs-main, .ir-main { display: flex; flex-direction: column; min-height: 0; min-width: 0; border-right: 1px solid #555; }
-.cs-cols, .cs-rows .r { display: grid; grid-template-columns: minmax(0, 1fr) 250px 140px 90px; gap: 12px; padding: 0 24px; }
+.cs-cols, .cs-rows .r { display: grid; grid-template-columns: minmax(0, 1fr) 180px 140px 130px 90px; gap: 12px; padding: 0 24px; }
 .cs-cols { font-size: 20px; font-weight: bold; color: #111; padding-top: 7px; padding-bottom: 7px; border-bottom: 2px solid #333; }
 .cs-rows { flex: 1; overflow: auto; font-size: 21px; font-weight: bold; padding-top: 6px; }
 .cs-rows .r { white-space: nowrap; font-weight: bold; line-height: 1.38; padding-top: 2px; padding-bottom: 2px; }
