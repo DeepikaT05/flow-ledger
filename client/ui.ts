@@ -69,6 +69,38 @@ export interface Win {
 const stack: Win[] = [];
 export const topWin = () => stack[stack.length - 1];
 export const winCount = () => stack.length;
+
+const winMap = new WeakMap<HTMLElement, Win>();
+export function getWinForElement(el: HTMLElement): Win | undefined {
+  const winEl = el.closest('.win') as HTMLElement | null;
+  return winEl ? winMap.get(winEl) : undefined;
+}
+
+/** Triggers Escape key action on the target window (or top window), running onKey, beforeEsc, or close. */
+export async function triggerEsc(targetWin?: Win): Promise<boolean> {
+  const w = targetWin || topWin();
+  if (!w) return false;
+  const dummyEvent = new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true });
+  if (w.onKey?.(dummyEvent, 'Escape')) return true;
+  if (w.beforeEsc && !(await w.beforeEsc())) return true;
+  w.close();
+  return true;
+}
+
+// Global click handler: any close button clicked in any window triggers its Escape action
+if (typeof document !== 'undefined') {
+  document.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest('.marg-close-btn, .win-close-btn, .win-title .x, [data-win-close]');
+    if (btn) {
+      e.preventDefault();
+      e.stopPropagation();
+      const winEl = btn.closest('.win') as HTMLElement | null;
+      const w = winEl ? getWinForElement(winEl) : topWin();
+      triggerEsc(w);
+    }
+  });
+}
+
 /** Call right after opening a window: runs fn when that (top) window closes. */
 export function reloadOnClose(fn: () => void) {
   const w = topWin();
@@ -81,7 +113,7 @@ export function openWin(title: string, size: 'full' | 'wide' | 'mid' | 'small' =
   const prevFocus = document.activeElement as HTMLElement | null;
   const back = h('div', { class: 'win-backdrop' });
   const el = h('div', { class: `win ${size}` });
-  el.innerHTML = `<div class="win-title"><span>${esc(title)}</span><span class="x">Esc - Close</span></div>`;
+  el.innerHTML = `<div class="win-title"><span>${esc(title)}</span><button type="button" class="win-close-btn x" title="Close / Back (Esc)" aria-label="Close" tabindex="-1">&#10006; Esc</button></div>`;
   const body = h('div', { class: 'win-body' });
   const footEl = h('div', { class: 'win-foot' }, foot);
   el.append(body, footEl);
@@ -98,6 +130,7 @@ export function openWin(title: string, size: 'full' | 'wide' | 'mid' | 'small' =
       if (prevFocus && document.contains(prevFocus)) prevFocus.focus();
     },
   };
+  winMap.set(el, w);
   w.setFoot(foot);
   back.addEventListener('mousedown', (e) => { if (e.target === back) e.preventDefault(); });
   stack.push(w);

@@ -35,7 +35,7 @@ export function selectStore(): Promise<string[] | null> {
       <div class="ss-ctrl"><div class="bar">CONTROL BOX</div>
         <div>+ &nbsp; - Select One</div><div>- &nbsp; - Unselect One</div><div>* &nbsp; - Select All</div><div>/ &nbsp; - Unselect All</div>
         <div>S_Bar- Select/Unselect</div><div>&#8629; &nbsp; - Select&amp; Execute</div><div>Esc - Exit</div></div>
-      <div class="ss-list"><div class="bar">SELECT STORE</div><div class="rows"></div>
+      <div class="ss-list"><div class="bar" style="display:flex;justify-content:space-between;align-items:center"><span>SELECT STORE</span><button type="button" class="marg-close-btn" title="Close / Back (Esc)" aria-label="Close" tabindex="-1">&#10006; Esc</button></div><div class="rows"></div>
         <div class="find">Find ? &nbsp;<span>[</span><input autocomplete="off"><span>]</span></div></div></div>`;
     const rowsBox = w.body.querySelector('.rows') as HTMLElement;
     const find = w.body.querySelector('.find input') as HTMLInputElement;

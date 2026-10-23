@@ -189,7 +189,7 @@ function companyList(startId: number | undefined, required: boolean): Promise<Co
     w.el.classList.add('marg', 'marg-companies');
     w.setFoot('');
     inDesktop(w);
-    w.body.append(h('div', { class: 'marg-bar' }, '<span>LIST OF COMPANIES</span>'));
+    w.body.append(margBar('LIST OF COMPANIES'));
     const list = h('div', { class: 'co-rows' });
     const find = h('div', { class: 'co-find' }, '<span>Name ?</span><span class="brk">[</span>');
     const input = h('input', { autocomplete: 'off', spellcheck: false });
@@ -269,7 +269,7 @@ function companyMenu(c: Company): Promise<string | null> {
     w.el.className = 'win marg marg-comenu';
     w.el.parentElement!.classList.add('clear');
     w.setFoot('');
-    w.body.append(h('div', { class: 'marg-bar' }, `<span>${esc(c.station ? `${c.station}:${c.name}` : c.name)}</span>`));
+    w.body.append(margBar(c.station ? `${c.station}:${c.name}` : c.name));
     const box = h('div', { class: 'opts' });
     w.body.append(box);
     let sel = 0;

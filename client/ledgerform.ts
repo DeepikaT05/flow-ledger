@@ -521,7 +521,10 @@ export function modifyLedgerScreen(existing: Ledger): Promise<Ledger | null> {
       w.body.innerHTML = `
         <div class="marg-bar">
           <span class="bar-title">MODIFY LEDGER</span>
-          <span class="clock"></span>
+          <div class="marg-bar-right">
+            <span class="clock"></span>
+            <button type="button" class="marg-close-btn" title="Close / Back (Esc)" aria-label="Close" tabindex="-1">&#10006; Esc</button>
+          </div>
         </div>
         <div class="lf-screen">
           <div class="lf-main">
@@ -1114,7 +1117,10 @@ export function deleteLedgerScreen(existing: Ledger): Promise<boolean> {
             <button type="button" class="dl-btn act-exit${focusedBtn === 0 ? ' sel' : ''}" data-act="exit" tabindex="0">Exit</button>
             <button type="button" class="dl-btn act-delete${focusedBtn === 1 ? ' sel' : ''}" data-act="delete" tabindex="0">Delete</button>
           </div>
-          <span class="clock" style="margin-left:auto"></span>
+          <div class="marg-bar-right" style="margin-left:auto">
+            <span class="clock"></span>
+            <button type="button" class="marg-close-btn" title="Close / Back (Esc)" aria-label="Close" tabindex="-1">&#10006; Esc</button>
+          </div>
         </div>
         <div class="lf-screen">
           <div class="lf-main">

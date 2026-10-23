@@ -16,10 +16,12 @@ export function margWin(title: string, foot = ''): Win & { bar: HTMLElement } {
 }
 
 export function margBar(title: string) {
-  const el = h('div', { class: 'marg-bar' }, `<span>${esc(title)}</span><span class="clock">${clock()}</span>`);
+  const el = h('div', { class: 'marg-bar' });
+  el.innerHTML = `<span>${esc(title)}</span><div class="marg-bar-right"><span class="clock">${clock()}</span><button type="button" class="marg-close-btn" title="Close / Back (Esc)" aria-label="Close" tabindex="-1">&#10006; Esc</button></div>`;
+  const clockEl = el.querySelector('.clock');
   const t = setInterval(() => {
     if (!el.isConnected) { clearInterval(t); return; }
-    el.lastElementChild!.textContent = clock();
+    if (clockEl) clockEl.textContent = clock();
   }, 1000);
   return el;
 }
