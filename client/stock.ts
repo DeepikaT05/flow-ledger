@@ -3,7 +3,7 @@
 // rate & cost panel and Batch Detail), and Enter → the item's register (BILL NO. / DATE /
 // PARTICULARS / RECEIVE / ISSUE / BALANCE). Enter on a bill there opens SALE ALTERATION.
 import { api, esc, toast, h, today, money, openWin, fyStart, confirmBox } from './ui.ts';
-import { margBar, margPop } from './margui.ts';
+import { margBar, margPop, popList, margAsk } from './margui.ts';
 import { canAction, seeCost, canDelete, NO_DELETE } from './session.ts';
 import { itemForm, type Item } from './masters.ts';
 
@@ -15,6 +15,7 @@ const c2 = (n: unknown) => (n == null || !seeCost() ? '****' : f2(n));
 const qty = (n: number) => (Math.abs(n) < 0.0005 ? '-' : String(Math.round(n * 1000) / 1000));
 const dmy = (iso: string) => (iso ? `${iso.slice(8, 10)}-${iso.slice(5, 7)}-${iso.slice(0, 4)}` : '');
 const isoOf = (d: string) => { const m = d.match(/^(\d{2})-(\d{2})-(\d{4})$/); return m ? `${m[3]}-${m[2]}-${m[1]}` : ''; };
+const expShort = (e?: string) => (e && e.length >= 7 ? `${e.slice(5, 7)}/${e.slice(2, 4)}` : (e || ''));
 const margin = (rate: number, cost: number | null) => (cost == null || !seeCost() ? '****' : cost ? (((rate - cost) / cost) * 100).toFixed(2) : '0.00');
 
 // ------------------------------------------------------------------ SELECT STORE
@@ -79,7 +80,7 @@ export async function closingStock(initialStores: string[] = ['MAIN STORE']) {
   let stores = initialStores;
   const w = openWin('CLOSING STOCK', 'full', '');
   w.el.classList.add('marg');
-  w.setFoot('<span><b>F2</b>-New</span><span><b>F3</b>-Edit</span><span><b>Enter</b>-Register</span><span><b>F6</b>-Total</span>' +
+  w.setFoot('<span><b>F2</b>-New</span><span><b>F3</b>-Edit</span><span><b>F4</b>-Options</span><span><b>Enter</b>-Register</span><span><b>F6</b>-Total</span>' +
     '<span><b>F9</b>-Store</span><span><b>F10</b>-Filter</span><span><b>*</b>-Shortage</span><span><b>Del</b>-Delete</span><span><b>Alt+P</b>-Print</span>');
   const screen = h('div', { class: 'cs-screen' });
   screen.innerHTML = `
@@ -188,6 +189,17 @@ export async function closingStock(initialStores: string[] = ['MAIN STORE']) {
       itemForm(view[sel]).then((r) => { if (r) load(); });
       return true;
     }
+    if (k === 'F4' && view[sel]) {
+      itemOptionsPopup(view[sel], stores, (query) => {
+        if (query) {
+          const q = query.toLowerCase();
+          const idx = view.findIndex((it) => it.name.toLowerCase().includes(q) || (it.pack && it.pack.toLowerCase().includes(q)) || (it.batch && it.batch.toLowerCase().includes(q)));
+          if (idx >= 0) { sel = idx; draw(); }
+          else toast(`No item matching "${query}"`, true);
+        }
+      });
+      return true;
+    }
     if (k === 'Delete' && view[sel]) {
       const cur = view[sel];
       if (!canDelete()) { toast(NO_DELETE, true); return true; }
@@ -214,6 +226,203 @@ export async function closingStock(initialStores: string[] = ['MAIN STORE']) {
     return false;
   };
   await load();
+}
+
+/** F4 Options Popup for items: 1 BATCH DETAIL, 2 REGISTER, 3 SEARCH */
+function itemOptionsPopup(it: Item, stores: string[], onSearch: (query: string) => void) {
+  const options = [
+    { key: '1', hot: 'B', label: '1  BATCH DETAIL' },
+    { key: '2', hot: 'R', label: '2  REGISTER' },
+    { key: '3', hot: 'S', label: '3  SEARCH' },
+  ];
+  let selIdx = 0;
+
+  const w = openWin(`${it.name.toUpperCase()} ${(it.pack ?? '').toUpperCase()}`, 'mid', '');
+  w.el.classList.add('marg', 'marg-ledger-opts');
+  w.el.style.width = '420px';
+  w.setFoot('<span class="help-badge">HELP</span><span><b>Enter</b> Select</span><span><b>Esc</b> Close</span>');
+
+  const draw = () => {
+    w.body.innerHTML = `
+      ${margBar(`${esc(it.name.toUpperCase())} ${esc((it.pack ?? '').toUpperCase())}`).outerHTML}
+      <div class="lo-list" style="padding: 10px 14px;">
+        ${options.map((o, i) => `
+          <div class="lo-item${i === selIdx ? ' sel' : ''}" data-idx="${i}" data-k="${o.key}" style="font-size:16px;padding:6px 12px;cursor:pointer;">
+            ${esc(o.label)}
+          </div>
+        `).join('')}
+      </div>
+    `;
+
+    w.body.querySelectorAll<HTMLElement>('.lo-item').forEach((el) => {
+      el.addEventListener('click', () => {
+        selIdx = Number(el.dataset.idx);
+        draw();
+      });
+      el.addEventListener('dblclick', () => {
+        selIdx = Number(el.dataset.idx);
+        execute();
+      });
+    });
+  };
+
+  const execute = async () => {
+    const opt = options[selIdx];
+    if (!opt) return;
+
+    if (opt.key === '1') {
+      w.close();
+      openBatchDetail(it, stores);
+      return;
+    }
+
+    if (opt.key === '2') {
+      w.close();
+      itemRegister(it, stores);
+      return;
+    }
+
+    if (opt.key === '3') {
+      w.close();
+      const q = await margAsk('Search Item / Batch', '');
+      if (q != null && q.trim()) {
+        onSearch(q.trim());
+      }
+      return;
+    }
+  };
+
+  w.onKey = (_e, k) => {
+    if (k === 'Escape') {
+      w.close();
+      return true;
+    }
+    if (k === 'Enter') {
+      execute();
+      return true;
+    }
+    if (k === 'ArrowDown') {
+      selIdx = (selIdx + 1) % options.length;
+      draw();
+      return true;
+    }
+    if (k === 'ArrowUp') {
+      selIdx = (selIdx - 1 + options.length) % options.length;
+      draw();
+      return true;
+    }
+    const hit = options.findIndex((o) => o.key === k || o.hot.toLowerCase() === k.toLowerCase());
+    if (hit >= 0) {
+      selIdx = hit;
+      draw();
+      execute();
+      return true;
+    }
+    return false;
+  };
+
+  draw();
+}
+
+/** Full-featured MARG Batch Detail window with F2 New, F3 Edit, and Expiry view */
+async function openBatchDetail(it: Item, stores: string[]) {
+  const rows = await api<any[]>(`/items/${it.id}/batches`);
+  const total = rows.reduce((s, b) => s + (Number(b.stock) || 0), 0);
+
+  const addBatchModal = async (existingBatch?: any) => {
+    const isEdit = !!existingBatch?.id;
+    const bName = await margAsk(isEdit ? 'Modify Batch No.' : 'Batch No.', existingBatch?.batch || '');
+    if (bName == null || !bName.trim()) return;
+    const expVal = await margAsk('Expiry (MM/YY)', expShort(existingBatch?.expiry) || '');
+    if (expVal == null) return;
+    let isoExp = '';
+    if (expVal.trim()) {
+      const m = expVal.trim().match(/^(\d{1,2})[/-]?(\d{2}|\d{4})$/);
+      if (m) {
+        const mm = Number(m[1]);
+        const yy = m[2].length === 2 ? 2000 + Number(m[2]) : Number(m[2]);
+        if (mm >= 1 && mm <= 12) {
+          const lastDay = new Date(yy, mm, 0).getDate();
+          isoExp = `${yy}-${String(mm).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+        }
+      }
+    }
+    const mrpVal = await margAsk('M.R.P.', String(existingBatch?.mrp ?? it.mrp ?? 0));
+    if (mrpVal == null) return;
+    const rateVal = await margAsk('Rate-A', String(existingBatch?.rate ?? it.sale_rate ?? 0));
+    if (rateVal == null) return;
+    const qtyVal = await margAsk(isEdit ? 'Opening Qty' : 'Stock Qty', String(existingBatch?.opening_qty ?? (isEdit ? 0 : 10)));
+    if (qtyVal == null) return;
+
+    const payload = {
+      batch: bName.trim().toUpperCase(),
+      expiry: isoExp || expVal.trim(),
+      mrp: Number(mrpVal) || 0,
+      rate: Number(rateVal) || 0,
+      f_rate: Number(rateVal) || 0,
+      purchase_rate: existingBatch?.purchase_rate ?? it.purchase_rate ?? 0,
+      opening_qty: Number(qtyVal) || 0,
+      supplier: existingBatch?.supplier || 'MANUAL ENTRY',
+    };
+
+    if (isEdit) {
+      await api(`/batches/${existingBatch.id}`, { method: 'PUT', body: payload });
+      toast('Batch updated');
+    } else {
+      await api(`/items/${it.id}/batches`, { method: 'POST', body: payload });
+      toast('Batch added');
+    }
+  };
+
+  popList<any>({
+    title: `${it.name.toUpperCase()} ${(it.pack ?? '').toUpperCase()} - BATCH DETAIL`,
+    rows,
+    search: (r) => r.batch || '',
+    width: '1000px',
+    findLabel: 'Find Batch >>',
+    extra: `Total Stock : ${total}`,
+    detailCols: 3,
+    cols: [
+      { title: 'BATCH', get: (r) => r.batch || '-', width: '22%' },
+      { title: 'STOCK', get: (r) => r.stock, num: true, width: '10%' },
+      { title: 'UNIT', get: (r) => r.unit || it.unit || 'PCS', width: '10%' },
+      { title: 'RATE-A', get: (r) => f2(r.rate), num: true, width: '14%' },
+      { title: 'F.RATE', get: (r) => f2(r.f_rate || r.rate), num: true, width: '14%' },
+      { title: 'M.R.P.', get: (r) => f2(r.mrp), num: true, width: '14%' },
+      { title: 'EXP.', get: (r) => expShort(r.expiry), width: '10%' },
+    ],
+    detail: (r) => !r ? '' : `
+      <div>PurRate: <b>${c2(r.purchase_rate)}</b></div><div>M.R.P. &nbsp;: <b>${f2(r.mrp)}</b></div><div>Supp. &nbsp;: <b>${esc(r.supplier ?? '')}</b></div>
+      <div>Cost &nbsp;&nbsp;: <b>${c2(r.purchase_rate)}</b></div><div>Rate &nbsp;&nbsp;: <b>${f2(r.rate)}</b></div>
+      <div>Invoice: <b>${esc(r.invoice_no ?? '')}</b> &nbsp; Hold: 0</div>
+      <div>Margin%: <b></b></div>
+      <div>Tax-T-I: <b>${f2(r.gst_rate ?? it.gst_rate)}</b></div>
+      <div>Date &nbsp;&nbsp;: <b>${dmy(r.invoice_date ?? '')}</b></div>
+      <div>W/oDeal: <b>${c2(r.purchase_rate)}</b></div><div>F.Rate&nbsp;: <b>${f2(r.f_rate || r.rate)}</b></div><div>Packin&nbsp;: <b>${esc(r.pack ?? it.pack ?? '')}</b></div>`,
+    foot: '<span><b>F2/Ins</b>-New Batch</span><span><b>F3</b>-Edit Batch</span><span><b>F5</b>-Register</span><span><b>Esc</b>-Back</span>',
+    onKey: (k, cur, popApi) => {
+      if (k === 'F2' || k === 'Insert') {
+        addBatchModal().then(async () => {
+          const fresh = await api<any[]>(`/items/${it.id}/batches`);
+          popApi.setRows(fresh);
+        });
+        return true;
+      }
+      if (k === 'F3' && cur) {
+        addBatchModal(cur).then(async () => {
+          const fresh = await api<any[]>(`/items/${it.id}/batches`);
+          popApi.setRows(fresh);
+        });
+        return true;
+      }
+      if (k === 'F5') {
+        popApi.close(null);
+        itemRegister(it, stores);
+        return true;
+      }
+      return false;
+    },
+  });
 }
 
 // ------------------------------------------------------------------ ITEM REGISTER

@@ -620,6 +620,21 @@ app.post('/api/items/:id/batches', h((req) => {
     num(b.f_rate) || num(b.rate), num(b.purchase_rate), num(b.opening_qty), b.supplier ?? '', b.invoice_no ?? '', b.invoice_date ?? '');
   return { id: Number(r.lastInsertRowid) };
 }));
+app.put('/api/batches/:id', h((req) => {
+  const b = req.body;
+  const cur = db.prepare('SELECT * FROM batches WHERE id=?').get(Number(req.params.id)) as Row | undefined;
+  if (!cur) throw new Error('Batch not found');
+  const batchNo = String(b.batch !== undefined ? b.batch : (cur.batch ?? '')).toUpperCase();
+  const exp = String(b.expiry !== undefined ? b.expiry : (cur.expiry ?? ''));
+  const mrp = b.mrp !== undefined ? num(b.mrp) : num(cur.mrp);
+  const rate = b.rate !== undefined ? num(b.rate) : num(cur.rate);
+  const fRate = b.f_rate !== undefined ? num(b.f_rate) : num(cur.f_rate ?? cur.rate);
+  const pRate = b.purchase_rate !== undefined ? num(b.purchase_rate) : num(cur.purchase_rate);
+  const openQty = b.opening_qty !== undefined ? num(b.opening_qty) : num(cur.opening_qty);
+  db.prepare(`UPDATE batches SET batch=?, expiry=?, mrp=?, rate=?, f_rate=?, purchase_rate=?, opening_qty=? WHERE id=?`)
+    .run(batchNo, exp, mrp, rate, fRate, pRate, openQty, Number(req.params.id));
+  return { ok: true };
+}));
 app.get('/api/payment-modes', h(() => db.prepare(`SELECT * FROM (${LEDGER_BAL}) WHERE group_name IN ('Cash-in-hand','Bank Accounts') ORDER BY
   CASE WHEN name='Cash' THEN 0 ELSE 1 END, name`).all()));
 app.get('/api/years', h(() => db.prepare('SELECT * FROM company_years ORDER BY code DESC').all()));
