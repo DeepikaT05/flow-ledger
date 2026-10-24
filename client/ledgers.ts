@@ -26,6 +26,125 @@ const VT: Record<string, string> = {
   PURCHASE_RETURN: 'P.Rt', RECEIPT: 'Rcpt', PAYMENT: 'Pymt', CONTRA: 'Ctra', JOURNAL: 'Jrnl', DEBIT_NOTE: 'D.N.', CREDIT_NOTE: 'C.N.',
 };
 
+export interface LedgerFilter {
+  route: string;
+  mr: string;
+  village: string;
+  group: string;
+  balance: 'all' | 'balance' | 'dr' | 'cr' | 'zero';
+  search: string;
+}
+
+export function getAccMeta(a: Acc) {
+  let det: Record<string, string> = {};
+  if (a.details) {
+    try { det = JSON.parse(a.details); } catch {}
+  }
+  const route = (det.route_name || (det.route_on === 'Yes' ? 'A(BPTDSP)' : '') || '').trim();
+  const mr = (det.mr_name || (det.mr_on === 'Yes' ? 'YES' : '') || '').trim();
+  const area = (det.area_name || '').trim();
+  const village = (a.city || area || '').trim();
+  const group = (a.group_name || '').trim();
+  const phone = (a.phone || det.mobile || det.phone_off1 || '').trim();
+  const gstin = (a.gstin || det.gstin || '').trim();
+  return { route, mr, area, village, group, phone, gstin };
+}
+
+function openLedgerFilterModal(
+  all: Acc[],
+  current: LedgerFilter,
+  onApply: (f: LedgerFilter) => void,
+  onClear: () => void,
+) {
+  const routes = ['ALL', ...Array.from(new Set(all.map((a) => getAccMeta(a).route).filter(Boolean))).sort()];
+  const mrs = ['ALL', ...Array.from(new Set(all.map((a) => getAccMeta(a).mr).filter(Boolean))).sort()];
+  const villages = ['ALL', ...Array.from(new Set(all.map((a) => getAccMeta(a).village).filter(Boolean))).sort()];
+  const groups = ['ALL', ...Array.from(new Set(all.map((a) => a.group_name).filter(Boolean))).sort()];
+
+  const p = margPop('FILTER LEDGER ACCOUNTS', '<span><b>Enter</b> Apply</span><span><b>Esc</b> Cancel</span>', '540px');
+  const box = h('div', { class: 'lf-box' });
+  box.innerHTML = `
+    <div class="f-row">
+      <label>Route Wise :</label>
+      <select data-f="route">
+        ${routes.map((r) => `<option value="${esc(r)}"${r.toLowerCase() === current.route.toLowerCase() ? ' selected' : ''}>${esc(r === 'ALL' ? '-- ALL ROUTES --' : r)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="f-row">
+      <label>M.R. Wise :</label>
+      <select data-f="mr">
+        ${mrs.map((m) => `<option value="${esc(m)}"${m.toLowerCase() === current.mr.toLowerCase() ? ' selected' : ''}>${esc(m === 'ALL' ? '-- ALL M.R. / SALESMEN --' : m)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="f-row">
+      <label>Village / Station :</label>
+      <select data-f="village">
+        ${villages.map((v) => `<option value="${esc(v)}"${v.toLowerCase() === current.village.toLowerCase() ? ' selected' : ''}>${esc(v === 'ALL' ? '-- ALL VILLAGES / STATIONS --' : v)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="f-row">
+      <label>Account Group :</label>
+      <select data-f="group">
+        ${groups.map((g) => `<option value="${esc(g)}"${g.toLowerCase() === current.group.toLowerCase() ? ' selected' : ''}>${esc(g === 'ALL' ? '-- ALL GROUPS --' : g)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="f-row">
+      <label>Balance Filter :</label>
+      <select data-f="balance">
+        <option value="all"${current.balance === 'all' ? ' selected' : ''}>ALL (Debit + Credit + Zero)</option>
+        <option value="balance"${current.balance === 'balance' ? ' selected' : ''}>With Balance Only (Non-Zero)</option>
+        <option value="dr"${current.balance === 'dr' ? ' selected' : ''}>Debit Balance Only (Receivable / Dr)</option>
+        <option value="cr"${current.balance === 'cr' ? ' selected' : ''}>Credit Balance Only (Payable / Cr)</option>
+        <option value="zero"${current.balance === 'zero' ? ' selected' : ''}>Zero Balance Only</option>
+      </select>
+    </div>
+    <div class="f-row">
+      <label>Find / Single Ledger :</label>
+      <input type="text" data-f="search" value="${esc(current.search)}" placeholder="Search name, village, mobile, route..." autocomplete="off">
+    </div>
+    <div class="f-btns">
+      <button type="button" class="btn-apply">✓ Apply Filter (Enter)</button>
+      <button type="button" class="btn-clear">✕ Clear All</button>
+      <button type="button" class="btn-cancel">Cancel (Esc)</button>
+    </div>
+  `;
+  p.body.append(box);
+
+  const selRoute = box.querySelector('[data-f="route"]') as HTMLSelectElement;
+  const selMr = box.querySelector('[data-f="mr"]') as HTMLSelectElement;
+  const selVillage = box.querySelector('[data-f="village"]') as HTMLSelectElement;
+  const selGroup = box.querySelector('[data-f="group"]') as HTMLSelectElement;
+  const selBalance = box.querySelector('[data-f="balance"]') as HTMLSelectElement;
+  const inpSearch = box.querySelector('[data-f="search"]') as HTMLInputElement;
+
+  const btnApply = box.querySelector('.btn-apply') as HTMLButtonElement;
+  const btnClear = box.querySelector('.btn-clear') as HTMLButtonElement;
+  const btnCancel = box.querySelector('.btn-cancel') as HTMLButtonElement;
+
+  const apply = () => {
+    p.close();
+    onApply({
+      route: selRoute.value,
+      mr: selMr.value,
+      village: selVillage.value,
+      group: selGroup.value,
+      balance: selBalance.value as any,
+      search: inpSearch.value.trim(),
+    });
+  };
+
+  btnApply.addEventListener('click', apply);
+  btnClear.addEventListener('click', () => { p.close(); onClear(); });
+  btnCancel.addEventListener('click', () => p.close());
+
+  selRoute.focus();
+  p.onKey = (_e, k) => {
+    if (k === 'Enter') { apply(); return true; }
+    if (k === 'Escape') { p.close(); return true; }
+    return false;
+  };
+}
+
 // ------------------------------------------------------------------ LEDGER ACCOUNTS
 export async function allLedgers() {
   let upto = today();
@@ -37,6 +156,7 @@ export async function allLedgers() {
   screen.innerHTML = `
     <div class="la-main">
       <div class="la-top"><span>${esc(company.name)}</span><span class="upto"></span></div>
+      <div class="la-filter-bar" style="display:none"></div>
       <div class="la-cols"><span></span><span>DEBIT</span><span>CREDIT</span></div>
       <div class="la-rows"></div>
       <div class="la-panels">
@@ -47,6 +167,9 @@ export async function allLedgers() {
     </div>
     <div class="rv-status"></div>`;
   const bar = margBar('LEDGER ACCOUNTS');
+  const btnFilter = h('button', { type: 'button', class: 'btn-filter', title: 'Filter Ledgers [F10]' }, '🔍 Filter');
+  btnFilter.addEventListener('click', () => openFilter());
+  bar.querySelector('.marg-bar-right')?.prepend(btnFilter);
   addExportToMargBar(bar, { onExcel: () => exportExcel(), onPdf: () => printList() });
   screen.prepend(bar);
   w.body.append(screen);
@@ -55,20 +178,95 @@ export async function allLedgers() {
   let all: Acc[] = [];
   let view: Acc[] = [];
   let sel = 0;
-  let balanceOnly = false;
+  let filterState: LedgerFilter = {
+    route: 'ALL',
+    mr: 'ALL',
+    village: 'ALL',
+    group: 'ALL',
+    balance: 'all',
+    search: '',
+  };
 
   const load = async () => {
     all = await api<Acc[]>(`/reports/ledger-accounts?upto=${upto}`);
     filter();
   };
+
+  function updateFilterBar() {
+    const barEl = screen.querySelector('.la-filter-bar') as HTMLElement;
+    if (!barEl) return;
+    const tags: string[] = [];
+    if (filterState.route !== 'ALL') tags.push(`<span class="tag-item">Route: <b>${esc(filterState.route)}</b></span>`);
+    if (filterState.mr !== 'ALL') tags.push(`<span class="tag-item">M.R.: <b>${esc(filterState.mr)}</b></span>`);
+    if (filterState.village !== 'ALL') tags.push(`<span class="tag-item">Village: <b>${esc(filterState.village)}</b></span>`);
+    if (filterState.group !== 'ALL') tags.push(`<span class="tag-item">Group: <b>${esc(filterState.group)}</b></span>`);
+    if (filterState.balance !== 'all') tags.push(`<span class="tag-item">Balance: <b>${esc(filterState.balance.toUpperCase())}</b></span>`);
+    if (filterState.search) tags.push(`<span class="tag-item">Find: <b>${esc(filterState.search)}</b></span>`);
+
+    if (tags.length) {
+      barEl.style.display = 'flex';
+      barEl.innerHTML = `<span class="badge">FILTER ACTIVE</span>${tags.join('')}<span style="color:#555;font-size:12px;margin-left:4px;">(${view.length} Ledgers)</span><button type="button" class="clear-btn">✕ Clear</button>`;
+      barEl.querySelector('.clear-btn')?.addEventListener('click', () => {
+        filterState = { route: 'ALL', mr: 'ALL', village: 'ALL', group: 'ALL', balance: 'all', search: '' };
+        find.value = '';
+        filter();
+      });
+    } else {
+      barEl.style.display = 'none';
+      barEl.innerHTML = '';
+    }
+  }
+
   function filter() {
     const q = find.value.trim().toLowerCase();
-    const base = balanceOnly ? all.filter((a) => Math.abs(a.balance) > 0.004) : all;
-    view = !q ? base : [...base.filter((a) => a.name.toLowerCase().startsWith(q)), ...base.filter((a) => !a.name.toLowerCase().startsWith(q) && a.name.toLowerCase().includes(q))];
+    view = all.filter((a) => {
+      const meta = getAccMeta(a);
+      if (filterState.route !== 'ALL' && meta.route.toLowerCase() !== filterState.route.toLowerCase()) return false;
+      if (filterState.mr !== 'ALL' && meta.mr.toLowerCase() !== filterState.mr.toLowerCase()) return false;
+      if (filterState.village !== 'ALL' && meta.village.toLowerCase() !== filterState.village.toLowerCase()) return false;
+      if (filterState.group !== 'ALL' && a.group_name.toLowerCase() !== filterState.group.toLowerCase()) return false;
+      if (filterState.balance === 'balance' && Math.abs(a.balance) <= 0.004) return false;
+      if (filterState.balance === 'dr' && a.balance <= 0.004) return false;
+      if (filterState.balance === 'cr' && a.balance >= -0.004) return false;
+      if (filterState.balance === 'zero' && Math.abs(a.balance) > 0.004) return false;
+
+      if (q) {
+        const matches = a.name.toLowerCase().includes(q)
+          || (a.city && a.city.toLowerCase().includes(q))
+          || meta.village.toLowerCase().includes(q)
+          || meta.route.toLowerCase().includes(q)
+          || meta.mr.toLowerCase().includes(q)
+          || meta.phone.toLowerCase().includes(q)
+          || meta.gstin.toLowerCase().includes(q);
+        if (!matches) return false;
+      }
+      return true;
+    });
     sel = Math.min(sel, Math.max(0, view.length - 1));
     if (q) sel = 0;
     draw();
+    updateFilterBar();
   }
+
+  function openFilter() {
+    openLedgerFilterModal(
+      all,
+      filterState,
+      (newFilter) => {
+        filterState = newFilter;
+        if (newFilter.search) find.value = newFilter.search;
+        filter();
+        toast(`Filter applied (${view.length} ledgers found)`);
+      },
+      () => {
+        filterState = { route: 'ALL', mr: 'ALL', village: 'ALL', group: 'ALL', balance: 'all', search: '' };
+        find.value = '';
+        filter();
+        toast('Filter cleared');
+      }
+    );
+  }
+
   let statusSeq = 0;
   function draw() {
     (screen.querySelector('.upto') as HTMLElement).textContent = `Upto : ${dmy(upto)}`;
@@ -114,18 +312,18 @@ export async function allLedgers() {
   }
 
   function exportExcel() {
-    const headers = ['Ledger Name', 'Station', 'Group', 'Phone', 'GSTIN', 'Debit Balance', 'Credit Balance', 'Net Balance'];
+    const headers = ['Ledger Name', 'Station', 'Group', 'Route', 'M.R.', 'Village', 'Phone', 'GSTIN', 'Debit Balance', 'Credit Balance', 'Net Balance'];
     const rows = view.map((a) => {
-      let det: Record<string, string> = {};
-      if (a.details) { try { det = JSON.parse(a.details); } catch {} }
-      const phone = a.phone || det.mobile || det.phone_off1 || '';
-      const gstn = a.gstin || det.gstin || '';
+      const meta = getAccMeta(a);
       return [
         a.name,
         a.city ?? '',
         a.group_name ?? '',
-        phone,
-        gstn,
+        meta.route,
+        meta.mr,
+        meta.village,
+        meta.phone,
+        meta.gstin,
         a.balance > 0.004 ? f2(a.balance) : '',
         a.balance < -0.004 ? f2(-a.balance) : '',
         drcr(a.balance),
@@ -133,15 +331,19 @@ export async function allLedgers() {
     });
     const totDr = view.filter((a) => a.balance > 0).reduce((s, a) => s + a.balance, 0);
     const totCr = view.filter((a) => a.balance < 0).reduce((s, a) => s - a.balance, 0);
-    rows.push(['Total', '', '', '', '', f2(totDr), f2(totCr), drcr(totDr - totCr)]);
-    downloadCsv(`Ledger_Accounts_Upto_${upto}.csv`, headers, rows);
+    rows.push(['Total', '', '', '', '', '', '', f2(totDr), f2(totCr), drcr(totDr - totCr)]);
+    const suffix = filterState.route !== 'ALL' ? `_${filterState.route}` : (filterState.village !== 'ALL' ? `_${filterState.village}` : '');
+    downloadCsv(`Ledger_Accounts${suffix}_Upto_${upto}.csv`, headers, rows);
   }
 
   function printList() {
     const html = `<h2>${esc(company.name)}</h2><h3 style="text-align:center">LEDGER ACCOUNTS &nbsp; Upto ${dmy(upto)}</h3>
-      <table class="grid"><tr><th>Ledger</th><th>Station</th><th class="n">Debit</th><th class="n">Credit</th></tr>
-      ${view.map((a) => `<tr><td>${esc(a.name)}</td><td>${esc(a.city ?? '')}</td><td class="n">${a.balance > 0.004 ? money(a.balance) : ''}</td><td class="n">${a.balance < -0.004 ? money(-a.balance) : ''}</td></tr>`).join('')}
-      <tr class="total"><td colspan="2"><b>Total</b></td><td class="n"><b>${money(view.filter((a) => a.balance > 0).reduce((s, a) => s + a.balance, 0))}</b></td>
+      <table class="grid"><tr><th>Ledger</th><th>Station</th><th>Route</th><th>M.R.</th><th class="n">Debit</th><th class="n">Credit</th></tr>
+      ${view.map((a) => {
+        const meta = getAccMeta(a);
+        return `<tr><td>${esc(a.name)}</td><td>${esc(a.city ?? '')}</td><td>${esc(meta.route)}</td><td>${esc(meta.mr)}</td><td class="n">${a.balance > 0.004 ? money(a.balance) : ''}</td><td class="n">${a.balance < -0.004 ? money(-a.balance) : ''}</td></tr>`;
+      }).join('')}
+      <tr class="total"><td colspan="4"><b>Total</b></td><td class="n"><b>${money(view.filter((a) => a.balance > 0).reduce((s, a) => s + a.balance, 0))}</b></td>
         <td class="n"><b>${money(-view.filter((a) => a.balance < 0).reduce((s, a) => s + a.balance, 0))}</b></td></tr></table>`;
     import('./billing.ts').then((m) => m.printHtml(html, 1));
   }
@@ -165,7 +367,7 @@ export async function allLedgers() {
       }).then((l) => { if (l) load(); });
       return true;
     }
-    if (k === 'F10') { balanceOnly = !balanceOnly; toast(balanceOnly ? 'Showing ledgers with a balance only' : 'Showing all ledgers'); filter(); return true; }
+    if (k === 'F10') { openFilter(); return true; }
     if (k === 'Alt+X') { exportExcel(); return true; }
     if (k === 'Alt+P' || k === 'Ctrl+P') { printList(); return true; }
     if (k === 'Tab') { find.focus(); find.select(); return true; }
@@ -188,6 +390,7 @@ export async function ledgerAlteration(group?: string, mode: 'modify' | 'delete'
   screen.innerHTML = `
     <div class="la-main">
       <div class="la-top"><span class="co-name">${esc(company.name.toUpperCase())}</span><span class="upto"></span></div>
+      <div class="la-filter-bar" style="display:none"></div>
       <div class="la-cols"><span></span><span></span><span>DEBIT</span><span>CREDIT</span></div>
       <div class="la-rows"></div>
       <div class="la-panels">
@@ -197,7 +400,11 @@ export async function ledgerAlteration(group?: string, mode: 'modify' | 'delete'
       </div>
     </div>
     <div class="rv-status"></div>`;
-  screen.prepend(margBar('LEDGER ALTRATION'));
+  const bar = margBar('LEDGER ALTRATION');
+  const btnFilter = h('button', { type: 'button', class: 'btn-filter', title: 'Filter Ledgers [F10]' }, '🔍 Filter');
+  btnFilter.addEventListener('click', () => openFilter());
+  bar.querySelector('.marg-bar-right')?.prepend(btnFilter);
+  screen.prepend(bar);
   w.body.append(screen);
   const rowsBox = screen.querySelector('.la-rows') as HTMLElement;
   const find = screen.querySelector('.find input') as HTMLInputElement;
@@ -205,7 +412,14 @@ export async function ledgerAlteration(group?: string, mode: 'modify' | 'delete'
   let all: Acc[] = [];
   let view: Acc[] = [];
   let sel = 0;
-  let balanceOnly = false;
+  let filterState: LedgerFilter = {
+    route: 'ALL',
+    mr: 'ALL',
+    village: 'ALL',
+    group: 'ALL',
+    balance: 'all',
+    search: '',
+  };
 
   const load = async () => {
     const raw = await api<Acc[]>(`/reports/ledger-accounts?upto=${upto}`);
@@ -217,14 +431,81 @@ export async function ledgerAlteration(group?: string, mode: 'modify' | 'delete'
     }
     filter();
   };
+
+  function updateFilterBar() {
+    const barEl = screen.querySelector('.la-filter-bar') as HTMLElement;
+    if (!barEl) return;
+    const tags: string[] = [];
+    if (filterState.route !== 'ALL') tags.push(`<span class="tag-item">Route: <b>${esc(filterState.route)}</b></span>`);
+    if (filterState.mr !== 'ALL') tags.push(`<span class="tag-item">M.R.: <b>${esc(filterState.mr)}</b></span>`);
+    if (filterState.village !== 'ALL') tags.push(`<span class="tag-item">Village: <b>${esc(filterState.village)}</b></span>`);
+    if (filterState.group !== 'ALL') tags.push(`<span class="tag-item">Group: <b>${esc(filterState.group)}</b></span>`);
+    if (filterState.balance !== 'all') tags.push(`<span class="tag-item">Balance: <b>${esc(filterState.balance.toUpperCase())}</b></span>`);
+    if (filterState.search) tags.push(`<span class="tag-item">Find: <b>${esc(filterState.search)}</b></span>`);
+
+    if (tags.length) {
+      barEl.style.display = 'flex';
+      barEl.innerHTML = `<span class="badge">FILTER ACTIVE</span>${tags.join('')}<span style="color:#555;font-size:12px;margin-left:4px;">(${view.length} Ledgers)</span><button type="button" class="clear-btn">✕ Clear</button>`;
+      barEl.querySelector('.clear-btn')?.addEventListener('click', () => {
+        filterState = { route: 'ALL', mr: 'ALL', village: 'ALL', group: 'ALL', balance: 'all', search: '' };
+        find.value = '';
+        filter();
+      });
+    } else {
+      barEl.style.display = 'none';
+      barEl.innerHTML = '';
+    }
+  }
+
   function filter() {
     const q = find.value.trim().toLowerCase();
-    const base = balanceOnly ? all.filter((a) => Math.abs(a.balance) > 0.004) : all;
-    view = !q ? base : [...base.filter((a) => a.name.toLowerCase().startsWith(q)), ...base.filter((a) => !a.name.toLowerCase().startsWith(q) && a.name.toLowerCase().includes(q))];
+    view = all.filter((a) => {
+      const meta = getAccMeta(a);
+      if (filterState.route !== 'ALL' && meta.route.toLowerCase() !== filterState.route.toLowerCase()) return false;
+      if (filterState.mr !== 'ALL' && meta.mr.toLowerCase() !== filterState.mr.toLowerCase()) return false;
+      if (filterState.village !== 'ALL' && meta.village.toLowerCase() !== filterState.village.toLowerCase()) return false;
+      if (filterState.group !== 'ALL' && a.group_name.toLowerCase() !== filterState.group.toLowerCase()) return false;
+      if (filterState.balance === 'balance' && Math.abs(a.balance) <= 0.004) return false;
+      if (filterState.balance === 'dr' && a.balance <= 0.004) return false;
+      if (filterState.balance === 'cr' && a.balance >= -0.004) return false;
+      if (filterState.balance === 'zero' && Math.abs(a.balance) > 0.004) return false;
+
+      if (q) {
+        const matches = a.name.toLowerCase().includes(q)
+          || (a.city && a.city.toLowerCase().includes(q))
+          || meta.village.toLowerCase().includes(q)
+          || meta.route.toLowerCase().includes(q)
+          || meta.mr.toLowerCase().includes(q)
+          || meta.phone.toLowerCase().includes(q)
+          || meta.gstin.toLowerCase().includes(q);
+        if (!matches) return false;
+      }
+      return true;
+    });
     sel = Math.min(sel, Math.max(0, view.length - 1));
     if (q) sel = 0;
     if (footCnt) footCnt.textContent = String(view.length);
     draw();
+    updateFilterBar();
+  }
+
+  function openFilter() {
+    openLedgerFilterModal(
+      all,
+      filterState,
+      (newFilter) => {
+        filterState = newFilter;
+        if (newFilter.search) find.value = newFilter.search;
+        filter();
+        toast(`Filter applied (${view.length} ledgers found)`);
+      },
+      () => {
+        filterState = { route: 'ALL', mr: 'ALL', village: 'ALL', group: 'ALL', balance: 'all', search: '' };
+        find.value = '';
+        filter();
+        toast('Filter cleared');
+      }
+    );
   }
   let statusSeq = 0;
   function draw() {
@@ -322,7 +603,7 @@ export async function ledgerAlteration(group?: string, mode: 'modify' | 'delete'
       openOptions(view[sel]);
       return true;
     }
-    if (k === 'F10') { balanceOnly = !balanceOnly; toast(balanceOnly ? 'Showing ledgers with a balance only' : 'Showing all ledgers'); filter(); return true; }
+    if (k === 'F10') { openFilter(); return true; }
     if (k === 'Tab') { find.focus(); find.select(); return true; }
     if (k === 'Escape') {
       if (find.value) { find.value = ''; filter(); return true; }

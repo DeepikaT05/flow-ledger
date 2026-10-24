@@ -945,7 +945,11 @@ app.get('/api/reports/summary', h((req) => {
   if (!key) throw new Error('Unknown summary');
   const [types, ret] = side === 'PURCHASE' ? [`'PURCHASE'`, 'PURCHASE_RETURN'] : [`'SALE','COUNTER_SALE'`, 'SALE_RETURN'];
   const sg = `(CASE WHEN b.type='${ret}' THEN -1 ELSE 1 END)`;
-  return db.prepare(`SELECT ${key} AS name, ${pivot === 'month' ? 'substr(b.date,1,7)' : "''"} AS month,
+  const pivotCol = pivot === 'month' ? 'substr(b.date,1,7)'
+                 : pivot === 'week' ? "strftime('%Y-W%W', b.date)"
+                 : pivot === 'day' ? 'b.date'
+                 : "''";
+  return db.prepare(`SELECT ${key} AS name, ${pivotCol} AS month, ${pivotCol} AS period_key,
       COUNT(DISTINCT CASE WHEN b.type<>'${ret}' THEN b.id END) AS bills,
       COUNT(DISTINCT CASE WHEN b.type='${ret}' THEN b.id END) AS returns,
       SUM(${sg}*(bi.qty+bi.free)) AS qty, SUM(${sg}*bi.taxable) AS taxable, SUM(${sg}*bi.tax) AS tax,
@@ -953,9 +957,10 @@ app.get('/api/reports/summary', h((req) => {
     FROM bill_items bi JOIN bills b ON b.id=bi.bill_id JOIN items i ON i.id=bi.item_id JOIN ledgers l ON l.id=b.party_id
     LEFT JOIN salesmen s ON s.id=b.mr_id
     WHERE b.type IN (${types},'${ret}') AND b.date BETWEEN ? AND ?
-    GROUP BY 1, 2 ORDER BY ${by === 'day' || by === 'month' ? '1' : 'amount DESC'}`).all(from, to)
+    GROUP BY 1, 2 ORDER BY ${by === 'day' || by === 'month' || pivot === 'day' || pivot === 'week' || pivot === 'month' ? '2, 1' : 'amount DESC'}`).all(from, to)
     .map((r: any) => ({ ...r, qty: r2(r.qty), taxable: r2(r.taxable), tax: r2(r.tax), amount: r2(r.amount), cost: r2(r.cost) }));
 }));
+
 
 // Outstanding ageing: each party's unpaid credit sale bills split into age slabs (days since bill date).
 app.get('/api/reports/ageing', h((req) => {

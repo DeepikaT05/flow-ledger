@@ -4,7 +4,8 @@ import { BILL_TITLE } from './billing.ts';
 import { saleEntry as billEntry } from './sale.ts';
 import { V_TITLE } from './vouchers.ts';
 import { seeCost } from './session.ts';
-import { downloadCsv, createExportButtons } from './export.ts';
+import { downloadCsv, createExportButtons, addExportToMargBar } from './export.ts';
+import { margBar } from './margui.ts';
 
 /** Cost / profit cell: masked as **** for roles without the cost power (server sends null). */
 const cm = (v: number | null | undefined) => (v == null || !seeCost() ? '****' : money(v));
@@ -349,6 +350,9 @@ const monthsIn = (from: string, to: string) => {
  */
 export function summary(spec: string) {
   const [side, by, pivot] = spec.split('/');
+  if (by === 'item') {
+    return productSummary(side === 'PURCHASE' ? 'PURCHASE' : 'SALE');
+  }
   const gp = side === 'GP';
   const what = gp ? 'Gross Profit' : side === 'PURCHASE' ? 'Purchase' : 'Sale';
   const title = `${SUM_BY[by]} Wise ${what} ${pivot ? '/ Month Wise' : 'Summary'}`;
@@ -449,3 +453,307 @@ export function gstr3b() {
     footer: () => `<tr class="total"><td colspan="4">${payable >= 0 ? 'Net GST Payable in cash' : 'Excess ITC carried forward'}</td><td class="n">${money(Math.abs(payable))}</td></tr>`,
   });
 }
+
+/**
+ * Product Summary with Monthly, Weekly, Daily, and Consolidated views.
+ */
+export async function productSummary(side: 'SALE' | 'PURCHASE' = 'SALE') {
+  let mode: 'month' | 'week' | 'day' | 'summary' = 'month';
+  let from = fyStart();
+  let to = today();
+  let company: any = {};
+  try { company = await api('/company'); } catch {}
+
+  const what = side === 'PURCHASE' ? 'PURCHASE' : 'SALE';
+  const w = openWin(`PRODUCT ${what} SUMMARY`, 'full', '');
+  w.el.classList.add('marg');
+  w.setFoot('<span><b>1/M</b>-Monthly</span><span><b>2/W</b>-Weekly</span><span><b>3/D</b>-Daily</span><span><b>4/S</b>-Summary</span><span><b>F2</b>-Period</span><span><b>Alt+X</b>-Excel</span><span><b>Alt+P</b>-PDF</span><span><b>Esc</b>-Close</span>');
+
+  const screen = h('div', { class: 'ps-screen' });
+  screen.innerHTML = `
+    <div class="ps-top">
+      <div class="ps-modes">
+        <span class="ps-label">View Breakdown:</span>
+        <button type="button" class="ps-btn-mode" data-m="month">📅 [1] Monthly</button>
+        <button type="button" class="ps-btn-mode" data-m="week">📆 [2] Weekly</button>
+        <button type="button" class="ps-btn-mode" data-m="day">🗓️ [3] Daily</button>
+        <button type="button" class="ps-btn-mode" data-m="summary">📊 [4] Consolidated</button>
+      </div>
+      <div class="ps-info">
+        <span class="ps-period">Period: <b>${fmtDate(from)}</b> to <b>${fmtDate(to)}</b> <button type="button" class="ps-btn-period" style="margin-left:6px;cursor:pointer;padding:1px 6px;">Change (F2)</button></span>
+        <div class="ps-find"><span>Find Product ? &gt;&gt;</span> [ <input autocomplete="off" spellcheck="false" placeholder="Type name to filter..."> ]</div>
+      </div>
+    </div>
+    <div class="ps-grid-wrap"></div>
+  `;
+
+  const bar = margBar(`PRODUCT ${what} SUMMARY`);
+  addExportToMargBar(bar, { onExcel: () => exportExcel(), onPdf: () => printCurrent() });
+  screen.prepend(bar);
+  w.body.append(screen);
+
+  const gridWrap = screen.querySelector('.ps-grid-wrap') as HTMLElement;
+  const findInput = screen.querySelector('.ps-find input') as HTMLInputElement;
+  const modeBtns = screen.querySelectorAll<HTMLButtonElement>('.ps-btn-mode');
+  const periodSpan = screen.querySelector('.ps-period') as HTMLElement;
+
+  let loadedRows: any[] = [];
+
+  const updateModeButtons = () => {
+    modeBtns.forEach((b) => {
+      b.classList.toggle('sel', b.dataset.m === mode);
+    });
+    const titleText = `PRODUCT ${what} SUMMARY (${mode.toUpperCase()} BREAKDOWN)`;
+    const titleEl = bar.querySelector('span');
+    if (titleEl) titleEl.textContent = titleText;
+  };
+
+  async function load() {
+    gridWrap.innerHTML = '<div style="padding:24px;text-align:center;font-size:16px;">Loading product summary...</div>';
+    const pivotParam = mode === 'summary' ? '' : `&pivot=${mode}`;
+    loadedRows = await api<any[]>(`/reports/summary?side=${side}&by=item&from=${from}&to=${to}${pivotParam}`);
+    render();
+  }
+
+  function render() {
+    updateModeButtons();
+    periodSpan.innerHTML = `Period: <b>${fmtDate(from)}</b> to <b>${fmtDate(to)}</b> <button type="button" class="ps-btn-period" style="margin-left:6px;cursor:pointer;padding:1px 6px;">Change (F2)</button>`;
+    screen.querySelector('.ps-btn-period')?.addEventListener('click', changePeriod);
+
+    const q = findInput.value.trim().toLowerCase();
+
+    if (mode === 'month' || mode === 'week') {
+      const periods = Array.from(new Set(loadedRows.map((r) => r.period_key || r.month).filter(Boolean))).sort();
+      const byItem = new Map<string, { qty: Record<string, number>; amt: Record<string, number>; totalQty: number; totalAmt: number }>();
+
+      for (const r of loadedRows) {
+        const item = r.name || '(Unknown Item)';
+        const cur = byItem.get(item) ?? { qty: {}, amt: {}, totalQty: 0, totalAmt: 0 };
+        const pKey = r.period_key || r.month;
+        cur.qty[pKey] = (cur.qty[pKey] ?? 0) + Number(r.qty || 0);
+        cur.amt[pKey] = (cur.amt[pKey] ?? 0) + Number(r.amount || 0);
+        cur.totalQty += Number(r.qty || 0);
+        cur.totalAmt += Number(r.amount || 0);
+        byItem.set(item, cur);
+      }
+
+      let items = Array.from(byItem.keys()).sort();
+      if (q) items = items.filter((it) => it.toLowerCase().includes(q));
+
+      const pHeader = (p: string) => {
+        if (mode === 'month') {
+          return `${new Date(`${p}-01T00:00:00`).toLocaleString('en', { month: 'short' })}-${p.slice(2, 4)}`;
+        }
+        return p.replace('2026-', '').replace('2025-', '').replace('2024-', '');
+      };
+
+      const periodTotals = periods.map((p) => {
+        let totQty = 0, totAmt = 0;
+        for (const it of items) {
+          const d = byItem.get(it);
+          if (d) { totQty += d.qty[p] ?? 0; totAmt += d.amt[p] ?? 0; }
+        }
+        return { qty: totQty, amt: totAmt };
+      });
+
+      const grandQty = items.reduce((s, it) => s + (byItem.get(it)?.totalQty ?? 0), 0);
+      const grandAmt = items.reduce((s, it) => s + (byItem.get(it)?.totalAmt ?? 0), 0);
+
+      gridWrap.innerHTML = `
+        <table class="grid ps-table">
+          <thead>
+            <tr>
+              <th style="min-width:240px;text-align:left;">PRODUCT NAME</th>
+              ${periods.map((p) => `<th class="n" style="min-width:110px;">${esc(pHeader(p))}<br><small style="font-weight:normal">Qty &nbsp; Amt</small></th>`).join('')}
+              <th class="n" style="min-width:110px;">TOTAL QTY</th>
+              <th class="n" style="min-width:110px;">TOTAL AMOUNT</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${items.length ? items.map((it) => {
+              const d = byItem.get(it)!;
+              return `<tr>
+                <td><b>${esc(it)}</b></td>
+                ${periods.map((p) => {
+                  const qVal = d.qty[p] ?? 0;
+                  const aVal = d.amt[p] ?? 0;
+                  return `<td class="n">${qVal ? `${qVal} <span style="color:#555">(${money(aVal)})</span>` : '-'}</td>`;
+                }).join('')}
+                <td class="n"><b>${d.totalQty}</b></td>
+                <td class="n"><b>${money(d.totalAmt)}</b></td>
+              </tr>`;
+            }).join('') : '<tr><td colspan="100" style="text-align:center;padding:24px;">No product sales found matching filter</td></tr>'}
+          </tbody>
+          <tfoot>
+            <tr class="total">
+              <td><b>TOTAL (${items.length} Products)</b></td>
+              ${periodTotals.map((t) => `<td class="n"><b>${t.qty} (${money(t.amt)})</b></td>`).join('')}
+              <td class="n"><b>${grandQty}</b></td>
+              <td class="n"><b>${money(grandAmt)}</b></td>
+            </tr>
+          </tfoot>
+        </table>
+      `;
+    } else if (mode === 'day') {
+      let rows = loadedRows;
+      if (q) rows = rows.filter((r) => String(r.name).toLowerCase().includes(q));
+
+      const totQty = rows.reduce((s, r) => s + Number(r.qty || 0), 0);
+      const totTaxable = rows.reduce((s, r) => s + Number(r.taxable || 0), 0);
+      const totTax = rows.reduce((s, r) => s + Number(r.tax || 0), 0);
+      const totAmt = rows.reduce((s, r) => s + Number(r.amount || 0), 0);
+
+      gridWrap.innerHTML = `
+        <table class="grid ps-table">
+          <thead>
+            <tr>
+              <th style="width:110px;">DATE</th>
+              <th style="width:100px;">DAY</th>
+              <th style="text-align:left;">PRODUCT NAME</th>
+              <th class="n" style="width:80px;">BILLS</th>
+              <th class="n" style="width:90px;">QTY</th>
+              <th class="n" style="width:110px;">TAXABLE</th>
+              <th class="n" style="width:100px;">GST</th>
+              <th class="n" style="width:120px;">TOTAL AMOUNT</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.length ? rows.map((r) => {
+              const dt = r.period_key || r.month || '';
+              const dayName = dt ? new Date(`${dt}T00:00:00`).toLocaleString('en', { weekday: 'short' }) : '';
+              return `<tr>
+                <td>${fmtDate(dt)}</td>
+                <td>${esc(dayName)}</td>
+                <td><b>${esc(r.name)}</b></td>
+                <td class="n">${r.bills ?? '-'}</td>
+                <td class="n"><b>${r.qty}</b></td>
+                <td class="n">${money(r.taxable)}</td>
+                <td class="n">${money(r.tax)}</td>
+                <td class="n"><b>${money(r.amount)}</b></td>
+              </tr>`;
+            }).join('') : '<tr><td colspan="8" style="text-align:center;padding:24px;">No product sales found matching filter</td></tr>'}
+          </tbody>
+          <tfoot>
+            <tr class="total">
+              <td colspan="3"><b>TOTAL (${rows.length} Entries)</b></td>
+              <td class="n"></td>
+              <td class="n"><b>${totQty}</b></td>
+              <td class="n"><b>${money(totTaxable)}</b></td>
+              <td class="n"><b>${money(totTax)}</b></td>
+              <td class="n"><b>${money(totAmt)}</b></td>
+            </tr>
+          </tfoot>
+        </table>
+      `;
+    } else {
+      let rows = loadedRows;
+      if (q) rows = rows.filter((r) => String(r.name).toLowerCase().includes(q));
+
+      const totBills = rows.reduce((s, r) => s + Number(r.bills || 0), 0);
+      const totRet = rows.reduce((s, r) => s + Number(r.returns || 0), 0);
+      const totQty = rows.reduce((s, r) => s + Number(r.qty || 0), 0);
+      const totTaxable = rows.reduce((s, r) => s + Number(r.taxable || 0), 0);
+      const totTax = rows.reduce((s, r) => s + Number(r.tax || 0), 0);
+      const totAmt = rows.reduce((s, r) => s + Number(r.amount || 0), 0);
+
+      gridWrap.innerHTML = `
+        <table class="grid ps-table">
+          <thead>
+            <tr>
+              <th style="text-align:left;">PRODUCT NAME</th>
+              <th class="n" style="width:90px;">BILLS</th>
+              <th class="n" style="width:90px;">RETURNS</th>
+              <th class="n" style="width:100px;">TOTAL QTY</th>
+              <th class="n" style="width:120px;">TAXABLE VALUE</th>
+              <th class="n" style="width:110px;">GST AMOUNT</th>
+              <th class="n" style="width:130px;">TOTAL AMOUNT</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.length ? rows.map((r) => `<tr>
+              <td><b>${esc(r.name)}</b></td>
+              <td class="n">${r.bills ?? '-'}</td>
+              <td class="n">${r.returns || '-'}</td>
+              <td class="n"><b>${r.qty}</b></td>
+              <td class="n">${money(r.taxable)}</td>
+              <td class="n">${money(r.tax)}</td>
+              <td class="n"><b>${money(r.amount)}</b></td>
+            </tr>`).join('') : '<tr><td colspan="7" style="text-align:center;padding:24px;">No product sales found matching filter</td></tr>'}
+          </tbody>
+          <tfoot>
+            <tr class="total">
+              <td><b>TOTAL (${rows.length} Products)</b></td>
+              <td class="n"><b>${totBills}</b></td>
+              <td class="n"><b>${totRet}</b></td>
+              <td class="n"><b>${totQty}</b></td>
+              <td class="n"><b>${money(totTaxable)}</b></td>
+              <td class="n"><b>${money(totTax)}</b></td>
+              <td class="n"><b>${money(totAmt)}</b></td>
+            </tr>
+          </tfoot>
+        </table>
+      `;
+    }
+  }
+
+  function exportExcel() {
+    const table = gridWrap.querySelector('table');
+    if (!table) return;
+    const headers: string[] = [];
+    table.querySelectorAll('thead th').forEach((th) => headers.push(th.textContent?.replace(/\s+/g, ' ').trim() || ''));
+    const rows: (string | number)[][] = [];
+    table.querySelectorAll('tbody tr').forEach((tr) => {
+      const row: (string | number)[] = [];
+      tr.querySelectorAll('td').forEach((td) => row.push(td.textContent?.replace(/\s+/g, ' ').trim() || ''));
+      rows.push(row);
+    });
+    table.querySelectorAll('tfoot tr').forEach((tr) => {
+      const row: (string | number)[] = [];
+      tr.querySelectorAll('td').forEach((td) => row.push(td.textContent?.replace(/\s+/g, ' ').trim() || ''));
+      rows.push(row);
+    });
+    downloadCsv(`Product_${what}_Summary_${mode.toUpperCase()}_${from}_${to}.csv`, headers, rows);
+  }
+
+  function printCurrent() {
+    const table = gridWrap.querySelector('table');
+    if (!table) return;
+    const html = `<h2>${esc(company.name || '')}</h2>
+      <h3 style="text-align:center">PRODUCT ${what} SUMMARY (${mode.toUpperCase()}) &nbsp; ${fmtDate(from)} to ${fmtDate(to)}</h3>
+      ${table.outerHTML}`;
+    import('./billing.ts').then((m) => m.printHtml(html, 1));
+  }
+
+  async function changePeriod() {
+    const res = await askPeriod(from, to);
+    if (res) {
+      from = res.from;
+      to = res.to;
+      load();
+    }
+  }
+
+  modeBtns.forEach((b) => {
+    b.addEventListener('click', () => {
+      mode = b.dataset.m as any;
+      load();
+    });
+  });
+
+  findInput.addEventListener('input', () => render());
+
+  w.onKey = (_e, k) => {
+    if (k === '1' || k === 'm' || k === 'M') { mode = 'month'; load(); return true; }
+    if (k === '2' || k === 'w' || k === 'W') { mode = 'week'; load(); return true; }
+    if (k === '3' || k === 'd' || k === 'D') { mode = 'day'; load(); return true; }
+    if (k === '4' || k === 's' || k === 'S') { mode = 'summary'; load(); return true; }
+    if (k === 'F2') { changePeriod(); return true; }
+    if (k === 'Alt+X') { exportExcel(); return true; }
+    if (k === 'Alt+P' || k === 'Ctrl+P' || k === 'F10') { printCurrent(); return true; }
+    return false;
+  };
+
+  await load();
+  findInput.focus();
+}
+
