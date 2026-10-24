@@ -151,27 +151,8 @@ const TYPE_LABEL: Record<string, string> = {
 export async function itemRegister(item?: Item) {
   const it = item ?? (await pickItem());
   if (!it) return;
-  const rows = await api<any[]>(`/items/${it.id}/register`);
-  const w = openWin(`Item Register : ${it.name}`, 'wide', '<span><b>Esc</b> Close</span>');
-  w.body.style.height = '100%';
-  const IN = ['PURCHASE', 'PURCHASE_CHALLAN', 'SALE_RETURN'];
-  let bal = Number(it.opening_stock);
-  const data = rows.map((r) => {
-    const q = Number(r.qty) + Number(r.free);
-    const inQ = IN.includes(r.type) ? q : 0;
-    const outQ = IN.includes(r.type) ? 0 : q;
-    bal += inQ - outQ;
-    return { ...r, inQ, outQ, bal };
-  });
-  const g = new GridList<any>(w.body, [
-    { title: 'Date', get: (r) => r.date }, { title: 'Type', get: (r) => TYPE_LABEL[r.type] ?? r.type },
-    { title: 'No.', get: (r) => r.no }, { title: 'Party', get: (r) => r.party },
-    { title: 'In', get: (r) => r.inQ || '', num: true }, { title: 'Out', get: (r) => r.outQ || '', num: true },
-    { title: 'Rate', get: (r) => r.rate, money: true }, { title: 'Balance', get: (r) => r.bal, num: true },
-  ]);
-  g.footerRow = () => `<tr class="total"><td colspan="7">Opening ${it.opening_stock} &nbsp; | &nbsp; Closing Stock</td><td class="n">${esc(bal)}</td></tr>`;
-  g.setRows(data);
-  w.onKey = (_e, k) => g.nav(k);
+  const { itemDisplay } = await import('./stock.ts');
+  return itemDisplay(it, ['MAIN STORE']);
 }
 
 // ------------------------------------------------------------------ misc masters

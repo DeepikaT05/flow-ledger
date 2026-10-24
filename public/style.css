@@ -689,6 +689,28 @@ body.boot #bootfoot { display: flex; justify-content: space-between; align-items
 .ir-foot .r div { display: grid; grid-template-columns: 1fr 100px 130px; font-weight: bold; }
 .ir-foot .r b { text-align: right; }
 
+/* Item Display / Multi-view Product Register */
+.id-box { padding: 18px 24px 16px; background: var(--marg-bg); font-family: "Courier New", monospace; font-size: 20px; font-weight: bold; }
+.id-box .item-name { color: #0a5d22; font-size: 20px; font-weight: bold; margin-bottom: 12px; }
+.id-box .dates { display: flex; gap: 12px; align-items: center; }
+.win.marg .id-box input { width: 150px; font-size: 20px; font-weight: bold; color: #1f6fb0; }
+.id-box .btns { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
+.id-box button { font: bold 16px Tahoma, sans-serif; padding: 4px 12px; background: #e4e4e4; border: 1px solid #999; cursor: pointer; }
+.id-box button:focus { outline: 2px solid #1c4f9c; }
+
+.ir-modes { display: inline-flex; gap: 4px; margin-right: 12px; }
+.ir-btn-mode { font: bold 13px Tahoma, sans-serif; padding: 3px 9px; background: #e0e0e0; border: 1px solid #888; color: #000; cursor: pointer; border-radius: 2px; }
+.ir-btn-mode.active { background: #1c4f9c; color: #fff; border-color: #0b306b; font-weight: bold; }
+.ir-btn-mode:hover:not(.active) { background: #d0d0d0; }
+
+.ir-screen[data-view="monthly"] .ir-cols, .ir-screen[data-view="monthly"] .ir-rows .r { display: grid; grid-template-columns: 240px 110px 110px 110px 90px 140px 140px; gap: 10px; padding: 0 24px; }
+.ir-screen[data-view="weekly"] .ir-cols, .ir-screen[data-view="weekly"] .ir-rows .r { display: grid; grid-template-columns: 160px 180px 110px 110px 110px 90px 140px; gap: 10px; padding: 0 24px; }
+.ir-screen[data-view="daily"] .ir-cols, .ir-screen[data-view="daily"] .ir-rows .r { display: grid; grid-template-columns: 140px 160px 110px 110px 110px 90px 140px; gap: 10px; padding: 0 24px; }
+.ir-screen[data-view="summary"] .ir-cols, .ir-screen[data-view="summary"] .ir-rows .r { display: grid; grid-template-columns: 260px 100px 120px 120px 120px 160px; gap: 10px; padding: 0 24px; }
+
+.ir-foot .summary-tot { display: flex; justify-content: space-between; width: 100%; grid-column: 1 / -1; padding: 4px 0; font-size: 19px; }
+.ir-foot .summary-tot b { color: #1f6fb0; }
+
 /* ---------- SALE RETURN (BILL DETAILS, Save In) */
 .sr-import { color: #7a1fbf; font: bold 12px Tahoma, sans-serif; }
 .win.marg .marg-head input[data-f=pno], .win.marg .marg-head input[data-f=pdt] { width: 140px; }

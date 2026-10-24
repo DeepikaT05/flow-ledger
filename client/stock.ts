@@ -218,14 +218,14 @@ export async function closingStock(initialStores: string[] = ['MAIN STORE']) {
   }
 
   rowsBox.addEventListener('click', (e) => { const el = (e.target as HTMLElement).closest('[data-i]') as HTMLElement | null; if (el) { sel = Number(el.dataset.i); draw(); } });
-  rowsBox.addEventListener('dblclick', () => view[sel] && itemRegister(view[sel], stores));
+  rowsBox.addEventListener('dblclick', () => view[sel] && itemDisplay(view[sel], stores));
   w.onKey = (e, k) => {
     const page = Math.max(1, Math.floor(rowsBox.clientHeight / 24) - 1);
     const step: Record<string, number> = { ArrowDown: 1, ArrowUp: -1, PageDown: page, PageUp: -page };
     if (k in step && view.length) { sel = Math.min(view.length - 1, Math.max(0, sel + step[k])); typed = ''; draw(); return true; }
     if (k === 'Home' || k === 'Ctrl+Home') { sel = 0; draw(); return true; }
     if (k === 'End' || k === 'Ctrl+End') { sel = Math.max(0, view.length - 1); draw(); return true; }
-    if (k === 'Enter' && view[sel]) { itemRegister(view[sel], stores); return true; }
+    if (k === 'Enter' && view[sel]) { itemDisplay(view[sel], stores); return true; }
     if (k === 'F2') {
       itemForm().then((r) => { if (r) load(); });
       return true;
@@ -326,7 +326,7 @@ function itemOptionsPopup(it: Item, stores: string[], onSearch: (query: string) 
 
     if (opt.key === '2') {
       w.close();
-      itemRegister(it, stores);
+      itemDisplay(it, stores);
       return;
     }
 
@@ -465,7 +465,7 @@ async function openBatchDetail(it: Item, stores: string[]) {
       }
       if (k === 'F5') {
         popApi.close(null);
-        itemRegister(it, stores);
+        itemDisplay(it, stores);
         return true;
       }
       return false;
@@ -473,7 +473,11 @@ async function openBatchDetail(it: Item, stores: string[]) {
   });
 }
 
-// ------------------------------------------------------------------ ITEM REGISTER
+// ------------------------------------------------------------------ ITEM REGISTER & MULTI-VIEW (Daily, Monthly, Weekly, Summary)
+const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+
+export type ItemViewMode = 'register' | 'monthly' | 'weekly' | 'daily' | 'summary';
+
 interface RegRow {
   bill_id: number; type: string; no: string; date: string; party: string; walkin: string; batch: string; expiry: string;
   qty: number; free: number; rate: number; disc_pct: number; mrp: number; amount: number; receive: number; issue: number; balance: number;
@@ -483,87 +487,504 @@ interface Register {
   summary: { opening: { qty: number; value: number | null }; sales: { qty: number; amount: number }; purchase: { qty: number; amount: number }; other: { qty: number }; balance: { qty: number; value: number | null } };
 }
 
-async function itemRegister(it: Item, stores: string[], from = fyStart(), to = today()) {
-  const d = await api<Register>(`/items/${it.id}/stock-register?from=${from}&to=${to}`);
+interface ItemViewLine {
+  key: string;
+  cells: string[];
+  receive: number;
+  issue: number;
+  bal: number;
+  entries?: number;
+  amount?: number;
+  salesAmt?: number;
+  purAmt?: number;
+  regRow?: RegRow;
+  from?: string;
+  to?: string;
+  bold?: boolean;
+}
+
+function getWeekInfo(dateStr: string) {
+  const d = new Date(dateStr + 'T00:00:00');
+  const day = d.getDay();
+  const diffToMon = (day === 0 ? -6 : 1) - day;
+  const mon = new Date(d);
+  mon.setDate(d.getDate() + diffToMon);
+  const sun = new Date(mon);
+  sun.setDate(mon.getDate() + 6);
+  const monStr = mon.toISOString().slice(0, 10);
+  const sunStr = sun.toISOString().slice(0, 10);
+  const firstJan = new Date(mon.getFullYear(), 0, 1);
+  const days = Math.floor((mon.getTime() - firstJan.getTime()) / (24 * 3600 * 1000));
+  const weekNum = Math.ceil((days + firstJan.getDay() + 1) / 7);
+  return {
+    key: monStr,
+    weekNum,
+    from: monStr,
+    to: sunStr,
+    label: `Wk ${weekNum} (${dmy(monStr).slice(0, 5)} - ${dmy(sunStr).slice(0, 5)})`,
+  };
+}
+
+const monthEnd = (ym: string) => {
+  const [y, m] = ym.split('-').map(Number);
+  return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+};
+
+export async function itemRegister(it: Item, stores: string[] = ['MAIN STORE'], from = fyStart(), to = today()) {
+  return itemView(it, stores, 'register', from, to);
+}
+
+export function itemDisplay(it: Item, stores: string[] = ['MAIN STORE'], to = today()): Promise<void> {
+  return new Promise((resolve) => {
+    const p = margPop('ITEM DISPLAY', '<span><b>Enter</b>-Next</span><span><b>R/M/W/D/S</b>-View</span><span><b>Esc</b>-Cancel</span>', '540px');
+    const box = h('div', { class: 'id-box' });
+    box.innerHTML = `
+      <div class="item-name">${esc(`${it.name} ${it.pack ?? ''}`.toUpperCase())}</div>
+      <div class="dates"><span>FROM</span><input data-f="from" value="${dmy(fyStart())}"><span>TO</span><input data-f="to" value="${dmy(to)}"></div>
+      <div class="btns">
+        <button type="button" data-v="register"><u>R</u>egister</button>
+        <button type="button" data-v="monthly"><u>M</u>onthly</button>
+        <button type="button" data-v="weekly"><u>W</u>eekly</button>
+        <button type="button" data-v="daily"><u>D</u>aily</button>
+        <button type="button" data-v="summary"><u>S</u>ummary</button>
+        <button type="button" data-v="cancel"><u>C</u>ancel</button>
+      </div>`;
+    p.body.append(box);
+    const fields = [...box.querySelectorAll('input, button')] as HTMLElement[];
+    const go = (v: ItemViewMode | 'cancel') => {
+      if (v === 'cancel') { p.close(); resolve(); return; }
+      const from = isoOf((fields[0] as HTMLInputElement).value), till = isoOf((fields[1] as HTMLInputElement).value);
+      if (!from || !till) { toast('Enter dates as DD-MM-YYYY', true); fields[0].focus(); return; }
+      if (from > till) { toast('FROM date is after TO date', true); fields[0].focus(); return; }
+      p.close();
+      itemView(it, stores, v, from, till).finally(resolve);
+    };
+    box.addEventListener('click', (e) => {
+      const b = (e.target as HTMLElement).closest('button');
+      if (b && b.dataset.v) go(b.dataset.v as ItemViewMode | 'cancel');
+    });
+    fields[0].focus();
+    (fields[0] as HTMLInputElement).select?.();
+    p.onKey = (_e, k) => {
+      const el = document.activeElement as HTMLElement;
+      const i = fields.indexOf(el);
+      if (el instanceof HTMLButtonElement) {
+        if (k === 'ArrowRight' || k === 'Tab') { fields[Math.min(fields.length - 1, i + 1)].focus(); return true; }
+        if (k === 'ArrowLeft') { fields[Math.max(2, i - 1)].focus(); return true; }
+        if (k === 'Enter') { go(el.dataset.v as ItemViewMode | 'cancel'); return true; }
+      } else if (k === 'Enter' || k === 'Tab') {
+        fields[i + 1].focus();
+        (fields[i + 1] as HTMLInputElement).select?.();
+        return true;
+      }
+      const hit = ({
+        R: 'register', r: 'register', '1': 'register',
+        M: 'monthly', m: 'monthly', '2': 'monthly',
+        W: 'weekly', w: 'weekly', '3': 'weekly',
+        D: 'daily', d: 'daily', '4': 'daily',
+        S: 'summary', s: 'summary', '5': 'summary',
+        C: 'cancel', c: 'cancel',
+      } as Record<string, ItemViewMode | 'cancel'>)[k];
+      if (hit && !(el instanceof HTMLInputElement)) { go(hit); return true; }
+      if (k === 'Escape') { go('cancel'); return true; }
+      return false;
+    };
+  });
+}
+
+export async function itemView(
+  it: Item,
+  stores: string[] = ['MAIN STORE'],
+  initialView: ItemViewMode = 'register',
+  initFrom = fyStart(),
+  initTo = today()
+): Promise<void> {
+  let curView: ItemViewMode = initialView;
+  let from = initFrom;
+  let to = initTo;
+  let sel = 0;
+  let lines: ItemViewLine[] = [];
+  let d: Register | null = null;
   const main = stores.includes('MAIN STORE');
-  const rows = main ? d.rows : [];
-  const w = openWin('ITEM REGISTER', 'full', '');
-  w.el.classList.add('marg');
-  w.setFoot('<span><b>F2</b>-Filter</span><span><b>Enter</b>-Bill</span><span><b>Alt+X</b>-Excel</span><span><b>Alt+P</b>-PDF</span>');
-  const screen = h('div', { class: 'ir-screen' });
   const u = (it.unit ?? '').toUpperCase();
-  const s = d.summary;
   const v2 = (n: number | null) => (n == null ? '****' : f2(n));
+
+  const loadData = async () => {
+    d = await api<Register>(`/items/${it.id}/stock-register?from=${from}&to=${to}`);
+    buildLines();
+  };
+
+  const getHeaders = (v: ItemViewMode) => {
+    switch (v) {
+      case 'register':
+        return ['BILL NO.', 'DATE', 'PARTICULARS', 'RECEIVE', 'ISSUE', 'BALANCE'];
+      case 'monthly':
+        return ['MONTH', 'RECEIVE', 'ISSUE', 'BALANCE', 'ENTRIES', 'SALES AMT', 'PUR. AMT'];
+      case 'weekly':
+        return ['WEEK', 'PERIOD', 'RECEIVE', 'ISSUE', 'BALANCE', 'ENTRIES', 'AMOUNT'];
+      case 'daily':
+        return ['DATE', 'DAY', 'RECEIVE', 'ISSUE', 'BALANCE', 'ENTRIES', 'AMOUNT'];
+      case 'summary':
+        return ['TRANSACTION TYPE', 'BILLS', 'RECEIVE', 'ISSUE', 'NET QTY', 'TOTAL AMOUNT'];
+    }
+  };
+
+  function buildLines() {
+    lines = [];
+    const rows = main && d ? d.rows : [];
+    const s = d ? d.summary : { opening: { qty: 0, value: 0 }, sales: { qty: 0, amount: 0 }, purchase: { qty: 0, amount: 0 }, other: { qty: 0 }, balance: { qty: 0, value: 0 } };
+    const openQty = main ? s.opening.qty : 0;
+
+    if (curView === 'register') {
+      lines = rows.map((r) => ({
+        key: `${r.bill_id}_${r.no}`,
+        cells: [r.no, dmy(r.date).slice(0, 5), (r.walkin ? `${r.party} (${r.walkin})` : r.party).toUpperCase(), qty(r.receive), qty(r.issue), qty(r.balance)],
+        receive: r.receive,
+        issue: r.issue,
+        bal: r.balance,
+        regRow: r,
+      }));
+    } else if (curView === 'monthly') {
+      lines.push({
+        key: 'open',
+        cells: ['OPENING BALANCE', '', '', qty(openQty), '', '', ''],
+        receive: 0,
+        issue: 0,
+        bal: openQty,
+        bold: true,
+      });
+      const monthMap = new Map<string, RegRow[]>();
+      for (const r of rows) {
+        const k = r.date.slice(0, 7);
+        const cur = monthMap.get(k) || [];
+        cur.push(r);
+        monthMap.set(k, cur);
+      }
+      const sortedKeys = [...monthMap.keys()].sort();
+      let bal = openQty;
+      for (const k of sortedKeys) {
+        const list = monthMap.get(k)!;
+        const rec = r2(list.reduce((sum, r) => sum + r.receive, 0));
+        const iss = r2(list.reduce((sum, r) => sum + r.issue, 0));
+        bal = r2(bal + rec - iss);
+        const mDate = new Date(`${k}-01T00:00:00`);
+        const mLabel = mDate.toLocaleString('en', { month: 'long', year: 'numeric' }).toUpperCase();
+        const mStart = `${k}-01`;
+        const mEnd = monthEnd(k);
+        const sales = r2(list.filter((r) => ['SALE', 'COUNTER_SALE', 'SALE_RETURN'].includes(r.type)).reduce((sum, r) => sum + (r.type.endsWith('RETURN') ? -r.amount : r.amount), 0));
+        const pur = r2(list.filter((r) => ['PURCHASE', 'PURCHASE_RETURN'].includes(r.type)).reduce((sum, r) => sum + (r.type.endsWith('RETURN') ? -r.amount : r.amount), 0));
+        lines.push({
+          key: k,
+          cells: [mLabel, qty(rec), qty(iss), qty(bal), String(list.length), f2(sales), f2(pur)],
+          receive: rec,
+          issue: iss,
+          bal,
+          entries: list.length,
+          salesAmt: sales,
+          purAmt: pur,
+          from: mStart < from ? from : mStart,
+          to: mEnd > to ? to : mEnd,
+        });
+      }
+    } else if (curView === 'weekly') {
+      lines.push({
+        key: 'open',
+        cells: ['OPENING BALANCE', '', '', '', qty(openQty), '', ''],
+        receive: 0,
+        issue: 0,
+        bal: openQty,
+        bold: true,
+      });
+      const weekMap = new Map<string, RegRow[]>();
+      for (const r of rows) {
+        const wInfo = getWeekInfo(r.date);
+        const cur = weekMap.get(wInfo.key) || [];
+        cur.push(r);
+        weekMap.set(wInfo.key, cur);
+      }
+      const sortedKeys = [...weekMap.keys()].sort();
+      let bal = openQty;
+      for (const k of sortedKeys) {
+        const list = weekMap.get(k)!;
+        const wInfo = getWeekInfo(list[0].date);
+        const rec = r2(list.reduce((sum, r) => sum + r.receive, 0));
+        const iss = r2(list.reduce((sum, r) => sum + r.issue, 0));
+        bal = r2(bal + rec - iss);
+        const amt = r2(list.reduce((sum, r) => sum + (r.type.endsWith('RETURN') ? -r.amount : r.amount), 0));
+        lines.push({
+          key: k,
+          cells: [`WEEK ${wInfo.weekNum}`, `${dmy(wInfo.from).slice(0, 5)} - ${dmy(wInfo.to).slice(0, 5)}`, qty(rec), qty(iss), qty(bal), String(list.length), f2(amt)],
+          receive: rec,
+          issue: iss,
+          bal,
+          entries: list.length,
+          amount: amt,
+          from: wInfo.from < from ? from : wInfo.from,
+          to: wInfo.to > to ? to : wInfo.to,
+        });
+      }
+    } else if (curView === 'daily') {
+      lines.push({
+        key: 'open',
+        cells: ['OPENING BALANCE', '', '', '', qty(openQty), '', ''],
+        receive: 0,
+        issue: 0,
+        bal: openQty,
+        bold: true,
+      });
+      const dayMap = new Map<string, RegRow[]>();
+      for (const r of rows) {
+        const cur = dayMap.get(r.date) || [];
+        cur.push(r);
+        dayMap.set(r.date, cur);
+      }
+      const sortedKeys = [...dayMap.keys()].sort();
+      let bal = openQty;
+      for (const k of sortedKeys) {
+        const list = dayMap.get(k)!;
+        const rec = r2(list.reduce((sum, r) => sum + r.receive, 0));
+        const iss = r2(list.reduce((sum, r) => sum + r.issue, 0));
+        bal = r2(bal + rec - iss);
+        const amt = r2(list.reduce((sum, r) => sum + (r.type.endsWith('RETURN') ? -r.amount : r.amount), 0));
+        const dayName = new Date(`${k}T00:00:00`).toLocaleString('en', { weekday: 'long' }).toUpperCase();
+        lines.push({
+          key: k,
+          cells: [dmy(k), dayName, qty(rec), qty(iss), qty(bal), String(list.length), f2(amt)],
+          receive: rec,
+          issue: iss,
+          bal,
+          entries: list.length,
+          amount: amt,
+          from: k,
+          to: k,
+        });
+      }
+    } else if (curView === 'summary') {
+      const groups = [
+        { name: 'SALES', types: ['SALE', 'COUNTER_SALE'] },
+        { name: 'SALE RETURN', types: ['SALE_RETURN'] },
+        { name: 'PURCHASE', types: ['PURCHASE'] },
+        { name: 'PURCHASE RETURN', types: ['PURCHASE_RETURN'] },
+        { name: 'CHALLAN / OTHER', types: ['SALE_CHALLAN', 'PURCHASE_CHALLAN'] },
+      ];
+      for (const g of groups) {
+        const list = rows.filter((r) => g.types.includes(r.type));
+        const rec = r2(list.reduce((sum, r) => sum + r.receive, 0));
+        const iss = r2(list.reduce((sum, r) => sum + r.issue, 0));
+        const netQty = r2(rec - iss);
+        const amt = r2(list.reduce((sum, r) => sum + r.amount, 0));
+        lines.push({
+          key: g.name,
+          cells: [g.name, String(list.length), qty(rec), qty(iss), qty(netQty), f2(amt)],
+          receive: rec,
+          issue: iss,
+          bal: netQty,
+          entries: list.length,
+          amount: amt,
+        });
+      }
+    }
+  }
+
+  await loadData();
+
+  const getTitle = () => ({
+    register: 'ITEM REGISTER',
+    monthly: 'MONTHLY ITEM REGISTER',
+    weekly: 'WEEKLY ITEM REGISTER',
+    daily: 'DAILY ITEM REGISTER',
+    summary: 'ITEM SUMMARY',
+  }[curView]);
+
+  const w = openWin(getTitle(), 'full', '');
+  w.el.classList.add('marg');
+  w.setFoot('<span><b>Enter</b>-Open</span><span><b>F2</b>-Date</span><span><b>1-5</b>-View Mode</span><span><b>Alt+X</b>-Excel</span><span><b>Alt+P</b>-PDF</span><span><b>Esc</b>-Exit</span>');
+
+  const screen = h('div', { class: 'ir-screen' });
+  screen.setAttribute('data-view', curView);
   screen.innerHTML = `
     <div class="ir-main">
-      <div class="ir-head"><span class="nm">${esc(`${it.name} ${it.pack ?? ''}`.toUpperCase())}</span><span class="st">${esc(stores.join(', '))}</span></div>
-      <div class="ir-cols"><span>BILL NO.</span><span>DATE</span><span>PARTICULARS</span><span class="n">RECEIVE</span><span class="n">ISSUE</span><span class="n">BALANCE</span></div>
+      <div class="ir-head">
+        <span class="nm">${esc(`${it.name} ${it.pack ?? ''}`.toUpperCase())}</span>
+        <span class="st">${esc(stores.join(', '))}</span>
+      </div>
+      <div class="ir-cols"></div>
       <div class="ir-rows"></div>
-      <div class="ir-foot"><div class="l"></div>
+      <div class="ir-foot"></div>
+    </div>
+    <div class="cs-side"><div class="cap">Note's &lt;Ctrl+F12&gt;</div><div class="body"></div></div>`;
+
+  const bar = margBar(`[ ${dmy(from)} - ${dmy(to)} ]`);
+  const modesBox = h('div', { class: 'ir-modes' });
+  modesBox.innerHTML = `
+    <button type="button" class="ir-btn-mode ${curView === 'register' ? 'active' : ''}" data-v="register">[1] Register</button>
+    <button type="button" class="ir-btn-mode ${curView === 'monthly' ? 'active' : ''}" data-v="monthly">[2] Monthly</button>
+    <button type="button" class="ir-btn-mode ${curView === 'weekly' ? 'active' : ''}" data-v="weekly">[3] Weekly</button>
+    <button type="button" class="ir-btn-mode ${curView === 'daily' ? 'active' : ''}" data-v="daily">[4] Daily</button>
+    <button type="button" class="ir-btn-mode ${curView === 'summary' ? 'active' : ''}" data-v="summary">[5] Summary</button>`;
+  modesBox.addEventListener('click', (e) => {
+    const b = (e.target as HTMLElement).closest('.ir-btn-mode') as HTMLElement | null;
+    if (b && b.dataset.v) switchView(b.dataset.v as ItemViewMode);
+  });
+  bar.querySelector('.marg-bar-title')?.after(modesBox);
+
+  addExportToMargBar(bar, { onExcel: () => exportExcel(), onPdf: () => print() });
+  screen.prepend(bar);
+  w.body.append(screen);
+
+  const colsBox = screen.querySelector('.ir-cols') as HTMLElement;
+  const rowsBox = screen.querySelector('.ir-rows') as HTMLElement;
+  const footBox = screen.querySelector('.ir-foot') as HTMLElement;
+
+  const updateWinTitle = (t: string) => { const sp = w.el.querySelector('.win-title span'); if (sp) sp.textContent = t; };
+
+  function switchView(v: ItemViewMode) {
+    if (curView === v) return;
+    curView = v;
+    sel = 0;
+    screen.setAttribute('data-view', curView);
+    buildLines();
+    modesBox.querySelectorAll('.ir-btn-mode').forEach((b) => {
+      b.classList.toggle('active', (b as HTMLElement).dataset.v === curView);
+    });
+    updateWinTitle(getTitle());
+    draw();
+  }
+
+  function draw() {
+    const heads = getHeaders(curView);
+    colsBox.innerHTML = heads.map((h, i) => `<span class="${i >= (curView === 'summary' ? 1 : 3) ? 'n' : ''}">${h}</span>`).join('');
+    rowsBox.innerHTML = lines.map((l, i) => `<div class="r${i === sel ? ' sel' : ''}${l.bold ? ' b' : ''}" data-i="${i}">
+      ${l.cells.map((c, j) => `<span class="${j >= (curView === 'summary' ? 1 : 3) ? 'n' : ''}">${esc(c)}</span>`).join('')}
+    </div>`).join('') || '<div class="empty">No data available for this period</div>';
+    rowsBox.querySelector('.sel')?.scrollIntoView({ block: 'nearest' });
+
+    const s = d ? d.summary : { opening: { qty: 0, value: 0 }, sales: { qty: 0, amount: 0 }, purchase: { qty: 0, amount: 0 }, other: { qty: 0 }, balance: { qty: 0, value: 0 } };
+    if (curView === 'register') {
+      const curLine = lines[sel];
+      const r = curLine?.regRow;
+      footBox.innerHTML = `
+        <div class="l">
+          <div><span>Batch :</span><b>${esc(r?.batch ?? '')}</b></div><div></div>
+          <div><span>Chall.:</span><b>${r && r.type.includes('CHALLAN') ? esc(r.no) : ''}</b></div><div><span>Date &nbsp;&nbsp;:</span><b>${r && r.type.includes('CHALLAN') ? dmy(r.date) : ''}</b></div>
+          <div><span>Rate &nbsp;:</span><b>${r ? f2(r.rate) : ''}</b></div><div><span>NetRate:</span><b>${r ? f2(r.rate * (1 - (r.disc_pct ?? 0) / 100)) : ''}</b></div>
+          <div><span>M.R.P.:</span><b>${r ? f2(r.mrp || it.mrp) : ''}</b></div><div><span>Cost &nbsp;&nbsp;:</span><b>${c2(it.purchase_rate)}</b> &nbsp;Conv.:</div>
+        </div>
         <div class="r">
           <div><span>Opening &nbsp;${esc(u)}</span><b>${qty(main ? s.opening.qty : 0)}</b><b>${main ? v2(s.opening.value) : '0.00'}</b></div>
           <div><span>Sales-S/R</span><b>${qty(main ? s.sales.qty : 0)}</b><b>${f2(main ? s.sales.amount : 0)}</b></div>
           <div><span>Purchase-P/R</span><b>${qty(main ? s.purchase.qty : 0)}</b><b>${f2(main ? s.purchase.amount : 0)}</b></div>
           <div><span>Other</span><b>${qty(main ? s.other.qty : 0)}</b><b></b></div>
           <div><span>Balance &nbsp;${esc(u)}</span><b>${qty(main ? s.balance.qty : 0)}</b><b>${main ? v2(s.balance.value) : '0.00'}</b></div>
-        </div></div>
-    </div>
-    <div class="cs-side"><div class="cap">Note's &lt;Ctrl+F12&gt;</div><div class="body"></div></div>`;
-  const bar = margBar(`[ ${dmy(from)} - ${dmy(to)} ]`);
-  function exportExcel() {
-    const headers = ['Bill No.', 'Date', 'Particulars', 'Receive', 'Issue', 'Balance', 'Batch', 'Rate', 'MRP'];
-    const rws = [
-      ['', '', 'Opening Balance', '', '', qty(main ? s.opening.qty : 0), '', '', ''],
-      ...rows.map((r) => [
-        r.no,
-        dmy(r.date),
-        r.walkin ? `${r.party} (${r.walkin})` : r.party,
-        qty(r.receive),
-        qty(r.issue),
-        qty(r.balance),
-        r.batch ?? '',
-        f2(r.rate),
-        f2(r.mrp || it.mrp),
-      ]),
-      ['', '', 'Closing Balance', '', '', qty(main ? s.balance.qty : 0), '', '', ''],
-    ];
-    downloadCsv(`Item_Register_${it.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_${from}_${to}.csv`, headers, rws);
+        </div>`;
+    } else {
+      const totRec = r2(lines.reduce((sum, l) => sum + (l.bold ? 0 : l.receive), 0));
+      const totIss = r2(lines.reduce((sum, l) => sum + (l.bold ? 0 : l.issue), 0));
+      const totAmt = r2(lines.reduce((sum, l) => sum + (l.bold ? 0 : (l.amount ?? (l.salesAmt ?? 0) - (l.purAmt ?? 0))), 0));
+      const finalBal = main ? s.balance.qty : 0;
+      footBox.innerHTML = `
+        <div class="summary-tot">
+          <span>Total In: <b>${qty(totRec)}</b> &nbsp;|&nbsp; Total Out: <b>${qty(totIss)}</b> &nbsp;|&nbsp; Net Bal: <b>${qty(finalBal)} ${esc(u)}</b> (${main ? v2(s.balance.value) : '0.00'})</span>
+          <span>Net Amount: <b>${f2(totAmt)}</b></span>
+        </div>`;
+    }
   }
-  addExportToMargBar(bar, { onExcel: exportExcel, onPdf: () => print() });
-  screen.prepend(bar);
-  w.body.append(screen);
-  const rowsBox = screen.querySelector('.ir-rows') as HTMLElement;
-  let sel = 0;
-  const draw = () => {
-    rowsBox.innerHTML = rows.map((r, i) => `<div class="r${i === sel ? ' sel' : ''}" data-i="${i}"><span>${esc(r.no)}</span><span>${dmy(r.date).slice(0, 5)}</span>
-      <span>${esc((r.walkin ? `${r.party} (${r.walkin})` : r.party).toUpperCase())}</span><span class="n">${qty(r.receive)}</span><span class="n">${qty(r.issue)}</span><span class="n">${qty(r.balance)}</span></div>`).join('')
-      || '<div class="empty">No transactions in this period</div>';
-    rowsBox.querySelector('.sel')?.scrollIntoView({ block: 'nearest' });
-    const r = rows[sel];
-    (screen.querySelector('.ir-foot .l') as HTMLElement).innerHTML = `
-      <div><span>Batch :</span><b>${esc(r?.batch ?? '')}</b></div><div></div>
-      <div><span>Chall.:</span><b>${r && r.type.includes('CHALLAN') ? esc(r.no) : ''}</b></div><div><span>Date &nbsp;&nbsp;:</span><b>${r && r.type.includes('CHALLAN') ? dmy(r.date) : ''}</b></div>
-      <div><span>Rate &nbsp;:</span><b>${r ? f2(r.rate) : ''}</b></div><div><span>NetRate:</span><b>${r ? f2(r.rate * (1 - (r.disc_pct ?? 0) / 100)) : ''}</b></div>
-      <div><span>M.R.P.:</span><b>${r ? f2(r.mrp || it.mrp) : ''}</b></div><div><span>Cost &nbsp;&nbsp;:</span><b>${c2(it.purchase_rate)}</b> &nbsp;Conv.:</div>`;
-  };
-  const print = () => {
-    const html = `<h3 style="text-align:center">${esc(it.name)} ${esc(it.pack ?? '')} — ${esc(stores.join(', '))} &nbsp; ${dmy(from)} to ${dmy(to)}</h3>
-      <table class="grid"><tr><th>Bill No.</th><th>Date</th><th>Particulars</th><th class="n">Receive</th><th class="n">Issue</th><th class="n">Balance</th></tr>
-      <tr><td></td><td></td><td><b>Opening</b></td><td></td><td></td><td class="n">${qty(main ? s.opening.qty : 0)}</td></tr>
-      ${rows.map((r) => `<tr><td>${esc(r.no)}</td><td>${dmy(r.date)}</td><td>${esc(r.party)}</td><td class="n">${qty(r.receive)}</td><td class="n">${qty(r.issue)}</td><td class="n">${qty(r.balance)}</td></tr>`).join('')}</table>`;
+
+  function exportExcel() {
+    const heads = getHeaders(curView);
+    const rws = lines.map((l) => l.cells);
+    const suffix = curView.toUpperCase();
+    downloadCsv(`Item_${suffix}_${it.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_${from}_${to}.csv`, heads, rws);
+  }
+
+  function print() {
+    const heads = getHeaders(curView);
+    const html = `<h3 style="text-align:center">${esc(it.name)} ${esc(it.pack ?? '')} — [ ${esc(curView.toUpperCase())} ] &nbsp; ${dmy(from)} to ${dmy(to)}</h3>
+      <table class="grid">
+        <tr>${heads.map((h, i) => `<th class="${i >= (curView === 'summary' ? 1 : 3) ? 'n' : ''}">${esc(h)}</th>`).join('')}</tr>
+        ${lines.map((l) => `<tr>${l.cells.map((c, j) => `<td class="${j >= (curView === 'summary' ? 1 : 3) ? 'n' : ''}">${esc(c)}</td>`).join('')}</tr>`).join('')}
+      </table>`;
     import('./billing.ts').then((m) => m.printHtml(html, 1));
-  };
-  rowsBox.addEventListener('click', (e) => { const el = (e.target as HTMLElement).closest('[data-i]') as HTMLElement | null; if (el) { sel = Number(el.dataset.i); draw(); } });
+  }
+
+  rowsBox.addEventListener('click', (e) => {
+    const el = (e.target as HTMLElement).closest('[data-i]') as HTMLElement | null;
+    if (el) { sel = Number(el.dataset.i); draw(); }
+  });
+
+  rowsBox.addEventListener('dblclick', () => {
+    const curLine = lines[sel];
+    if (curView === 'register' && curLine?.regRow) {
+      const rows = main && d ? d.rows : [];
+      const bills = rows.map((r) => ({ id: r.bill_id, type: r.type })).filter((b, i, a) => a.findIndex((x) => x.id === b.id) === i);
+      import('./billview.ts').then((m) => m.billAlteration(bills, bills.findIndex((b) => b.id === curLine.regRow!.bill_id)));
+    } else if ((curView === 'monthly' || curView === 'weekly' || curView === 'daily') && curLine?.from && curLine?.to) {
+      from = curLine.from;
+      to = curLine.to;
+      curView = 'register';
+      loadData().then(() => {
+        sel = 0;
+        screen.setAttribute('data-view', curView);
+        modesBox.querySelectorAll('.ir-btn-mode').forEach((b) => {
+          b.classList.toggle('active', (b as HTMLElement).dataset.v === curView);
+        });
+        updateWinTitle(getTitle());
+        draw();
+        toast(`Opened ${curLine.cells[0]} Register`);
+      });
+    }
+  });
+
   w.onKey = (_e, k) => {
     const step: Record<string, number> = { ArrowDown: 1, ArrowUp: -1, PageDown: 15, PageUp: -15 };
-    if (k in step && rows.length) { sel = Math.min(rows.length - 1, Math.max(0, sel + step[k])); draw(); return true; }
-    if (k === 'Enter' && rows[sel]) {
-      // SALE ALTERATION, with Next / Previous walking this item's bills.
-      const bills = rows.map((r) => ({ id: r.bill_id, type: r.type })).filter((b, i, a) => a.findIndex((x) => x.id === b.id) === i);
-      import('./billview.ts').then((m) => m.billAlteration(bills, bills.findIndex((b) => b.id === rows[sel].bill_id)));
+    if (k in step && lines.length) { sel = Math.min(lines.length - 1, Math.max(0, sel + step[k])); draw(); return true; }
+    if (k === 'Home' || k === 'Ctrl+Home') { sel = 0; draw(); return true; }
+    if (k === 'End' || k === 'Ctrl+End') { sel = Math.max(0, lines.length - 1); draw(); return true; }
+    if (k === 'Enter') {
+      const curLine = lines[sel];
+      if (curView === 'register' && curLine?.regRow) {
+        const rows = main && d ? d.rows : [];
+        const bills = rows.map((r) => ({ id: r.bill_id, type: r.type })).filter((b, i, a) => a.findIndex((x) => x.id === b.id) === i);
+        import('./billview.ts').then((m) => m.billAlteration(bills, bills.findIndex((b) => b.id === curLine.regRow!.bill_id)));
+        return true;
+      }
+      if ((curView === 'monthly' || curView === 'weekly' || curView === 'daily') && curLine?.from && curLine?.to) {
+        from = curLine.from;
+        to = curLine.to;
+        curView = 'register';
+        loadData().then(() => {
+          sel = 0;
+          screen.setAttribute('data-view', curView);
+          modesBox.querySelectorAll('.ir-btn-mode').forEach((b) => {
+            b.classList.toggle('active', (b as HTMLElement).dataset.v === curView);
+          });
+          updateWinTitle(getTitle());
+          draw();
+          toast(`Opened ${curLine.cells[0]} Register`);
+        });
+        return true;
+      }
+    }
+    if (k === '1' || k === 'R' || k === 'r') { switchView('register'); return true; }
+    if (k === '2' || k === 'M' || k === 'm') { switchView('monthly'); return true; }
+    if (k === '3' || k === 'W' || k === 'w') { switchView('weekly'); return true; }
+    if (k === '4' || k === 'D' || k === 'd') { switchView('daily'); return true; }
+    if (k === '5' || k === 'S' || k === 's') { switchView('summary'); return true; }
+    if (k === 'F2') {
+      periodBox(from, to).then(async (p) => {
+        if (p) {
+          from = p.from;
+          to = p.to;
+          await loadData();
+          sel = 0;
+          const barTitle = bar.querySelector('.marg-bar-title');
+          if (barTitle) barTitle.textContent = `[ ${dmy(from)} - ${dmy(to)} ]`;
+          draw();
+          toast(`Date updated: ${dmy(from)} to ${dmy(to)}`);
+        }
+      });
       return true;
     }
-    if (k === 'F2') { periodBox(from, to).then((p) => { if (p) { w.close(); itemRegister(it, stores, p.from, p.to); } }); return true; }
     if (k === 'Alt+X') { exportExcel(); return true; }
     if (k === 'Alt+P' || k === 'Ctrl+P') { print(); return true; }
     return false;
