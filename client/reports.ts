@@ -4,6 +4,7 @@ import { BILL_TITLE } from './billing.ts';
 import { saleEntry as billEntry } from './sale.ts';
 import { V_TITLE } from './vouchers.ts';
 import { seeCost } from './session.ts';
+import { downloadCsv, createExportButtons } from './export.ts';
 
 /** Cost / profit cell: masked as **** for roles without the cost power (server sends null). */
 const cm = (v: number | null | undefined) => (v == null || !seeCost() ? '****' : money(v));
@@ -27,29 +28,57 @@ async function reportWin<T extends Record<string, any>>(opts: {
 }) {
   const p = { from: opts.from ?? fyStart(), to: opts.to ?? today() };
   const w = openWin(opts.title, 'wide', (opts.period ? '<span><b>F2</b> Change Period</span>' : '') + (opts.onEnter ? '<span><b>Enter</b> Open</span>' : '') +
-    (opts.extraFoot ?? '') + '<span><b>F10</b> Print</span><span><b>Esc</b> Close</span>');
+    (opts.extraFoot ?? '') + '<span><b>Alt+X</b> Excel</span><span><b>F10/Alt+P</b> PDF</span><span><b>Esc</b> Close</span>');
   w.body.style.height = '100%';
   const head = h('div', { class: 'party-info', style: 'font-size:14px;margin-bottom:4px' });
   w.body.append(head);
   const g = new GridList<T>(w.body, opts.cols, opts.search, 'calc(100% - 64px)');
   if (!opts.search) g.wrap.style.height = 'calc(100% - 24px)';
   g.footerRow = opts.footer;
+
+  let currentRows: T[] = [];
   const load = async () => {
     head.innerHTML = (opts.period ? `Period: <b>${fmtDate(p.from)}</b> to <b>${fmtDate(p.to)}</b> &nbsp; ` : '') + (opts.header?.(p) ?? '');
-    g.setRows(await opts.load(p), true);
+    const data = await opts.load(p);
+    currentRows = data;
+    g.setRows(data, true);
   };
+
+  const exportExcel = () => {
+    const headers = opts.cols.map((c) => c.title);
+    const rows = currentRows.map((r) => opts.cols.map((c) => {
+      const val = c.get(r);
+      return val == null ? '' : String(val);
+    }));
+    const safeTitle = opts.title.replace(/[^a-zA-Z0-9_-]/g, '_');
+    downloadCsv(`${safeTitle}_${p.from}_${p.to}.csv`, headers, rows);
+  };
+
+  const titleEl = w.el.querySelector('.win-title');
+  if (titleEl) {
+    const btns = createExportButtons({
+      onExcel: exportExcel,
+      onPdf: () => window.print(),
+    });
+    const closeBtn = titleEl.querySelector('.win-close-btn');
+    if (closeBtn) titleEl.insertBefore(btns, closeBtn);
+    else titleEl.append(btns);
+  }
+
   await load();
   g.focus();
   w.onKey = (_e, k) => {
     if (g.nav(k)) return true;
     if (k === 'F2' && opts.period) { askPeriod(p.from, p.to).then((r) => { if (r) { p.from = r.from; p.to = r.to; load(); } }); return true; }
-    if (k === 'F10') { window.print(); return true; }
+    if (k === 'Alt+X') { exportExcel(); return true; }
+    if (k === 'F10' || k === 'Alt+P' || k === 'Ctrl+P') { window.print(); return true; }
     if (k === 'Enter' && opts.onEnter && g.current) { opts.onEnter(g.current); reloadOnClose(load); return true; }
     if (opts.extraKeys?.[k]) { opts.extraKeys[k](g.current); return true; }
     return false;
   };
   return { w, load };
 }
+
 
 // ------------------------------------------------------------------ ledger
 /** All Ledgers (Alt+L) opens MARG's LEDGER ACCOUNTS; with a ledger, its LEDGER DISPLAY box. */

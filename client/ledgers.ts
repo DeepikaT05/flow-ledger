@@ -7,6 +7,7 @@ import { margBar, margPop } from './margui.ts';
 import { statusHtml, type Status } from './receipt.ts';
 import { canAction } from './session.ts';
 import { ledgerForm, type Ledger } from './masters.ts';
+import { downloadCsv, addExportToMargBar } from './export.ts';
 
 interface Acc {
   id: number; name: string; city: string; address: string; phone: string; gstin: string; state: string; group_name: string;
@@ -31,7 +32,7 @@ export async function allLedgers() {
   const company = await api<any>('/company');
   const w = openWin('LEDGER ACCOUNTS', 'full', '');
   w.el.classList.add('marg');
-  w.setFoot('<span><b>Alt+F1</b>-Others</span><span><b>F2</b>-Date</span><span><b>F3</b>-Edit</span><span><b>+</b>-Envelope</span><span><b>F4</b>-Interest</span><span><b>F6</b>-Adjust</span><span><b>F8</b>-PDC</span><span><b>Tab</b>-Search</span><span><b>F10</b>-Filter</span><span><b>Ctrl+F1</b>-Summary</span><span><b>Alt+P</b>-Print</span>');
+  w.setFoot('<span><b>Alt+F1</b>-Others</span><span><b>F2</b>-Date</span><span><b>F3</b>-Edit</span><span><b>+</b>-Envelope</span><span><b>F4</b>-Interest</span><span><b>F6</b>-Adjust</span><span><b>F8</b>-PDC</span><span><b>Tab</b>-Search</span><span><b>F10</b>-Filter</span><span><b>Ctrl+F1</b>-Summary</span><span><b>Alt+X</b>-Excel</span><span><b>Alt+P</b>-PDF</span>');
   const screen = h('div', { class: 'la-screen' });
   screen.innerHTML = `
     <div class="la-main">
@@ -45,7 +46,9 @@ export async function allLedgers() {
       </div>
     </div>
     <div class="rv-status"></div>`;
-  screen.prepend(margBar('LEDGER ACCOUNTS'));
+  const bar = margBar('LEDGER ACCOUNTS');
+  addExportToMargBar(bar, { onExcel: () => exportExcel(), onPdf: () => printList() });
+  screen.prepend(bar);
   w.body.append(screen);
   const rowsBox = screen.querySelector('.la-rows') as HTMLElement;
   const find = screen.querySelector('.find input') as HTMLInputElement;
@@ -110,6 +113,30 @@ export async function allLedgers() {
     }, 150);
   }
 
+  function exportExcel() {
+    const headers = ['Ledger Name', 'Station', 'Group', 'Phone', 'GSTIN', 'Debit Balance', 'Credit Balance', 'Net Balance'];
+    const rows = view.map((a) => {
+      let det: Record<string, string> = {};
+      if (a.details) { try { det = JSON.parse(a.details); } catch {} }
+      const phone = a.phone || det.mobile || det.phone_off1 || '';
+      const gstn = a.gstin || det.gstin || '';
+      return [
+        a.name,
+        a.city ?? '',
+        a.group_name ?? '',
+        phone,
+        gstn,
+        a.balance > 0.004 ? f2(a.balance) : '',
+        a.balance < -0.004 ? f2(-a.balance) : '',
+        drcr(a.balance),
+      ];
+    });
+    const totDr = view.filter((a) => a.balance > 0).reduce((s, a) => s + a.balance, 0);
+    const totCr = view.filter((a) => a.balance < 0).reduce((s, a) => s - a.balance, 0);
+    rows.push(['Total', '', '', '', '', f2(totDr), f2(totCr), drcr(totDr - totCr)]);
+    downloadCsv(`Ledger_Accounts_Upto_${upto}.csv`, headers, rows);
+  }
+
   function printList() {
     const html = `<h2>${esc(company.name)}</h2><h3 style="text-align:center">LEDGER ACCOUNTS &nbsp; Upto ${dmy(upto)}</h3>
       <table class="grid"><tr><th>Ledger</th><th>Station</th><th class="n">Debit</th><th class="n">Credit</th></tr>
@@ -139,11 +166,13 @@ export async function allLedgers() {
       return true;
     }
     if (k === 'F10') { balanceOnly = !balanceOnly; toast(balanceOnly ? 'Showing ledgers with a balance only' : 'Showing all ledgers'); filter(); return true; }
+    if (k === 'Alt+X') { exportExcel(); return true; }
     if (k === 'Alt+P' || k === 'Ctrl+P') { printList(); return true; }
     if (k === 'Tab') { find.focus(); find.select(); return true; }
     if (k === 'Escape' && find.value) { find.value = ''; filter(); return true; }
     return false;
   };
+
   await load();
   find.focus();
 }
@@ -412,7 +441,7 @@ async function ledgerView(l: Ledger, view: View, from: string, to: string): Prom
   return new Promise((resolve) => {
     const w = openWin(title, 'full', '');
     w.el.classList.add('marg');
-    w.setFoot(`<span><b>Enter</b>-${view === 'ledger' ? 'Open Entry' : view === 'summary' ? '' : 'Open'}</span><span><b>F2</b>-Date</span><span><b>Alt+P</b>-Print</span><span><b>Esc</b>-Exit</span>`);
+    w.setFoot(`<span><b>Enter</b>-${view === 'ledger' ? 'Open Entry' : view === 'summary' ? '' : 'Open'}</span><span><b>F2</b>-Date</span><span><b>Alt+X</b>-Excel</span><span><b>Alt+P</b>-PDF</span><span><b>Esc</b>-Exit</span>`);
     const screen = h('div', { class: 'lv-screen' });
     screen.innerHTML = `
       <div class="lv-top"><span class="co">${esc(company.name)}</span><span>Period : ${dmy(from)} - ${dmy(to)}</span></div>
@@ -421,7 +450,9 @@ async function ledgerView(l: Ledger, view: View, from: string, to: string): Prom
       <div class="lv-rows"></div>
       <div class="lv-foot"><div class="rm"></div><div class="tot"><span>TOTAL :</span><b>${f2(totDr)}</b><b>${f2(totCr)}</b><b></b></div>
         <div class="tot"><span>CLOSING :</span><b>${closing > 0 ? f2(closing) : ''}</b><b>${closing < 0 ? f2(-closing) : ''}</b><b>${drcr(closing)}</b></div></div>`;
-    screen.prepend(margBar(title));
+    const bar = margBar(title);
+    addExportToMargBar(bar, { onExcel: () => exportExcel(), onPdf: () => print() });
+    screen.prepend(bar);
     w.body.append(screen);
     const rowsBox = screen.querySelector('.lv-rows') as HTMLElement;
     let sel = Math.min(1, lines.length - 1);
@@ -443,6 +474,20 @@ async function ledgerView(l: Ledger, view: View, from: string, to: string): Prom
         else toast('Access denied — your role cannot modify vouchers', true);
       } else if (x.from && x.to) ledgerView(l, 'ledger', x.from, x.to);   // a month / day opens its entries
     };
+    function exportExcel() {
+      const headsList = heads[view].filter(Boolean);
+      const headers = [...headsList, 'Debit', 'Credit', ...(view === 'summary' ? [] : ['Balance']), 'Narration'];
+      const rows = lines.map((x) => [
+        ...x.cells.filter((_, j) => heads[view][j]),
+        x.debit ? f2(x.debit) : '',
+        x.credit ? f2(x.credit) : '',
+        ...(view === 'summary' ? [] : [x.bal != null ? drcr(x.bal) : '']),
+        x.entry?.narration ?? '',
+      ]);
+      rows.push(['Closing Balance', ...headsList.slice(1).map(() => ''), f2(totDr), f2(totCr), ...(view === 'summary' ? [] : [drcr(closing)]), '']);
+      const safeName = l.name.replace(/[^a-zA-Z0-9_-]/g, '_');
+      downloadCsv(`Ledger_${safeName}_${from}_${to}.csv`, headers, rows);
+    }
     const print = () => {
       const html = `<h2>${esc(company.name)}</h2><h3 style="text-align:center">${esc(title)} : ${esc(l.name)} &nbsp; ${dmy(from)} to ${dmy(to)}</h3>
         <table class="grid"><tr>${heads[view].filter(Boolean).map((x) => `<th>${x}</th>`).join('')}<th class="n">Debit</th><th class="n">Credit</th>${view === 'summary' ? '' : '<th class="n">Balance</th>'}</tr>
@@ -460,9 +505,11 @@ async function ledgerView(l: Ledger, view: View, from: string, to: string): Prom
       if (k === 'End' || k === 'Ctrl+End') { sel = lines.length - 1; draw(); return true; }
       if (k === 'Enter' && lines[sel]) { open(lines[sel]); return true; }
       if (k === 'F2') { w.close(); ledgerDisplay(l, to); return true; }
+      if (k === 'Alt+X') { exportExcel(); return true; }
       if (k === 'Alt+P' || k === 'Ctrl+P' || k === 'F10') { print(); return true; }
       return false;
     };
+
     w.onClose = () => resolve();
     draw();
   });

@@ -6,6 +6,7 @@ import { api, esc, toast, h, today, money, openWin, fyStart, confirmBox } from '
 import { margBar, margPop, popList, margAsk } from './margui.ts';
 import { canAction, seeCost, canDelete, NO_DELETE } from './session.ts';
 import { itemForm, type Item } from './masters.ts';
+import { downloadCsv, addExportToMargBar } from './export.ts';
 
 /** This edition keeps all stock in one store; MARG lists every store maintained. */
 const STORES = ['MAIN STORE'];
@@ -81,7 +82,7 @@ export async function closingStock(initialStores: string[] = ['MAIN STORE']) {
   const w = openWin('CLOSING STOCK', 'full', '');
   w.el.classList.add('marg');
   w.setFoot('<span><b>F2</b>-New</span><span><b>F3</b>-Edit</span><span><b>F4</b>-Options</span><span><b>Enter</b>-Register</span><span><b>F6</b>-Total</span>' +
-    '<span><b>F9</b>-Store</span><span><b>F10</b>-Filter</span><span><b>*</b>-Shortage</span><span><b>Del</b>-Delete</span><span><b>Alt+P</b>-Print</span>');
+    '<span><b>F9</b>-Store</span><span><b>F10</b>-Filter</span><span><b>*</b>-Shortage</span><span><b>Alt+X</b>-Excel</span><span><b>Alt+P</b>-PDF</span>');
   const screen = h('div', { class: 'cs-screen' });
   screen.innerHTML = `
     <div class="cs-main">
@@ -91,6 +92,7 @@ export async function closingStock(initialStores: string[] = ['MAIN STORE']) {
     </div>
     <div class="cs-side"><div class="cap">Batch Detail</div><div class="body"></div></div>`;
   const bar = margBar('');
+  addExportToMargBar(bar, { onExcel: () => exportExcel(), onPdf: () => printList() });
   screen.prepend(bar);
   w.body.append(screen);
   const rowsBox = screen.querySelector('.cs-rows') as HTMLElement;
@@ -164,10 +166,54 @@ export async function closingStock(initialStores: string[] = ['MAIN STORE']) {
       <div><span>Stock value (MRP)</span><b>${money(inS.reduce((s, it) => s + stockOf(it) * (it.mrp ?? 0), 0))}</b></div>`));
   }
 
-  function printList() {
-    const html = `<h3 style="text-align:center">${esc(stores.join(', '))} : CLOSING STOCK : ${dmy(today())}</h3>
+  function exportExcel() {
+    const headers = ['Description', 'Packing', 'Unit', 'M.R.P.', 'Stock', 'Sale Rate', 'Purchase Rate', 'Cost Value', 'MRP Value', 'Company', 'HSN Code', 'Expiry'];
+    const rows = view.map((it) => {
+      const q = stockOf(it);
+      const pr = it.purchase_rate ?? 0;
+      const mrp = it.mrp ?? 0;
+      return [
+        it.name,
+        it.pack ?? '',
+        it.unit ?? '',
+        f2(mrp),
+        qty(q),
+        f2(it.sale_rate),
+        seeCost() ? f2(pr) : '****',
+        seeCost() ? f2(q * pr) : '****',
+        f2(q * mrp),
+        it.company ?? '',
+        it.hsn ?? '',
+        it.expiry ?? '',
+      ];
+    });
+    const totQty = view.reduce((s, it) => s + stockOf(it), 0);
+    const totCost = view.reduce((s, it) => s + stockOf(it) * (it.purchase_rate ?? 0), 0);
+    const totMrp = view.reduce((s, it) => s + stockOf(it) * (it.mrp ?? 0), 0);
+    rows.push([
+      `Total (${view.length} items)`,
+      '',
+      '',
+      '',
+      qty(totQty),
+      '',
+      '',
+      seeCost() ? f2(totCost) : '****',
+      f2(totMrp),
+      '',
+      '',
+      '',
+    ]);
+    downloadCsv(`Closing_Stock_${stores.join('_')}_${today()}.csv`, headers, rows);
+  }
+
+  async function printList() {
+    let coName = '';
+    try { const co = await api<any>('/company'); coName = co.name; } catch {}
+    const html = `<h2>${esc(coName)}</h2><h3 style="text-align:center">${esc(stores.join(', '))} : CLOSING STOCK : ${dmy(today())}</h3>
       <table class="grid"><tr><th>Description</th><th>Packing</th><th class="n">M.R.P.</th><th class="n">Stock</th><th>Unit</th></tr>
-      ${view.map((it) => `<tr><td>${esc(it.name)}</td><td>${esc(it.pack ?? '')}</td><td class="n">${f2(it.mrp)}</td><td class="n">${qty(stockOf(it))}</td><td>${esc(it.unit ?? '')}</td></tr>`).join('')}</table>`;
+      ${view.map((it) => `<tr><td>${esc(it.name)}</td><td>${esc(it.pack ?? '')}</td><td class="n">${f2(it.mrp)}</td><td class="n">${qty(stockOf(it))}</td><td>${esc(it.unit ?? '')}</td></tr>`).join('')}
+      <tr class="total"><td colspan="3"><b>Total (${view.length} items)</b></td><td class="n"><b>${qty(view.reduce((s, it) => s + stockOf(it), 0))}</b></td><td></td></tr></table>`;
     import('./billing.ts').then((m) => m.printHtml(html, 1));
   }
 
@@ -219,6 +265,7 @@ export async function closingStock(initialStores: string[] = ['MAIN STORE']) {
     if (k === 'F9') { selectStore().then((s) => { if (s) { stores = s; applyFilter(); } }); return true; }
     if (k === 'F10') { inStock = !inStock; applyFilter(); return true; }
     if (k === '*') { shortage = !shortage; applyFilter(); return true; }
+    if (k === 'Alt+X') { exportExcel(); return true; }
     if (k === 'Alt+P' || k === 'Ctrl+P') { printList(); return true; }
     if (k === 'Backspace') { typed = typed.slice(0, -1); typedAt = Date.now(); draw(); return true; }
     if (k.length === 1 && !e.ctrlKey && !e.altKey) { jump(k); return true; }
@@ -227,6 +274,7 @@ export async function closingStock(initialStores: string[] = ['MAIN STORE']) {
   };
   await load();
 }
+
 
 /** F4 Options Popup for items: 1 BATCH DETAIL, 2 REGISTER, 3 SEARCH */
 function itemOptionsPopup(it: Item, stores: string[], onSearch: (query: string) => void) {
@@ -441,7 +489,7 @@ async function itemRegister(it: Item, stores: string[], from = fyStart(), to = t
   const rows = main ? d.rows : [];
   const w = openWin('ITEM REGISTER', 'full', '');
   w.el.classList.add('marg');
-  w.setFoot('<span><b>F2</b>-Filter</span><span><b>Enter</b>-Bill</span><span><b>Alt+P</b>-Print</span>');
+  w.setFoot('<span><b>F2</b>-Filter</span><span><b>Enter</b>-Bill</span><span><b>Alt+X</b>-Excel</span><span><b>Alt+P</b>-PDF</span>');
   const screen = h('div', { class: 'ir-screen' });
   const u = (it.unit ?? '').toUpperCase();
   const s = d.summary;
@@ -461,7 +509,28 @@ async function itemRegister(it: Item, stores: string[], from = fyStart(), to = t
         </div></div>
     </div>
     <div class="cs-side"><div class="cap">Note's &lt;Ctrl+F12&gt;</div><div class="body"></div></div>`;
-  screen.prepend(margBar(`[ ${dmy(from)} - ${dmy(to)} ]`));
+  const bar = margBar(`[ ${dmy(from)} - ${dmy(to)} ]`);
+  function exportExcel() {
+    const headers = ['Bill No.', 'Date', 'Particulars', 'Receive', 'Issue', 'Balance', 'Batch', 'Rate', 'MRP'];
+    const rws = [
+      ['', '', 'Opening Balance', '', '', qty(main ? s.opening.qty : 0), '', '', ''],
+      ...rows.map((r) => [
+        r.no,
+        dmy(r.date),
+        r.walkin ? `${r.party} (${r.walkin})` : r.party,
+        qty(r.receive),
+        qty(r.issue),
+        qty(r.balance),
+        r.batch ?? '',
+        f2(r.rate),
+        f2(r.mrp || it.mrp),
+      ]),
+      ['', '', 'Closing Balance', '', '', qty(main ? s.balance.qty : 0), '', '', ''],
+    ];
+    downloadCsv(`Item_Register_${it.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_${from}_${to}.csv`, headers, rws);
+  }
+  addExportToMargBar(bar, { onExcel: exportExcel, onPdf: () => print() });
+  screen.prepend(bar);
   w.body.append(screen);
   const rowsBox = screen.querySelector('.ir-rows') as HTMLElement;
   let sel = 0;
@@ -495,9 +564,11 @@ async function itemRegister(it: Item, stores: string[], from = fyStart(), to = t
       return true;
     }
     if (k === 'F2') { periodBox(from, to).then((p) => { if (p) { w.close(); itemRegister(it, stores, p.from, p.to); } }); return true; }
+    if (k === 'Alt+X') { exportExcel(); return true; }
     if (k === 'Alt+P' || k === 'Ctrl+P') { print(); return true; }
     return false;
   };
+
   draw();
 }
 

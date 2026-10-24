@@ -170,6 +170,16 @@ table.grid td input:focus { background: var(--field-focus); outline: 2px solid #
 .marg-close-btn { background: #a5121a; color: #ffffff; border: 1px solid #ffffff; font-family: inherit; font-weight: bold; font-size: 13px; padding: 1px 9px; cursor: pointer; border-radius: 3px; line-height: 1.2; display: inline-flex; align-items: center; gap: 4px; box-shadow: 1px 1px 2px rgba(0,0,0,0.3); user-select: none; transition: background .1s, transform .05s; }
 .marg-close-btn:hover { background: #c61822; }
 .marg-close-btn:active { transform: translateY(1px); }
+.export-btn-group { display: inline-flex; align-items: center; gap: 6px; margin-right: 6px; }
+.btn-export-excel, .btn-export-pdf { display: inline-flex; align-items: center; gap: 3px; font-family: Tahoma, Arial, sans-serif; font-size: 11px; font-weight: bold; padding: 2px 8px; border-radius: 3px; cursor: pointer; line-height: 1.2; user-select: none; transition: background .15s, transform .05s, box-shadow .15s; letter-spacing: .3px; }
+.btn-export-excel { background: #1b6338; color: #ffffff; border: 1px solid #82cfa0; box-shadow: 1px 1px 2px rgba(0,0,0,0.3); }
+.btn-export-excel:hover { background: #23834a; border-color: #ffffff; transform: translateY(-1px); }
+.btn-export-excel:active { transform: translateY(1px); }
+.btn-export-pdf { background: #9c151c; color: #ffffff; border: 1px solid #e27d82; box-shadow: 1px 1px 2px rgba(0,0,0,0.3); }
+.btn-export-pdf:hover { background: #bd1a23; border-color: #ffffff; transform: translateY(-1px); }
+.btn-export-pdf:active { transform: translateY(1px); }
+.win-title .export-btn-group { margin-left: auto; margin-right: 8px; }
+
 .marg-head { padding: 6px 12px; display: grid; grid-template-columns: auto 1fr auto 1fr; gap: 2px 10px; align-items: center; border-bottom: 1px solid #b9c7d2; }
 .marg-head label { color: var(--marg-lbl); font-size: 16px; }
 .marg-head label::after { content: " :"; }
