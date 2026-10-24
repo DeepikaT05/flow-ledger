@@ -26,8 +26,8 @@ const TOP: (Fld | null)[][] = [
   [S('color_type', 'COLOR TYPE', ['NORMAL', 'RED', 'BLUE', 'GREEN', 'PURPLE'], '125px'), null, S('item_type', 'ITEM TYPE', ['1 NORMAL', '2 COSTLY ITEMS', '3 8° STORAGE', '4 24° STORAGE'], '148px', { small: true })],
   [S('company_on', 'COMPANY', YN, '58px', { after: [T('company', '', { w: '230px' })] }), null, T('rack', 'RACK NO.', { w: '160px' })],
   [S('salt_on', 'SALT', YN, '58px', { after: [T('salt', '', { w: '230px' })] }), null, T('group', 'GROUP', { w: '200px' })],
-  [S('hsn_on', 'HSN/SAC', YN, '58px', { after: [T('hsn', '', { w: '120px' })] }), null, null],
-  [T('item_mid', 'ITEM MID', { w: '200px' }), null, null],
+  [S('hsn_on', 'HSN/SAC', YN, '58px', { after: [T('hsn', '', { w: '120px' })] }), null, T('expiry', 'EXPIRY (MM/YY)', { w: '110px' })],
+  [T('item_mid', 'ITEM MID', { w: '200px' }), null, T('batch', 'BATCH NO.', { w: '110px' })],
 ];
 
 // Three columns below, 12 rows each (null = empty line).
@@ -36,7 +36,7 @@ const COLS: (Fld | null)[][] = [
    N('mrp', 'M.R.P.'), N('sale_rate', 'Rate-A'), N('conv_box', 'CONV.BOX', 3), N('min_stock', 'MINIMUM QTY.', 0, { small: true }),
    N('vol_disc', 'VOLUME DISCOUNT', 3, { small: true }), N('item_disc', 'ITEM DISCOUNT', 2, { small: true }), N('max_disc', 'MAXIMUM DISCOUNT', 2, { small: true, sep: '%' }),
    N('min_margin', 'MINIMUM MARGIN %', 2, { small: true }), S('narcotic', 'NARCOTIC', NOYES)],
-  [N('sgst', 'SGST %'), N('igst', 'IGST %'), null, N('purchase_rate', 'P.RATE'), N('rate_b', 'Rate-B'),
+  [N('sgst', 'SGST %'), N('igst', 'IGST %'), N('opening_stock', 'OPENING QTY', 0, { small: true }), N('purchase_rate', 'P.RATE'), N('rate_b', 'Rate-B'),
    N('def_sale_qty', 'DEF.SALE QTY', 3, { small: true }), N('max_qty', 'MAXIMUM QTY.', 0, { small: true }), N('on_qty', 'On Qty.', 1),
    N('special_disc', 'SPECIAL DISC.', 2, { small: true }), N('purc_disc', 'PURC.Disc.', 2, { small: true }), N('disc_less', 'DISC. LESS', 2, { small: true })],
   [N('cgst', 'CGST %', 2, { ro: true }), N('cess', 'CESS%', 2, { sep: 'A:', after: [N('cess_amt', '+', 3)] }), null, N('cost', 'COST/', 5),
@@ -54,7 +54,7 @@ const DEFAULTS: Record<string, string> = {
   company_on: 'Yes', salt_on: 'Yes', hsn_on: 'Yes', local: 'Taxable', central: 'Taxable', narcotic: 'No', negative: 'No',
   discount: 'Applicable', f6_rate: 'YES', schedule_h: 'No', schedule_h1: 'No', schedule_h1_type: 'Normal',
 };
-const ITEM_COLS = ['name', 'company', 'unit', 'pack', 'hsn', 'mrp', 'sale_rate', 'purchase_rate', 'min_stock', 'reorder_qty'];
+const ITEM_COLS = ['name', 'company', 'unit', 'pack', 'hsn', 'mrp', 'sale_rate', 'purchase_rate', 'min_stock', 'reorder_qty', 'expiry', 'batch', 'opening_stock'];
 
 const fmt = (v: unknown, dec: number) => (Number(v) || 0).toFixed(dec);
 
@@ -69,6 +69,13 @@ export function productScreen(existing?: Partial<Item> & { details?: string }): 
     const gst = Number(existing?.gst_rate ?? 0);
     v.igst = String(gst); v.sgst = String(gst / 2); v.cgst = String(gst / 2);
     const cost = seeCost();
+
+    const expShort = (e?: string) => {
+      if (!e) return '';
+      if (/^\d{4}-\d{2}-\d{2}$/.test(e)) return `${e.slice(5, 7)}/${e.slice(2, 4)}`;
+      return e;
+    };
+    if (v.expiry) v.expiry = expShort(v.expiry);
 
     const title = isNew ? 'NEW PRODUCT' : 'MODIFY PRODUCT';
     const p = margPop(title, '', '1000px');
@@ -112,6 +119,23 @@ export function productScreen(existing?: Partial<Item> & { details?: string }): 
     sg.addEventListener('input', () => { const n = Number(sg.value) || 0; cg.value = fmt(n, 2); ig.value = fmt(n * 2, 2); });
     ig.addEventListener('input', () => { const n = Number(ig.value) || 0; cg.value = fmt(n / 2, 2); sg.value = fmt(n / 2, 2); });
 
+    // Expiry MM/YY auto-format on blur
+    const expEl = byKey('expiry') as HTMLInputElement | null;
+    if (expEl) {
+      expEl.addEventListener('blur', () => {
+        const val = expEl.value.trim();
+        if (!val) return;
+        const m = val.match(/^(\d{1,2})[/-]?(\d{2}|\d{4})$/);
+        if (m) {
+          const mm = String(Number(m[1])).padStart(2, '0');
+          const yy = m[2].length === 4 ? m[2].slice(2) : m[2].padStart(2, '0');
+          if (Number(mm) >= 1 && Number(mm) <= 12) {
+            expEl.value = `${mm}/${yy}`;
+          }
+        }
+      });
+    }
+
     const start = byKey('name') as HTMLInputElement;
     setTimeout(() => { start.focus(); start.select(); }, 0);
     let dirty = false;
@@ -131,11 +155,37 @@ export function productScreen(existing?: Partial<Item> & { details?: string }): 
       const body: Record<string, unknown> = { gst_rate: gstVal, opening_stock: existing?.opening_stock ?? 0 };
       const details: Record<string, string> = { ...det };
       for (const [k, val] of Object.entries(rest)) {
-        if (ITEM_COLS.includes(k)) body[k] = ['mrp', 'sale_rate', 'purchase_rate', 'min_stock', 'reorder_qty'].includes(k) ? Number(val) || 0 : val;
+        if (ITEM_COLS.includes(k)) body[k] = ['mrp', 'sale_rate', 'purchase_rate', 'min_stock', 'reorder_qty', 'opening_stock'].includes(k) ? Number(val) || 0 : val;
         else details[k] = val;
       }
       body.name = name;
       if (!cost) { delete body.purchase_rate; delete details.cost; if (isNew) body.purchase_rate = 0; }
+
+      // Validate & normalize Expiry
+      let cleanExp = out.expiry?.trim() || '';
+      if (cleanExp) {
+        const m = cleanExp.match(/^(\d{1,2})[/-]?(\d{2}|\d{4})$/);
+        if (m) {
+          const mm = Number(m[1]);
+          const yy = m[2].length === 2 ? 2000 + Number(m[2]) : Number(m[2]);
+          if (mm >= 1 && mm <= 12) {
+            const lastDay = new Date(yy, mm, 0).getDate();
+            cleanExp = `${yy}-${String(mm).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+          } else {
+            toast('Enter valid expiry MM/YY (month 01-12)', true);
+            expEl?.focus();
+            return;
+          }
+        } else if (!/^\d{4}-\d{2}-\d{2}$/.test(cleanExp)) {
+          toast('Enter valid expiry as MM/YY, e.g. 12/28', true);
+          expEl?.focus();
+          return;
+        }
+      }
+      body.expiry = cleanExp;
+      if (out.batch) body.batch = out.batch.trim().toUpperCase();
+      if (out.opening_stock) body.opening_stock = Number(out.opening_stock) || 0;
+
       body.details = details;
       try {
         const r = isNew ? await api<{ id: number }>('/items', { method: 'POST', body }) : await api(`/items/${existing!.id}`, { method: 'PUT', body });

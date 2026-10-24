@@ -127,7 +127,7 @@ export async function closingStock(initialStores: string[] = ['MAIN STORE']) {
       <div><span>Margin%:</span><b>${margin(it.sale_rate, it.purchase_rate)}</b></div><div><span>Tax-T-I:</span><b>${it.gst_rate ? f2(it.gst_rate) : ''}</b></div><div><span>HSN/SAC:</span><b>${esc(it.hsn ?? '')}</b></div>
       <div><span>W/oDeal:</span><b>${c2(it.purchase_rate)}</b></div><div><span>CESS &nbsp;&nbsp;:</span><b></b></div><div><span>Mfr. &nbsp;&nbsp;:</span><b></b></div>
       <div><span>Margin%:</span><b>${margin(it.sale_rate, it.purchase_rate)}</b></div><div><span>F.Rate :</span><b>${f2(it.sale_rate)}</b></div><div><span>Barcode:</span><b></b></div>
-      <div><span>PurDeal:</span><b></b></div><div><span>Deal[F]:</span><b></b></div><div><span>Rack No:</span><b></b></div>
+      <div><span>Expiry &nbsp;:</span><b>${it.expiry ? (it.expiry.length >= 7 ? `${it.expiry.slice(5, 7)}/${it.expiry.slice(2, 4)}` : it.expiry) : ''}</b></div><div><span>Deal[F]:</span><b></b></div><div><span>Rack No:</span><b></b></div>
       <div><span>PurDisc:</span><b></b></div><div><span>Excise :</span><b></b></div><div><b>${view.length} Items</b>${typed ? ` &nbsp; <span class="typed">Find: ${esc(typed)}</span>` : ''}${inStock ? ' &nbsp;[In Stock]' : ''}${shortage ? ' &nbsp;[Shortage]' : ''}</div>`;
     const side = screen.querySelector('.cs-side .body') as HTMLElement;
     const seq = ++batchSeq;

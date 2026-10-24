@@ -320,7 +320,7 @@ app.get('/api/items/:id/stock-register', h((req) => {
 app.get('/api/items/:id', h((req) => db.prepare(`${STOCK_SQL} WHERE i.id=?`).get(req.params.id)));
 function itemArgs(b: Row): SQLInputValue[] {
   return [String(b.name ?? '').trim(), b.company ?? '', b.unit || 'PCS', String(b.pack ?? '').trim(), b.hsn ?? '', num(b.gst_rate), num(b.mrp),
-    num(b.sale_rate), num(b.purchase_rate), num(b.opening_stock), num(b.min_stock), num(b.reorder_qty)] as SQLInputValue[];
+    num(b.sale_rate), num(b.purchase_rate), num(b.opening_stock), num(b.min_stock), num(b.reorder_qty), String(b.expiry ?? ''), String(b.batch ?? '').toUpperCase()] as SQLInputValue[];
 }
 /** NEW PRODUCT's extra fields: short strings merged over the stored ones. */
 function itemDetails(b: Row, old = '{}'): string {
@@ -342,9 +342,27 @@ function checkItemUnique(b: Row, id?: unknown) {
 }
 app.post('/api/items', h((req) => {
   checkItemUnique(req.body ?? {});
-  const r = db.prepare(`INSERT INTO items (name,company,unit,pack,hsn,gst_rate,mrp,sale_rate,purchase_rate,opening_stock,min_stock,reorder_qty,details)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(...itemArgs(req.body), itemDetails(req.body));
-  return { id: Number(r.lastInsertRowid) };
+  const r = db.prepare(`INSERT INTO items (name,company,unit,pack,hsn,gst_rate,mrp,sale_rate,purchase_rate,opening_stock,min_stock,reorder_qty,expiry,batch,details)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(...itemArgs(req.body), itemDetails(req.body));
+  const itemId = Number(r.lastInsertRowid);
+  const openQty = num(req.body?.opening_stock);
+  const exp = String(req.body?.expiry ?? '');
+  const bat = String(req.body?.batch ?? '').toUpperCase();
+  if (openQty > 0 || exp || bat) {
+    db.prepare(`INSERT INTO batches (item_id,batch,expiry,mrp,rate,f_rate,purchase_rate,opening_qty,supplier)
+      VALUES (?,?,?,?,?,?,?,?,?)`).run(
+        itemId,
+        bat || 'OPENING',
+        exp,
+        num(req.body?.mrp),
+        num(req.body?.sale_rate),
+        num(req.body?.sale_rate),
+        num(req.body?.purchase_rate),
+        openQty,
+        'OPENING BALANCE'
+      );
+  }
+  return { id: itemId };
 }));
 app.put('/api/items/:id', h((req) => {
   const body = { ...req.body };
@@ -355,7 +373,32 @@ app.put('/api/items/:id', h((req) => {
   }
   const old = (db.prepare('SELECT details FROM items WHERE id=?').get(req.params.id) as { details: string } | undefined)?.details;
   db.prepare(`UPDATE items SET name=?,company=?,unit=?,pack=?,hsn=?,gst_rate=?,mrp=?,sale_rate=?,purchase_rate=?,
-    opening_stock=?,min_stock=?,reorder_qty=?,details=? WHERE id=?`).run(...itemArgs(body), itemDetails(body, old), req.params.id);
+    opening_stock=?,min_stock=?,reorder_qty=?,expiry=?,batch=?,details=? WHERE id=?`).run(...itemArgs(body), itemDetails(body, old), req.params.id);
+
+  const itemId = Number(req.params.id);
+  const exp = String(body.expiry ?? '');
+  const bat = String(body.batch ?? '').toUpperCase();
+  const openQty = num(body.opening_stock);
+  const existingBatch = db.prepare('SELECT id, opening_qty FROM batches WHERE item_id=? ORDER BY id ASC LIMIT 1').get(itemId) as { id: number; opening_qty: number } | undefined;
+  if (existingBatch) {
+    if (exp || bat || openQty > 0) {
+      db.prepare('UPDATE batches SET batch=COALESCE(NULLIF(?,\'\'), batch), expiry=?, mrp=?, rate=?, f_rate=?, purchase_rate=?, opening_qty=? WHERE id=?')
+        .run(bat, exp, num(body.mrp), num(body.sale_rate), num(body.sale_rate), num(body.purchase_rate), openQty || existingBatch.opening_qty, existingBatch.id);
+    }
+  } else if (openQty > 0 || exp || bat) {
+    db.prepare(`INSERT INTO batches (item_id,batch,expiry,mrp,rate,f_rate,purchase_rate,opening_qty,supplier)
+      VALUES (?,?,?,?,?,?,?,?,?)`).run(
+        itemId,
+        bat || 'OPENING',
+        exp,
+        num(body.mrp),
+        num(body.sale_rate),
+        num(body.sale_rate),
+        num(body.purchase_rate),
+        openQty,
+        'OPENING BALANCE'
+      );
+  }
   return { ok: true };
 }));
 // PRICE LIST (Masters → Rate & Discount Master → Price List): change only an item's rates.

@@ -3,7 +3,7 @@ import { seeCost, canDelete, NO_DELETE } from './session.ts';
 import { productScreen } from './productform.ts';
 
 export interface Ledger { id: number; name: string; group_id: number; group_name: string; nature: string; city: string; phone: string; gstin: string; state: string; address: string; opening: number; opening_type: string; credit_limit: number; balance: number; is_system: number; details?: string }
-export interface Item { id: number; name: string; company: string; unit: string; pack: string; hsn: string; gst_rate: number; mrp: number; sale_rate: number; purchase_rate: number; opening_stock: number; min_stock: number; reorder_qty: number; stock: number }
+export interface Item { id: number; name: string; company: string; unit: string; pack: string; hsn: string; gst_rate: number; mrp: number; sale_rate: number; purchase_rate: number; opening_stock: number; min_stock: number; reorder_qty: number; stock: number; expiry?: string; batch?: string }
 interface Group { id: number; name: string; nature: string }
 
 import { ledgerScreen } from './ledgerform.ts';

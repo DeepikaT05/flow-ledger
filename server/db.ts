@@ -49,7 +49,8 @@ CREATE TABLE IF NOT EXISTS items (
   gst_rate REAL NOT NULL DEFAULT 0, mrp REAL NOT NULL DEFAULT 0,
   sale_rate REAL NOT NULL DEFAULT 0, purchase_rate REAL NOT NULL DEFAULT 0,
   opening_stock REAL NOT NULL DEFAULT 0, min_stock REAL NOT NULL DEFAULT 0,
-  reorder_qty REAL NOT NULL DEFAULT 0
+  reorder_qty REAL NOT NULL DEFAULT 0,
+  expiry TEXT DEFAULT '', batch TEXT DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS bills (
   id INTEGER PRIMARY KEY,
@@ -132,6 +133,8 @@ CREATE INDEX IF NOT EXISTS ix_vadj_bill ON voucher_adjustments(bill_id);
 const COMPANY_ALTERS = [
   // NEW PRODUCT's fields that have no column of their own (status, hide, color type, rack, schedule H1 …), as JSON.
   "ALTER TABLE items ADD COLUMN details TEXT NOT NULL DEFAULT '{}'",
+  "ALTER TABLE items ADD COLUMN expiry TEXT DEFAULT ''",
+  "ALTER TABLE items ADD COLUMN batch TEXT DEFAULT ''",
   // CREATE LEDGER's full fields (contact person, phone off/res, DL, licence, VAT, food, route …), as JSON.
   "ALTER TABLE ledgers ADD COLUMN details TEXT NOT NULL DEFAULT '{}'",
   // SALE RETURN: the customer's Party No. / Dt, the reason, the bill returned against and the calculation type.
