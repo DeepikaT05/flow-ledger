@@ -281,7 +281,10 @@ async function billHtml(id: number) {
         <div class="totals-box">
           <div class="t-row"><span>Discount</span> <b>${Number(b.discount || totDisc || 0).toFixed(2)}</b></div>
           <div class="t-row"><span>GST</span> <b>${Number(totTotalGst || b.tax || 0).toFixed(2)}</b></div>
-          <div class="t-row"><span>FREIGHT</span> <b>0.00</b></div>
+          ${b.cd_amt ? `<div class="t-row"><span>Cash Discount</span> <b>${Number(b.cd_amt).toFixed(2)}</b></div>` : ''}
+          <div class="t-row"><span>FREIGHT</span> <b>${Number(b.freight || 0).toFixed(2)}</b></div>
+          ${b.other_charges ? `<div class="t-row"><span>Other Charges</span> <b>${Number(b.other_charges).toFixed(2)}</b></div>` : ''}
+          ${b.round_off ? `<div class="t-row"><span>Round Off</span> <b>${Number(b.round_off).toFixed(2)}</b></div>` : ''}
           <div class="t-row"><span>Paid Balance</span> <b>${Number(b.received || (b.mode === 'CASH' ? b.net : 0)).toFixed(2)}</b></div>
           <div class="t-row pend"><span>Pending Balance</span> <b>${Number(b.net - (b.received || (b.mode === 'CASH' ? b.net : 0))).toFixed(2)}</b></div>
         </div>

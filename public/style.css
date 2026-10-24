@@ -1751,6 +1751,26 @@ table.marg-grid tr.sel td input::placeholder { color: rgba(255, 255, 255, .78); 
 .mr-grandtotal-tr { background: #e8f5e9 !important; font-weight: bold; font-size: 14px; color: #1b5e20; border-top: 2px solid #2e7d32; border-bottom: 3px double #2e7d32; position: sticky; bottom: 0; z-index: 2; }
 .mr-grandtotal-tr td { border-color: #2e7d32; }
 
+/* Marg Bill Sundry / Adjustments / Charges */
+.marg-bill-sundry { padding: 18px 24px; background: var(--marg-bg); font-family: "Courier New", Consolas, monospace; font-size: 15px; font-weight: bold; }
+.sundry-head { font: bold 16px Tahoma, sans-serif; color: #1c4f9c; border-bottom: 2px solid #1c4f9c; padding-bottom: 6px; margin-bottom: 14px; text-transform: uppercase; }
+.sundry-table { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
+.sundry-table td { padding: 5px 6px; }
+.sundry-table td.lbl { width: 55%; color: #333; }
+.sundry-table td.val { width: 45%; text-align: right; font-weight: bold; }
+.sundry-inp { width: 110px; font-size: 16px; font-weight: bold; font-family: "Courier New", monospace; text-align: right; padding: 2px 6px; border: 1px solid #1c4f9c; background: #fff; color: #1f6fb0; }
+.btn-sundry-auto { font: bold 11px Tahoma, sans-serif; padding: 2px 6px; background: #e0e0e0; border: 1px solid #888; cursor: pointer; border-radius: 2px; margin-left: 4px; }
+.btn-sundry-auto:hover { background: #d0d0d0; }
+.sundry-net-tr { background: #eef3fa; border-top: 2px solid #1c4f9c; border-bottom: 2px solid #1c4f9c; font-size: 16px; }
+.sundry-net-tr .lbl { color: #1c4f9c; padding: 8px 6px; }
+.sundry-net-tr .net-val { color: #1c4f9c; font-size: 18px; padding: 8px 6px; }
+.sundry-btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 10px; }
+.sundry-btns button { font: bold 15px Tahoma, sans-serif; padding: 4px 16px; background: #e4e4e4; border: 1px solid #999; cursor: pointer; }
+.sundry-btns button:focus { outline: 2px solid #1c4f9c; }
+.sundry-btns .btn-primary { background: #1c4f9c; color: #fff; border-color: #0b306b; }
+.marg-foot .info3 .kv.clickable { cursor: pointer; transition: background 0.15s; padding: 1px 3px; border-radius: 2px; }
+.marg-foot .info3 .kv.clickable:hover { background: #ffe082; color: #000; }
+
 
 
 

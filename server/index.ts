@@ -478,6 +478,7 @@ interface BillIn {
   ref_no?: string; ref_date?: string; reason?: string; against_bill_id?: number | null; calc_type?: string;
   mr_id?: number; sale_type?: string; walkin_name?: string; walkin_gstin?: string; walkin_mobile?: string; walkin_address?: string;
   payments?: PaymentIn[];
+  cd_pct?: number; cd_amt?: number; freight?: number; other_charges?: number; round_off?: number;
 }
 
 function computeBill(b: BillIn) {
@@ -497,12 +498,25 @@ function computeBill(b: BillIn) {
   const gross = r2(lines.reduce((s, l) => s + l.gross, 0));
   const taxable = r2(lines.reduce((s, l) => s + l.taxable, 0));
   const tax = r2(lines.reduce((s, l) => s + l.tax, 0));
-  const net = Math.round(taxable + tax);
-  return { lines, gross, discount: r2(gross - taxable), taxable, tax, net, round_off: r2(net - taxable - tax) };
+  const cd_pct = num(b.cd_pct);
+  let cd_amt = num(b.cd_amt);
+  if (cd_pct > 0 && !cd_amt) {
+    cd_amt = r2(taxable * (cd_pct / 100));
+  }
+  const freight = num(b.freight);
+  const other_charges = num(b.other_charges);
+  const subtotal = r2(taxable + tax - cd_amt + freight + other_charges);
+  const round_off = b.round_off != null && b.round_off !== undefined ? r2(num(b.round_off)) : r2(Math.round(subtotal) - subtotal);
+  const net = r2(subtotal + round_off);
+  return { lines, gross, discount: r2(gross - taxable), taxable, tax, cd_pct, cd_amt, freight, other_charges, round_off, net };
 }
 
 function postBill(id: number) {
-  const b = db.prepare('SELECT * FROM bills WHERE id=?').get(id) as Row & { type: string; mode: string; party_id: number; date: string; no: string; taxable: number; tax: number; net: number; round_off: number; narration: string };
+  const b = db.prepare('SELECT * FROM bills WHERE id=?').get(id) as Row & {
+    type: string; mode: string; party_id: number; date: string; no: string;
+    taxable: number; tax: number; net: number; round_off: number; narration: string;
+    cd_amt?: number; freight?: number; other_charges?: number;
+  };
   db.prepare("DELETE FROM ledger_entries WHERE source='BILL' AND source_id=?").run(id);
   if (b.type.includes('CHALLAN')) return; // challans move stock only
   const party = b.mode === 'CASH' || b.type === 'COUNTER_SALE' ? sysLedger(SYS.CASH) : b.party_id;
@@ -528,6 +542,30 @@ function postBill(id: number) {
   put(sysLedger(main), b.taxable, !partyDr);
   put(sysLedger(cg), halfA, !partyDr);
   put(sysLedger(sg), halfB, !partyDr);
+  if (b.cd_amt) {
+    let cdId = (db.prepare("SELECT id FROM ledgers WHERE name LIKE 'Cash Discount%'").get() as { id: number } | undefined)?.id;
+    if (!cdId) {
+      const gid = (db.prepare("SELECT id FROM account_groups WHERE name='Indirect Expenses'").get() as { id: number } | undefined)?.id;
+      if (gid) cdId = Number(db.prepare("INSERT INTO ledgers (name, group_id, is_system) VALUES ('Cash Discount', ?, 1)").run(gid).lastInsertRowid);
+    }
+    if (cdId) put(cdId, b.cd_amt, partyDr);
+  }
+  if (b.freight) {
+    let frId = (db.prepare("SELECT id FROM ledgers WHERE name LIKE 'Freight%'").get() as { id: number } | undefined)?.id;
+    if (!frId) {
+      const gid = (db.prepare("SELECT id FROM account_groups WHERE name='Direct Expenses' OR name='Indirect Incomes'").get() as { id: number } | undefined)?.id;
+      if (gid) frId = Number(db.prepare("INSERT INTO ledgers (name, group_id, is_system) VALUES ('Freight & Transport', ?, 1)").run(gid).lastInsertRowid);
+    }
+    if (frId) put(frId, b.freight, !partyDr);
+  }
+  if (b.other_charges) {
+    let ocId = (db.prepare("SELECT id FROM ledgers WHERE name LIKE 'Other Charges%'").get() as { id: number } | undefined)?.id;
+    if (!ocId) {
+      const gid = (db.prepare("SELECT id FROM account_groups WHERE name='Indirect Incomes' OR name='Direct Incomes'").get() as { id: number } | undefined)?.id;
+      if (gid) ocId = Number(db.prepare("INSERT INTO ledgers (name, group_id, is_system) VALUES ('Other Charges', ?, 1)").run(gid).lastInsertRowid);
+    }
+    if (ocId) put(ocId, b.other_charges, !partyDr);
+  }
   put(sysLedger(SYS.ROUND), b.round_off, !partyDr);
 }
 
@@ -539,21 +577,21 @@ function saveBill(body: BillIn, id?: number) {
   return tx(() => {
     const no = body.no?.trim() || nextNo('bills', body.type, BILL_PREFIX[body.type]);
     const args = [body.type, no, body.date, body.party_id, body.mode === 'CASH' ? 'CASH' : 'CREDIT',
-      c.gross, c.discount, c.taxable, c.tax, c.round_off, c.net, body.narration ?? '',
+      c.gross, c.discount, c.taxable, c.tax, c.cd_pct, c.cd_amt, c.freight, c.other_charges, c.round_off, c.net, body.narration ?? '',
       body.mr_id ?? null, body.sale_type === 'CENTRAL' ? 'CENTRAL' : 'LOCAL',
       body.walkin_name ?? '', body.walkin_gstin ?? '', body.walkin_mobile ?? '', body.walkin_address ?? '',
       body.ref_no ?? '', body.ref_date ?? '', body.reason ?? '', body.against_bill_id || null, body.calc_type ?? ''] as SQLInputValue[];
     let billId = id;
     if (billId) {
-      db.prepare(`UPDATE bills SET type=?,no=?,date=?,party_id=?,mode=?,gross=?,discount=?,taxable=?,tax=?,round_off=?,net=?,narration=?,
+      db.prepare(`UPDATE bills SET type=?,no=?,date=?,party_id=?,mode=?,gross=?,discount=?,taxable=?,tax=?,cd_pct=?,cd_amt=?,freight=?,other_charges=?,round_off=?,net=?,narration=?,
         mr_id=?,sale_type=?,walkin_name=?,walkin_gstin=?,walkin_mobile=?,walkin_address=?,ref_no=?,ref_date=?,reason=?,against_bill_id=?,calc_type=?
         WHERE id=?`).run(...args, billId);
       db.prepare('DELETE FROM bill_items WHERE bill_id=?').run(billId);
       db.prepare('DELETE FROM bill_payments WHERE bill_id=?').run(billId);
     } else {
-      billId = Number(db.prepare(`INSERT INTO bills (type,no,date,party_id,mode,gross,discount,taxable,tax,round_off,net,narration,
+      billId = Number(db.prepare(`INSERT INTO bills (type,no,date,party_id,mode,gross,discount,taxable,tax,cd_pct,cd_amt,freight,other_charges,round_off,net,narration,
         mr_id,sale_type,walkin_name,walkin_gstin,walkin_mobile,walkin_address,ref_no,ref_date,reason,against_bill_id,calc_type)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(...args).lastInsertRowid);
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(...args).lastInsertRowid);
     }
     const insL = db.prepare(`INSERT INTO bill_items (bill_id,item_id,batch_id,batch,expiry,qty,free,rate,disc_pct,gst_rate,mrp,taxable,tax,amount)
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);

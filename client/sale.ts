@@ -68,7 +68,7 @@ const GRID_COLS: { key: keyof Row; label: string; w: string; num?: boolean; edit
   { key: 'rate', label: 'RATE', w: '11%', num: true, edit: true },
   { key: 'disc', label: 'DIS1%', w: '8%', num: true, edit: true },
 ];
-const TOOLS = ['SALE', 'PURC', 'SC', 'PC', 'SR', 'PR', 'O/S', 'CASH', 'VOU', 'SAVE'];
+const TOOLS = ['SALE', 'PURC', 'SC', 'PC', 'SR', 'PR', 'O/S', 'CASH', 'CHG', 'VOU', 'SAVE'];
 const TOOL_TYPE: Record<string, string> = { SALE: 'SALE', PURC: 'PURCHASE', SC: 'SALE_CHALLAN', PC: 'PURCHASE_CHALLAN', SR: 'SALE_RETURN', PR: 'PURCHASE_RETURN' };
 
 // ------------------------------------------------------------------ pickers
@@ -281,6 +281,11 @@ export async function saleEntry(type = 'SALE', billId?: number) {
   // Sale return and purchase challan carry the party's own slip: Entry No / Party No / Dt.
   const refEntry = isRet || type === 'PURCHASE_CHALLAN';
   let retInfo: ReturnInfo | null = null;
+  let cdPct = 0;
+  let cdAmt = 0;
+  let freight = 0;
+  let otherCharges = 0;
+  let manualRoundOff: number | null = null;
 
   const w = openWin(ENTRY_TITLE[type], 'full', '');
   w.el.classList.add('marg');
@@ -342,12 +347,15 @@ export async function saleEntry(type = 'SALE', billId?: number) {
     const gross = r2(t.reduce((s, x) => s + x.gross, 0));
     const taxable = r2(t.reduce((s, x) => s + x.taxable, 0));
     const tax = r2(t.reduce((s, x) => s + x.tax, 0));
-    const net = Math.round(taxable + tax);
+    const effectiveCd = cdPct > 0 ? r2(taxable * (cdPct / 100)) : r2(cdAmt);
+    const subtotal = r2(taxable + tax - effectiveCd + freight + otherCharges);
+    const roundOff = manualRoundOff != null ? manualRoundOff : r2(Math.round(subtotal) - subtotal);
+    const net = r2(subtotal + roundOff);
     const mrpValue = r2(live.reduce((s, r) => s + r.qty * (r.mrp ?? 0), 0));
-    return { live, gross, taxable, tax, net, mrpValue, roundOff: r2(net - taxable - tax) };
+    return { live, gross, taxable, tax, cdPct, cdAmt: effectiveCd, freight, otherCharges, roundOff, net, mrpValue };
   }
   function renderTotals() {
-    const { live, gross, taxable, tax, net, mrpValue } = totals();
+    const { live, gross, taxable, tax, net, mrpValue, cdPct: cdp, cdAmt: cda, freight: fr, otherCharges: ot, roundOff: ro } = totals();
     const cur = rows[curRow];
     screen.querySelector('.info1')!.innerHTML = `
       <div><span class="k">Item</span>: <b>${esc(cur?.name ?? '')}</b></div>
@@ -363,8 +371,16 @@ export async function saleEntry(type = 'SALE', billId?: number) {
       <div class="kv"><span class="k">VALUE OF GOODS</span><b>${f2(taxable)}</b></div>
       <div class="kv"><span class="k">DISCOUNT</span><b>${f2(gross - taxable)}</b></div>
       <div class="kv"><span class="k">GST%</span><b>${f2(tax)}</b></div>
-      <div class="kv"><span class="k">CASH DISCOUNT</span><b>0.00</b></div>
-      <div class="kv"><span class="k">ROUND OFF</span><b>${f2(net - taxable - tax)}</b></div>`;
+      <div class="kv clickable" data-fld="cd" title="Click or Press F8 to edit Cash Discount"><span class="k">CASH DISCOUNT ${cdp ? `(${cdp}%)` : ''}</span><b>${f2(cda)}</b></div>
+      <div class="kv clickable" data-fld="freight" title="Click or Press F9 to edit Freight"><span class="k">FREIGHT / TRANSPORT</span><b>${f2(fr)}</b></div>
+      ${ot ? `<div class="kv clickable" data-fld="other" title="Click to edit Other Charges"><span class="k">OTHER CHARGES</span><b>${f2(ot)}</b></div>` : ''}
+      <div class="kv clickable" data-fld="round" title="Click to edit Round Off"><span class="k">ROUND OFF</span><b>${f2(ro)}</b></div>`;
+    screen.querySelectorAll('.info3 .clickable').forEach((el) => {
+      el.addEventListener('click', () => {
+        const fld = (el as HTMLElement).dataset.fld as any;
+        billAdjustmentsWindow(fld);
+      });
+    });
     const pcs = live.reduce((s, r) => s + r.qty + r.free, 0);
     screen.querySelector('.cal')!.textContent = `Cal:9,${live.length + 1},Qt:${live.length}(${live.length}),PCS:${pcs}`;
     screen.querySelector('.inv')!.textContent = f2(net);
@@ -532,6 +548,11 @@ export async function saleEntry(type = 'SALE', billId?: number) {
       ref_no: pnoI?.value.trim() ?? '', ref_date: pdtI?.value ? iso(pdtI.value) : '', reason: retInfo?.reason ?? '',
       against_bill_id: retInfo?.bill?.id ?? null, calc_type: retInfo?.calc ?? '',
       payments: payments.map((p) => ({ ledger_id: p.ledger_id, amount: p.amount, remark: p.remark, detail: p.detail })),
+      cd_pct: t.cdPct,
+      cd_amt: t.cdAmt,
+      freight: t.freight,
+      other_charges: t.otherCharges,
+      round_off: t.roundOff,
       lines: t.live.map((r) => ({
         item_id: r.item_id, batch_id: r.batch_id, batch: r.batch, expiry: r.expiry,
         qty: r.qty, free: r.free, rate: r.rate, disc_pct: r.disc, gst_rate: r.gst, mrp: r.mrp,
@@ -552,6 +573,178 @@ export async function saleEntry(type = 'SALE', billId?: number) {
       if (billId) { w.close(); return; }
       await reset();
     } catch (e) { toast((e as Error).message, true); }
+  }
+
+  /** BILL ADJUSTMENT / BILL SUNDRY window (Cash Discount, Freight, Other charges, Round Off). */
+  function billAdjustmentsWindow(initialFocus: 'cd' | 'freight' | 'round' | 'other' = 'cd'): Promise<boolean> {
+    return new Promise((resolve) => {
+      const curTotals = totals();
+      const p = margPop('BILL ADJUSTMENT / BILL SUNDRY',
+        '<span><b>Enter</b>-Next</span><span><b>F10/End</b>-Save</span><span><b>Esc</b>-Close</span>',
+        '540px');
+      const box = h('div', { class: 'marg-bill-sundry' });
+
+      let tempCdPct = cdPct;
+      let tempCdAmt = curTotals.cdAmt;
+      let tempFreight = freight;
+      let tempOther = otherCharges;
+      let tempRound = curTotals.roundOff;
+      let autoRound = manualRoundOff == null;
+
+      const calcPreviewNet = () => {
+        const effCd = tempCdPct > 0 ? r2(curTotals.taxable * (tempCdPct / 100)) : r2(tempCdAmt);
+        const sub = r2(curTotals.taxable + curTotals.tax - effCd + tempFreight + tempOther);
+        if (autoRound) tempRound = r2(Math.round(sub) - sub);
+        const n = r2(sub + tempRound);
+        return { effCd, sub, n };
+      };
+
+      box.innerHTML = `
+        <div class="sundry-head">BILL SUNDRY / CHARGES &amp; ADJUSTMENTS</div>
+        <table class="sundry-table">
+          <tr>
+            <td class="lbl">Goods Value (Taxable)</td>
+            <td class="val">₹ ${f2(curTotals.taxable)}</td>
+          </tr>
+          <tr>
+            <td class="lbl">Total GST</td>
+            <td class="val">₹ ${f2(curTotals.tax)}</td>
+          </tr>
+          <tr>
+            <td class="lbl">Cash Discount (CD %)</td>
+            <td><input type="number" step="0.01" class="sundry-inp" data-f="cd_pct" value="${tempCdPct ? f2(tempCdPct) : ''}" placeholder="0.00"> %</td>
+          </tr>
+          <tr>
+            <td class="lbl">Cash Discount Amt</td>
+            <td>₹ <input type="number" step="0.01" class="sundry-inp" data-f="cd_amt" value="${tempCdAmt ? f2(tempCdAmt) : ''}" placeholder="0.00"></td>
+          </tr>
+          <tr>
+            <td class="lbl">Freight / Transport (FHRITE)</td>
+            <td>₹ <input type="number" step="0.01" class="sundry-inp" data-f="freight" value="${tempFreight ? f2(tempFreight) : ''}" placeholder="0.00"></td>
+          </tr>
+          <tr>
+            <td class="lbl">Other / Misc Charges</td>
+            <td>₹ <input type="number" step="0.01" class="sundry-inp" data-f="other" value="${tempOther ? f2(tempOther) : ''}" placeholder="0.00"></td>
+          </tr>
+          <tr>
+            <td class="lbl">Round Off (+/-)</td>
+            <td>₹ <input type="number" step="0.01" class="sundry-inp" data-f="round" value="${f2(tempRound)}" placeholder="0.00">
+              <button type="button" class="btn-sundry-auto" title="Auto calculate round-off">Auto</button>
+            </td>
+          </tr>
+          <tr class="sundry-net-tr">
+            <td class="lbl">NET INVOICE VALUE</td>
+            <td class="val net-val" id="sundry-net-display">₹ ${f2(curTotals.net)}</td>
+          </tr>
+        </table>
+        <div class="sundry-btns">
+          <button type="button" class="btn-primary" data-a="ok"><u>O</u>K (Enter)</button>
+          <button type="button" data-a="cancel"><u>C</u>ancel (Esc)</button>
+        </div>
+      `;
+      p.body.append(box);
+
+      const cdPctInp = box.querySelector('input[data-f="cd_pct"]') as HTMLInputElement;
+      const cdAmtInp = box.querySelector('input[data-f="cd_amt"]') as HTMLInputElement;
+      const frInp = box.querySelector('input[data-f="freight"]') as HTMLInputElement;
+      const otInp = box.querySelector('input[data-f="other"]') as HTMLInputElement;
+      const rdInp = box.querySelector('input[data-f="round"]') as HTMLInputElement;
+      const netDisp = box.querySelector('#sundry-net-display') as HTMLElement;
+      const autoBtn = box.querySelector('.btn-sundry-auto') as HTMLButtonElement;
+
+      const refreshNet = () => {
+        const { effCd, n } = calcPreviewNet();
+        if (document.activeElement !== cdAmtInp && tempCdPct > 0) {
+          cdAmtInp.value = f2(effCd);
+        }
+        if (autoRound) {
+          rdInp.value = f2(tempRound);
+        }
+        netDisp.textContent = `₹ ${f2(n)}`;
+      };
+
+      cdPctInp.addEventListener('input', () => {
+        tempCdPct = Math.max(0, Number(cdPctInp.value) || 0);
+        tempCdAmt = tempCdPct > 0 ? r2(curTotals.taxable * (tempCdPct / 100)) : 0;
+        refreshNet();
+      });
+
+      cdAmtInp.addEventListener('input', () => {
+        tempCdAmt = Math.max(0, Number(cdAmtInp.value) || 0);
+        tempCdPct = curTotals.taxable ? r2((tempCdAmt / curTotals.taxable) * 100) : 0;
+        cdPctInp.value = tempCdPct ? f2(tempCdPct) : '';
+        refreshNet();
+      });
+
+      frInp.addEventListener('input', () => {
+        tempFreight = Math.max(0, Number(frInp.value) || 0);
+        refreshNet();
+      });
+
+      otInp.addEventListener('input', () => {
+        tempOther = Math.max(0, Number(otInp.value) || 0);
+        refreshNet();
+      });
+
+      rdInp.addEventListener('input', () => {
+        autoRound = false;
+        tempRound = Number(rdInp.value) || 0;
+        refreshNet();
+      });
+
+      autoBtn.addEventListener('click', () => {
+        autoRound = true;
+        refreshNet();
+      });
+
+      const applyAndClose = () => {
+        cdPct = tempCdPct;
+        cdAmt = tempCdPct > 0 ? r2(curTotals.taxable * (tempCdPct / 100)) : tempCdAmt;
+        freight = tempFreight;
+        otherCharges = tempOther;
+        manualRoundOff = autoRound ? null : tempRound;
+        dirty = true;
+        renderTotals();
+        p.close();
+        resolve(true);
+      };
+
+      box.querySelector('button[data-a="ok"]')?.addEventListener('click', applyAndClose);
+      box.querySelector('button[data-a="cancel"]')?.addEventListener('click', () => { p.close(); resolve(false); });
+
+      const inputs = [cdPctInp, cdAmtInp, frInp, otInp, rdInp];
+      let focusEl = cdPctInp;
+      if (initialFocus === 'freight') focusEl = frInp;
+      else if (initialFocus === 'round') focusEl = rdInp;
+      else if (initialFocus === 'other') focusEl = otInp;
+
+      focusEl.focus();
+      focusEl.select();
+
+      p.onKey = (_e, k) => {
+        const active = document.activeElement as HTMLInputElement;
+        if (k === 'Enter') {
+          const idx = inputs.indexOf(active);
+          if (idx >= 0 && idx < inputs.length - 1) {
+            inputs[idx + 1].focus();
+            inputs[idx + 1].select();
+            return true;
+          }
+          applyAndClose();
+          return true;
+        }
+        if (k === 'End' || k === 'F10' || k === 'Ctrl+W') {
+          applyAndClose();
+          return true;
+        }
+        if (k === 'Escape') {
+          p.close();
+          resolve(false);
+          return true;
+        }
+        return false;
+      };
+    });
   }
 
   /** MODE OF PAYMENT window. */
@@ -630,6 +823,10 @@ export async function saleEntry(type = 'SALE', billId?: number) {
       if (await margConfirm('Save Changes')) await save();
       return;
     }
+
+    const adjOk = await billAdjustmentsWindow();
+    if (!adjOk) { focusCell(Math.max(0, rows.length - 1), 'name'); return; }
+
     const r = await paymentWindow();
     if (r === 'saved') await save();
     else focusCell(Math.max(0, rows.length - 1), 'name');
@@ -638,6 +835,15 @@ export async function saleEntry(type = 'SALE', billId?: number) {
   async function reset() {
     rows = [blank()];
     party = null;
+    mr = null;
+    payments = [];
+    walkin = { name: '', gstin: '', mobile: '', address: '' };
+    retInfo = null;
+    cdPct = 0;
+    cdAmt = 0;
+    freight = 0;
+    otherCharges = 0;
+    manualRoundOff = null;
     mr = null;
     payments = [];
     walkin = { name: '', gstin: '', mobile: '', address: '' };
@@ -690,12 +896,17 @@ export async function saleEntry(type = 'SALE', billId?: number) {
     if (TOOL_TYPE[t]) switchType(TOOL_TYPE[t]);
     else if (t === 'SAVE') finishBill();
     else if (t === 'CASH') finishBill();
+    else if (t === 'CHG') billAdjustmentsWindow();
     else if (t === 'O/S' && party) { if (allowed('report.ledger', 'Ledger statement')) import('./reports.ts').then((m) => m.ledgerStatement(party!)).catch((e) => toast((e as Error).message, true)); }
     else if (t === 'VOU') { if (allowed('voucher.menu', 'Vouchers')) import('./vouchers.ts').then((m) => m.voucherMenu()); }
   });
 
   w.onKey = (e, k) => {
     const t = e.target as HTMLInputElement;
+    if (k === 'F8') { billAdjustmentsWindow('cd'); return true; }
+    if (k === 'F9') { billAdjustmentsWindow('freight'); return true; }
+    if (k === 'Ctrl+D' || k === 'Alt+D') { billAdjustmentsWindow('cd'); return true; }
+    if (k === 'Ctrl+R') { billAdjustmentsWindow('round'); return true; }
     // End from the product grid too: "all items done → End → MODE OF PAYMENT".
     if (k === 'Ctrl+W' || (k === 'F10' && !(refEntry && t === pnoI)) || k === 'End') { finishBill(); return true; }
     if (k === 'F2') { saleEntry(type); return true; }
@@ -788,6 +999,11 @@ export async function saleEntry(type = 'SALE', billId?: number) {
       const m = (await api<Salesman[]>('/salesmen')).find((x) => x.id === b.mr_id);
       if (m) { mr = m; mrI.value = m.name; }
     }
+    cdPct = Number(b.cd_pct || 0);
+    cdAmt = Number(b.cd_amt || 0);
+    freight = Number(b.freight || 0);
+    otherCharges = Number(b.other_charges || 0);
+    manualRoundOff = b.round_off != null ? Number(b.round_off) : null;
     payments = (b.payments ?? []).map((p: any) => ({ ledger_id: p.ledger_id, ledger: p.ledger, amount: p.amount, remark: p.remark, detail: p.detail }));
     rows = b.lines.map((l: any) => ({
       item_id: l.item_id, name: String(l.item_name).toUpperCase(), pack: (l.pack ?? '').toUpperCase(), batch_id: l.batch_id,

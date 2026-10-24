@@ -113,7 +113,9 @@ export async function billAlteration(list: BillRef[], index: number, onChange?: 
             <div class="kv"><span class="k">VALUE OF GOODS</span><b>${f2(b.taxable)}</b></div>
             <div class="kv"><span class="k">DISCOUNT</span><b>${f2(b.discount)}</b></div>
             <div class="kv"><span class="k">GST%</span><b>${f2(b.tax)}</b></div>
-            <div class="kv"><span class="k">CASH DISCOUNT</span><b>0.00</b></div>
+            <div class="kv"><span class="k">CASH DISCOUNT</span><b>${f2(b.cd_amt || 0)}</b></div>
+            <div class="kv"><span class="k">FREIGHT</span><b>${f2(b.freight || 0)}</b></div>
+            ${b.other_charges ? `<div class="kv"><span class="k">OTHER CHARGES</span><b>${f2(b.other_charges)}</b></div>` : ''}
             <div class="kv"><span class="k">ROUND OFF</span><b>${f2(b.round_off)}</b></div>
           </div>
         </div>
