@@ -229,18 +229,44 @@ function ledgerDetails(b: Row, old = '{}'): string {
   return JSON.stringify(base);
 }
 function ledgerArgs(b: Row): SQLInputValue[] {
-  return [b.name, b.group_id, b.address ?? '', b.city ?? '', b.phone ?? '', b.gstin ?? '', b.state ?? '',
-    num(b.opening), b.opening_type === 'Cr' ? 'Cr' : 'Dr', num(b.credit_limit)] as SQLInputValue[];
+  return [
+    String(b.name ?? '').trim(),
+    Number(b.group_id) || 1,
+    String(b.address ?? ''),
+    String(b.city ?? ''),
+    String(b.phone ?? ''),
+    String(b.gstin ?? ''),
+    String(b.state ?? ''),
+    num(b.opening),
+    b.opening_type === 'Cr' ? 'Cr' : 'Dr',
+    num(b.credit_limit),
+  ] as SQLInputValue[];
 }
 app.post('/api/ledgers', h((req) => {
+  const name = String(req.body?.name ?? '').trim();
+  if (!name) throw new Error('Ledger name is required');
   const r = db.prepare(`INSERT INTO ledgers (name,group_id,address,city,phone,gstin,state,opening,opening_type,credit_limit,details)
     VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(...ledgerArgs(req.body), ledgerDetails(req.body));
   return { id: Number(r.lastInsertRowid) };
 }));
 app.put('/api/ledgers/:id', h((req) => {
-  const old = (db.prepare('SELECT details FROM ledgers WHERE id=?').get(req.params.id) as { details?: string } | undefined)?.details;
+  const cur = db.prepare('SELECT * FROM ledgers WHERE id=?').get(req.params.id) as Row | undefined;
+  if (!cur) throw new Error('Ledger not found');
+  const merged: Row = {
+    name: req.body.name !== undefined ? req.body.name : cur.name,
+    group_id: req.body.group_id !== undefined ? req.body.group_id : cur.group_id,
+    address: req.body.address !== undefined ? req.body.address : (cur.address ?? ''),
+    city: req.body.city !== undefined ? req.body.city : (cur.city ?? ''),
+    phone: req.body.phone !== undefined ? req.body.phone : (cur.phone ?? ''),
+    gstin: req.body.gstin !== undefined ? req.body.gstin : (cur.gstin ?? ''),
+    state: req.body.state !== undefined ? req.body.state : (cur.state ?? ''),
+    opening: req.body.opening !== undefined ? req.body.opening : (cur.opening ?? 0),
+    opening_type: req.body.opening_type !== undefined ? req.body.opening_type : (cur.opening_type ?? 'Dr'),
+    credit_limit: req.body.credit_limit !== undefined ? req.body.credit_limit : (cur.credit_limit ?? 0),
+  };
+  const details = ledgerDetails(req.body, (cur.details as string) || '{}');
   db.prepare(`UPDATE ledgers SET name=?,group_id=?,address=?,city=?,phone=?,gstin=?,state=?,opening=?,opening_type=?,credit_limit=?,details=?
-    WHERE id=?`).run(...ledgerArgs(req.body), ledgerDetails(req.body, old), req.params.id);
+    WHERE id=?`).run(...ledgerArgs(merged), details, req.params.id);
   return { ok: true };
 }));
 app.delete('/api/ledgers/:id', h((req) => {

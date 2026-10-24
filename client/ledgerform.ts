@@ -2111,7 +2111,7 @@ function bankDetailDialog(l: Ledger): Promise<Ledger | null> {
     const saveBank = async () => {
       for (const inp of inps) { det[inp.dataset.k!] = inp.value.trim(); }
       try {
-        await api(`/ledgers/${l.id}`, { method: 'PUT', body: { details: det } });
+        await api(`/ledgers/${l.id}`, { method: 'PUT', body: { ...l, details: det } });
         toast('Bank details saved');
         w.close();
         resolve(await api<Ledger>(`/ledgers/${l.id}`));
@@ -2154,7 +2154,7 @@ function upiDetailDialog(l: Ledger): Promise<Ledger | null> {
     const saveUpi = async () => {
       det.upi_id = inp.value.trim();
       try {
-        await api(`/ledgers/${l.id}`, { method: 'PUT', body: { details: det } });
+        await api(`/ledgers/${l.id}`, { method: 'PUT', body: { ...l, details: det } });
         toast('UPI ID saved');
         w.close();
         resolve(await api<Ledger>(`/ledgers/${l.id}`));
@@ -2197,7 +2197,7 @@ function otherDetailDialog(l: Ledger): Promise<Ledger | null> {
       det.due_days = inps[2].value.trim();
       det.discount_pct = inps[3].value.trim();
       try {
-        await api(`/ledgers/${l.id}`, { method: 'PUT', body: { credit_limit: crLimit, details: det } });
+        await api(`/ledgers/${l.id}`, { method: 'PUT', body: { ...l, credit_limit: crLimit, details: det } });
         toast('Details saved');
         w.close();
         resolve(await api<Ledger>(`/ledgers/${l.id}`));
@@ -2240,7 +2240,7 @@ function notesDialog(l: Ledger): Promise<Ledger | null> {
     const saveNotes = async () => {
       det.notes = ta.value.trim();
       try {
-        await api(`/ledgers/${l.id}`, { method: 'PUT', body: { details: det } });
+        await api(`/ledgers/${l.id}`, { method: 'PUT', body: { ...l, details: det } });
         toast('Notes saved');
         w.close();
         resolve(await api<Ledger>(`/ledgers/${l.id}`));
