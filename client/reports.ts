@@ -1,11 +1,15 @@
-import { api, openWin, GridList, money, drcr, esc, today, fmtDate, fyStart, h, formWin, reloadOnClose, type Col } from './ui.ts';
+import { api, openWin, GridList, money, drcr, esc, today, fmtDate, fyStart, h, formWin, reloadOnClose, toast, type Col } from './ui.ts';
 import { pickLedger, itemRegister, type Ledger } from './masters.ts';
 import { BILL_TITLE } from './billing.ts';
 import { saleEntry as billEntry } from './sale.ts';
 import { V_TITLE } from './vouchers.ts';
 import { seeCost } from './session.ts';
 import { downloadCsv, createExportButtons, addExportToMargBar } from './export.ts';
-import { margBar } from './margui.ts';
+import { margBar, margPop } from './margui.ts';
+
+const dmy = (iso: string) => (iso ? `${iso.slice(8, 10)}-${iso.slice(5, 7)}-${iso.slice(0, 4)}` : '');
+const isoOf = (d: string) => { const m = d.match(/^(\d{2})-(\d{2})-(\d{4})$/); return m ? `${m[3]}-${m[2]}-${m[1]}` : ''; };
+const f2 = (n: unknown) => Number(n ?? 0).toFixed(2);
 
 /** Cost / profit cell: masked as **** for roles without the cost power (server sends null). */
 const cm = (v: number | null | undefined) => (v == null || !seeCost() ? '****' : money(v));
@@ -220,24 +224,335 @@ export function grossProfit() {
   });
 }
 
-export async function mis() {
-  const p = { from: today(), to: today() };
-  const w = openWin('Daily Analysis (MIS)', 'mid', '<span><b>F2</b> Change Period</span><span><b>Esc</b> Close</span>');
-  const load = async () => {
-    const m = await api(`/reports/mis?from=${p.from}&to=${p.to}`);
-    const box = (t: string, v: string) => `<div><span>${t}</span><b>${v}</b></div>`;
-    w.body.innerHTML = `<div class="party-info" style="margin-bottom:6px">Period: <b>${fmtDate(p.from)}</b> to <b>${fmtDate(p.to)}</b></div><div class="mis">
-      ${box(`Sales (${m.sales.c} bills)`, money(m.sales.s))}${box(`Purchase (${m.purchase.c} bills)`, money(m.purchase.s))}
-      ${box(`Sale Return (${m.saleReturn.c})`, money(m.saleReturn.s))}${box(`Purchase Return (${m.purchaseReturn.c})`, money(m.purchaseReturn.s))}
-      ${box(`Receipts (${m.receipt.c})`, money(m.receipt.s))}${box(`Payments (${m.payment.c})`, money(m.payment.s))}
-      ${box('Cash in Hand', drcr(m.cash))}${box('Bank Balance', drcr(m.bank))}
-      ${box('Total Receivable', money(m.receivable))}${box('Total Payable', money(m.payable))}</div>`;
+interface MisData {
+  from: string;
+  to: string;
+  sales: { s: number; c: number };
+  purchase: { s: number; c: number };
+  saleReturn: { s: number; c: number };
+  purchaseReturn: { s: number; c: number };
+  receipt: { s: number; c: number };
+  payment: { s: number; c: number };
+  cash: number;
+  bank: number;
+  receivable: number;
+  payable: number;
+  profit?: {
+    sales: number;
+    cost: number;
+    gp: number;
+    margin: number;
   };
-  await load();
+}
+
+function askMisDate(curFrom = today(), curTo = today()): Promise<{ from: string; to: string; action: 'view' | 'print' | 'excel' } | null> {
+  return new Promise((resolve) => {
+    const p = margPop('DAILY ANALYSIS (MIS)', '<span><b>Enter</b>-Next</span><span><b>V/P/E</b>-Action</span><span><b>Esc</b>-Cancel</span>', '480px');
+    const box = h('div', { class: 'mis-date-box' });
+    box.innerHTML = `
+      <div class="mis-pop-head">DAILY ANALYSIS (MIS) &mdash; PERIOD SELECTION</div>
+      <div class="dates">
+        <span>FROM</span><input data-f="from" value="${dmy(curFrom)}" autocomplete="off" spellcheck="false">
+        <span>TO</span><input data-f="to" value="${dmy(curTo)}" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="presets">
+        <button type="button" class="btn-preset" data-p="today"><u>T</u>oday</button>
+        <button type="button" class="btn-preset" data-p="month"><u>M</u>onth</button>
+        <button type="button" class="btn-preset" data-p="year"><u>Y</u>ear</button>
+      </div>
+      <div class="btns">
+        <button type="button" data-a="view" class="btn-primary"><u>V</u>iew</button>
+        <button type="button" data-a="print"><u>P</u>rint</button>
+        <button type="button" data-a="excel"><u>E</u>xcel</button>
+        <button type="button" data-a="cancel"><u>C</u>ancel</button>
+      </div>`;
+    p.body.append(box);
+
+    const fInp = box.querySelector('input[data-f="from"]') as HTMLInputElement;
+    const tInp = box.querySelector('input[data-f="to"]') as HTMLInputElement;
+
+    const setPreset = (preset: string) => {
+      if (preset === 'today') {
+        fInp.value = dmy(today());
+        tInp.value = dmy(today());
+      } else if (preset === 'month') {
+        const ym = today().slice(0, 7);
+        fInp.value = dmy(`${ym}-01`);
+        tInp.value = dmy(today());
+      } else if (preset === 'year') {
+        fInp.value = dmy(fyStart());
+        tInp.value = dmy(today());
+      }
+      fInp.focus();
+      fInp.select();
+    };
+
+    box.querySelectorAll('.btn-preset').forEach((b) => {
+      b.addEventListener('click', () => setPreset((b as HTMLElement).dataset.p || 'today'));
+    });
+
+    const submit = (act: 'view' | 'print' | 'excel' | 'cancel') => {
+      if (act === 'cancel') { p.close(); resolve(null); return; }
+      const f = isoOf(fInp.value), t = isoOf(tInp.value);
+      if (!f || !t) { toast('Enter dates as DD-MM-YYYY', true); fInp.focus(); return; }
+      if (f > t) { toast('FROM date cannot be after TO date', true); fInp.focus(); return; }
+      p.close();
+      resolve({ from: f, to: t, action: act });
+    };
+
+    box.addEventListener('click', (e) => {
+      const b = (e.target as HTMLElement).closest('button[data-a]');
+      if (b) submit((b as HTMLElement).dataset.a as any);
+    });
+
+    fInp.focus();
+    fInp.select();
+
+    p.onKey = (_e, k) => {
+      const active = document.activeElement;
+      if (k === 'Enter') {
+        if (active === fInp) { tInp.focus(); tInp.select(); return true; }
+        if (active === tInp) { submit('view'); return true; }
+        if (active instanceof HTMLButtonElement && active.dataset.a) {
+          submit(active.dataset.a as any);
+          return true;
+        }
+      }
+      if (k === 'Tab') {
+        if (active === fInp) { tInp.focus(); tInp.select(); return true; }
+      }
+      if (k === 'T' || k === 't') { if (active instanceof HTMLInputElement) return false; setPreset('today'); return true; }
+      if (k === 'M' || k === 'm') { if (active instanceof HTMLInputElement) return false; setPreset('month'); return true; }
+      if (k === 'Y' || k === 'y') { if (active instanceof HTMLInputElement) return false; setPreset('year'); return true; }
+      if (k === 'V' || k === 'v') { submit('view'); return true; }
+      if (k === 'P' || k === 'p') { submit('print'); return true; }
+      if (k === 'E' || k === 'e') { submit('excel'); return true; }
+      if (k === 'Escape' || k === 'C' || k === 'c') { submit('cancel'); return true; }
+      return false;
+    };
+  });
+}
+
+function exportMisExcel(m: MisData, from: string, to: string) {
+  const headers = ['Category', 'Particulars', 'Count / Bills', 'Amount (Rs.)', 'Remarks'];
+  const netSales = (m.sales?.s || 0) - (m.saleReturn?.s || 0);
+  const netPur = (m.purchase?.s || 0) - (m.purchaseReturn?.s || 0);
+  const netCashFlow = (m.receipt?.s || 0) - (m.payment?.s || 0);
+  const totalLiquidity = (m.cash || 0) + (m.bank || 0);
+  const netOutstandings = (m.receivable || 0) - (m.payable || 0);
+
+  const rows = [
+    ['TURNOVER', 'Gross Sales', String(m.sales?.c || 0), f2(m.sales?.s || 0), 'Sale + Counter Sale'],
+    ['TURNOVER', 'Sale Return', String(m.saleReturn?.c || 0), f2(m.saleReturn?.s || 0), 'Customer Credit Notes'],
+    ['TURNOVER', 'NET SALES', '', f2(netSales), 'Gross Sales - Returns'],
+    ['TURNOVER', 'Gross Purchases', String(m.purchase?.c || 0), f2(m.purchase?.s || 0), 'Purchase Invoices'],
+    ['TURNOVER', 'Purchase Return', String(m.purchaseReturn?.c || 0), f2(m.purchaseReturn?.s || 0), 'Debit Notes'],
+    ['TURNOVER', 'NET PURCHASES', '', f2(netPur), 'Purchases - Returns'],
+    ['LIQUIDITY', 'Cash in Hand', '', f2(m.cash || 0), drcr(m.cash || 0)],
+    ['LIQUIDITY', 'Bank Accounts', '', f2(m.bank || 0), drcr(m.bank || 0)],
+    ['LIQUIDITY', 'TOTAL CASH & BANK', '', f2(totalLiquidity), 'Total Liquid Funds'],
+    ['VOUCHERS', 'Receipts (Collection)', String(m.receipt?.c || 0), f2(m.receipt?.s || 0), 'Cash/Bank Receipts'],
+    ['VOUCHERS', 'Payments (Disbursed)', String(m.payment?.c || 0), f2(m.payment?.s || 0), 'Cash/Bank Payments'],
+    ['VOUCHERS', 'NET CASH FLOW', '', f2(netCashFlow), 'Receipts - Payments'],
+    ['OUTSTANDINGS', 'Sundry Debtors (Receivable)', '', f2(m.receivable || 0), 'Customer Outstandings'],
+    ['OUTSTANDINGS', 'Sundry Creditors (Payable)', '', f2(m.payable || 0), 'Supplier Outstandings'],
+    ['OUTSTANDINGS', 'NET WORKING GAP', '', f2(netOutstandings), 'Receivable - Payable'],
+  ];
+
+  if (m.profit) {
+    rows.push(
+      ['PROFITABILITY', 'Billed Taxable Sales', '', f2(m.profit.sales), 'Taxable Turnover'],
+      ['PROFITABILITY', 'Cost of Goods Sold (COGS)', '', f2(m.profit.cost), 'Purchase Valuation'],
+      ['PROFITABILITY', 'GROSS PROFIT (GP)', '', f2(m.profit.gp), `Margin: ${m.profit.margin}%`],
+    );
+  }
+
+  downloadCsv(`Daily_Analysis_MIS_${from}_to_${to}.csv`, headers, rows);
+}
+
+function printMis(m: MisData, from: string, to: string) {
+  const netSales = (m.sales?.s || 0) - (m.saleReturn?.s || 0);
+  const netPur = (m.purchase?.s || 0) - (m.purchaseReturn?.s || 0);
+  const netCashFlow = (m.receipt?.s || 0) - (m.payment?.s || 0);
+  const totalLiquidity = (m.cash || 0) + (m.bank || 0);
+  const netOutstandings = (m.receivable || 0) - (m.payable || 0);
+
+  const html = `
+    <div style="font-family:'Courier New', monospace; font-size:14px; padding:10px;">
+      <h2 style="text-align:center; margin-bottom:4px;">DAILY ANALYSIS (MIS) REPORT</h2>
+      <h4 style="text-align:center; margin-top:0; color:#555;">Period : ${dmy(from)} to ${dmy(to)}</h4>
+      
+      <table class="grid" style="width:100%; margin-bottom:16px;">
+        <tr style="background:#003366; color:#fff;"><th colspan="4" style="text-align:left;">1. OPERATIONAL TURNOVER</th></tr>
+        <tr><td>Gross Sales (${m.sales?.c || 0} Bills)</td><td class="n">${money(m.sales?.s || 0)}</td><td>Gross Purchases (${m.purchase?.c || 0} Bills)</td><td class="n">${money(m.purchase?.s || 0)}</td></tr>
+        <tr><td>Sale Return (${m.saleReturn?.c || 0})</td><td class="n">${money(m.saleReturn?.s || 0)}</td><td>Purchase Return (${m.purchaseReturn?.c || 0})</td><td class="n">${money(m.purchaseReturn?.s || 0)}</td></tr>
+        <tr class="total"><td><b>NET SALES</b></td><td class="n"><b>${money(netSales)}</b></td><td><b>NET PURCHASES</b></td><td class="n"><b>${money(netPur)}</b></td></tr>
+      </table>
+
+      <table class="grid" style="width:100%; margin-bottom:16px;">
+        <tr style="background:#003366; color:#fff;"><th colspan="4" style="text-align:left;">2. CASH FLOW & BALANCES</th></tr>
+        <tr><td>Cash in Hand</td><td class="n">${drcr(m.cash || 0)}</td><td>Customer Receipts (${m.receipt?.c || 0})</td><td class="n">${money(m.receipt?.s || 0)}</td></tr>
+        <tr><td>Bank Accounts</td><td class="n">${drcr(m.bank || 0)}</td><td>Supplier Payments (${m.payment?.c || 0})</td><td class="n">${money(m.payment?.s || 0)}</td></tr>
+        <tr class="total"><td><b>TOTAL LIQUID FUNDS</b></td><td class="n"><b>${drcr(totalLiquidity)}</b></td><td><b>NET CASH FLOW</b></td><td class="n"><b>${money(netCashFlow)}</b></td></tr>
+      </table>
+
+      <table class="grid" style="width:100%; margin-bottom:16px;">
+        <tr style="background:#003366; color:#fff;"><th colspan="4" style="text-align:left;">3. OUTSTANDINGS & PROFITABILITY</th></tr>
+        <tr><td>Sundry Debtors (Receivable)</td><td class="n">${money(m.receivable || 0)}</td><td>Billed Taxable Sales</td><td class="n">${money(m.profit?.sales || 0)}</td></tr>
+        <tr><td>Sundry Creditors (Payable)</td><td class="n">${money(m.payable || 0)}</td><td>Cost of Goods Sold (COGS)</td><td class="n">${money(m.profit?.cost || 0)}</td></tr>
+        <tr class="total"><td><b>NET RECEIVABLE GAP</b></td><td class="n"><b>${money(netOutstandings)}</b></td><td><b>GROSS PROFIT (GP)</b></td><td class="n"><b>${money(m.profit?.gp || 0)} (${m.profit?.margin || 0}%)</b></td></tr>
+      </table>
+    </div>`;
+
+  import('./billing.ts').then((mod) => mod.printHtml(html, 1));
+}
+
+async function showMisScreen(from: string, to: string) {
+  let curFrom = from;
+  let curTo = to;
+  let m: MisData = await api<MisData>(`/reports/mis?from=${curFrom}&to=${curTo}`);
+
+  const w = openWin('DAILY ANALYSIS (MIS)', 'full', '');
+  w.el.classList.add('marg');
+  w.setFoot('<span><b>F2</b>-Date</span><span><b>Alt+X</b>-Excel</span><span><b>Alt+P</b>-PDF</span><span><b>Esc</b>-Close</span>');
+
+  const screen = h('div', { class: 'mis-screen' });
+
+  const bar = margBar(`DAILY ANALYSIS (MIS) [ ${dmy(curFrom)} - ${dmy(curTo)} ]`);
+  const btnDate = h('button', { type: 'button', class: 'btn-filter', title: 'Change Date [F2]' }, `📅 Date: ${dmy(curFrom)} to ${dmy(curTo)}`);
+  btnDate.onclick = async () => {
+    const res = await askMisDate(curFrom, curTo);
+    if (res && res.action === 'view') {
+      curFrom = res.from;
+      curTo = res.to;
+      await reload();
+    } else if (res && res.action === 'excel') {
+      exportMisExcel(m, res.from, res.to);
+    } else if (res && res.action === 'print') {
+      printMis(m, res.from, res.to);
+    }
+  };
+  bar.querySelector('.marg-bar-right')?.prepend(btnDate);
+  addExportToMargBar(bar, {
+    onExcel: () => exportMisExcel(m, curFrom, curTo),
+    onPdf: () => printMis(m, curFrom, curTo),
+  });
+
+  screen.append(bar);
+  const container = h('div', { class: 'mis-container' });
+  screen.append(container);
+  w.body.append(screen);
+
+  async function reload() {
+    m = await api<MisData>(`/reports/mis?from=${curFrom}&to=${curTo}`);
+    const titleEl = bar.querySelector('.marg-bar-title');
+    if (titleEl) titleEl.textContent = `DAILY ANALYSIS (MIS) [ ${dmy(curFrom)} - ${dmy(curTo)} ]`;
+    btnDate.textContent = `📅 Date: ${dmy(curFrom)} to ${dmy(curTo)}`;
+    draw();
+  }
+
+  function draw() {
+    const netSales = (m.sales?.s || 0) - (m.saleReturn?.s || 0);
+    const netPur = (m.purchase?.s || 0) - (m.purchaseReturn?.s || 0);
+    const netCashFlow = (m.receipt?.s || 0) - (m.payment?.s || 0);
+    const totalLiquidity = (m.cash || 0) + (m.bank || 0);
+    const netOutstandings = (m.receivable || 0) - (m.payable || 0);
+
+    container.innerHTML = `
+      <div class="mis-card">
+        <div class="mis-card-head"><span>1. SALES & TURNOVER</span><span>Bills / Amount</span></div>
+        <div class="mis-card-body">
+          <div class="mis-row"><span>Gross Sales <span class="sub-text">(${m.sales?.c || 0} Bills)</span></span><b>${money(m.sales?.s || 0)}</b></div>
+          <div class="mis-row"><span>Sale Return <span class="sub-text">(${m.saleReturn?.c || 0} Notes)</span></span><b>${money(m.saleReturn?.s || 0)}</b></div>
+          <div class="mis-row highlight"><span>NET SALES TURNOVER</span><b>${money(netSales)}</b></div>
+        </div>
+      </div>
+
+      <div class="mis-card">
+        <div class="mis-card-head"><span>2. PURCHASES & INBOUND</span><span>Bills / Amount</span></div>
+        <div class="mis-card-body">
+          <div class="mis-row"><span>Gross Purchases <span class="sub-text">(${m.purchase?.c || 0} Invoices)</span></span><b>${money(m.purchase?.s || 0)}</b></div>
+          <div class="mis-row"><span>Purchase Return <span class="sub-text">(${m.purchaseReturn?.c || 0} Notes)</span></span><b>${money(m.purchaseReturn?.s || 0)}</b></div>
+          <div class="mis-row highlight"><span>NET PURCHASES</span><b>${money(netPur)}</b></div>
+        </div>
+      </div>
+
+      <div class="mis-card">
+        <div class="mis-card-head"><span>3. CASH & BANK LIQUIDITY</span><span>As On Date</span></div>
+        <div class="mis-card-body">
+          <div class="mis-row ${(m.cash || 0) >= 0 ? 'dr' : 'cr'}"><span>Cash in Hand</span><b>${drcr(m.cash || 0)}</b></div>
+          <div class="mis-row ${(m.bank || 0) >= 0 ? 'dr' : 'cr'}"><span>Bank Accounts Balance</span><b>${drcr(m.bank || 0)}</b></div>
+          <div class="mis-row highlight"><span>TOTAL CASH & BANK</span><b>${drcr(totalLiquidity)}</b></div>
+        </div>
+      </div>
+
+      <div class="mis-card">
+        <div class="mis-card-head"><span>4. VOUCHERS / CASH FLOW</span><span>Period Flow</span></div>
+        <div class="mis-card-body">
+          <div class="mis-row dr"><span>Customer Receipts <span class="sub-text">(${m.receipt?.c || 0} Vouchers)</span></span><b>${money(m.receipt?.s || 0)}</b></div>
+          <div class="mis-row cr"><span>Payments Made <span class="sub-text">(${m.payment?.c || 0} Vouchers)</span></span><b>${money(m.payment?.s || 0)}</b></div>
+          <div class="mis-row highlight"><span>NET CASH MOVEMENT</span><b>${money(netCashFlow)}</b></div>
+        </div>
+      </div>
+
+      <div class="mis-card">
+        <div class="mis-card-head"><span>5. OUTSTANDINGS</span><span>Receivable / Payable</span></div>
+        <div class="mis-card-body">
+          <div class="mis-row dr"><span>Sundry Debtors (Receivable)</span><b>${money(m.receivable || 0)}</b></div>
+          <div class="mis-row cr"><span>Sundry Creditors (Payable)</span><b>${money(m.payable || 0)}</b></div>
+          <div class="mis-row highlight"><span>NET RECEIVABLE GAP</span><b>${money(netOutstandings)}</b></div>
+        </div>
+      </div>
+
+      <div class="mis-card">
+        <div class="mis-card-head"><span>6. PROFITABILITY ESTIMATE</span><span>Gross Margin</span></div>
+        <div class="mis-card-body">
+          <div class="mis-row"><span>Billed Sales Taxable</span><b>${money(m.profit?.sales || 0)}</b></div>
+          <div class="mis-row"><span>Cost of Goods Sold (COGS)</span><b>${money(m.profit?.cost || 0)}</b></div>
+          <div class="mis-row highlight"><span>GROSS PROFIT (GP)</span><b>${money(m.profit?.gp || 0)} <span class="sub-text">(${m.profit?.margin || 0}%)</span></b></div>
+        </div>
+      </div>
+    `;
+  }
+
+  draw();
+
   w.onKey = (_e, k) => {
-    if (k === 'F2') { askPeriod(p.from, p.to).then((r) => { if (r) { p.from = r.from; p.to = r.to; load(); } }); return true; }
+    if (k === 'F2') {
+      askMisDate(curFrom, curTo).then((res) => {
+        if (res && res.action === 'view') {
+          curFrom = res.from;
+          curTo = res.to;
+          reload();
+        } else if (res && res.action === 'excel') {
+          exportMisExcel(m, res.from, res.to);
+        } else if (res && res.action === 'print') {
+          printMis(m, res.from, res.to);
+        }
+      });
+      return true;
+    }
+    if (k === 'Alt+X') { exportMisExcel(m, curFrom, curTo); return true; }
+    if (k === 'Alt+P' || k === 'Ctrl+P') { printMis(m, curFrom, curTo); return true; }
+    if (k === 'Escape') { w.close(); return true; }
     return false;
   };
+}
+
+export async function mis() {
+  const chosen = await askMisDate(today(), today());
+  if (!chosen) return;
+  if (chosen.action === 'excel') {
+    const m = await api<MisData>(`/reports/mis?from=${chosen.from}&to=${chosen.to}`);
+    exportMisExcel(m, chosen.from, chosen.to);
+    return;
+  }
+  if (chosen.action === 'print') {
+    const m = await api<MisData>(`/reports/mis?from=${chosen.from}&to=${chosen.to}`);
+    printMis(m, chosen.from, chosen.to);
+    return;
+  }
+  return showMisScreen(chosen.from, chosen.to);
 }
 
 export function partyTransactions() {

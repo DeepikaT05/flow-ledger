@@ -883,19 +883,33 @@ app.get('/api/reports/gross-profit', h((req) => {
 }));
 
 app.get('/api/reports/mis', h((req) => {
-  const { from, to } = req.query as Record<string, string>;
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const { from = todayStr, to = todayStr } = req.query as Record<string, string>;
   const sum = (types: string) => (db.prepare(`SELECT COALESCE(SUM(net),0) AS s, COUNT(*) AS c FROM bills WHERE type IN (${types}) AND date BETWEEN ? AND ?`).get(from, to)) as { s: number; c: number };
   const vsum = (type: string) => (db.prepare(`SELECT COALESCE(SUM(vl.debit),0) AS s, COUNT(DISTINCT v.id) AS c FROM vouchers v JOIN voucher_lines vl ON vl.voucher_id=v.id
     WHERE v.type=? AND v.date BETWEEN ? AND ?`).get(type, from, to)) as { s: number; c: number };
-  const cash = db.prepare(`${LEDGER_BAL} WHERE l.name=?`).get(SYS.CASH) as { balance: number };
+  const cash = db.prepare(`${LEDGER_BAL} WHERE l.name=?`).get(SYS.CASH) as { balance: number } | undefined;
   const bank = db.prepare(`SELECT COALESCE(SUM(balance),0) AS s FROM (${LEDGER_BAL}) WHERE group_name='Bank Accounts'`).get() as { s: number };
   const recv = db.prepare(`SELECT COALESCE(SUM(balance),0) AS s FROM (${LEDGER_BAL}) WHERE group_name='Sundry Debtors'`).get() as { s: number };
   const pay = db.prepare(`SELECT COALESCE(SUM(balance),0) AS s FROM (${LEDGER_BAL}) WHERE group_name='Sundry Creditors'`).get() as { s: number };
+  const gp = db.prepare(`SELECT
+      COALESCE(SUM(CASE WHEN b.type='SALE_RETURN' THEN -bi.taxable ELSE bi.taxable END), 0) AS saleTaxable,
+      COALESCE(SUM(CASE WHEN b.type='SALE_RETURN' THEN -(bi.qty * i.purchase_rate) ELSE bi.qty * i.purchase_rate END), 0) AS saleCost
+    FROM bill_items bi JOIN bills b ON b.id=bi.bill_id JOIN items i ON i.id=bi.item_id
+    WHERE b.type IN ('SALE','COUNTER_SALE','SALE_RETURN') AND b.date BETWEEN ? AND ?`).get(from, to) as { saleTaxable: number; saleCost: number };
   return {
+    from, to,
     sales: sum(`'SALE','COUNTER_SALE'`), purchase: sum(`'PURCHASE'`),
     saleReturn: sum(`'SALE_RETURN'`), purchaseReturn: sum(`'PURCHASE_RETURN'`),
     receipt: vsum('RECEIPT'), payment: vsum('PAYMENT'),
-    cash: cash.balance, bank: bank.s, receivable: recv.s, payable: -pay.s,
+    cash: cash ? cash.balance : 0, bank: bank ? bank.s : 0,
+    receivable: recv ? recv.s : 0, payable: pay ? -pay.s : 0,
+    profit: {
+      sales: r2(gp.saleTaxable),
+      cost: r2(gp.saleCost),
+      gp: r2(gp.saleTaxable - gp.saleCost),
+      margin: gp.saleTaxable > 0 ? r2(((gp.saleTaxable - gp.saleCost) / gp.saleTaxable) * 100) : 0,
+    },
   };
 }));
 
