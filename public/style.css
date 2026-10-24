@@ -1712,7 +1712,44 @@ table.marg-grid tr.sel td input::placeholder { color: rgba(255, 255, 255, .78); 
 .mis-row b { text-align: right; color: #111; }
 .mis-row .sub-text { font-size: 14px; color: #666; margin-left: 6px; }
 .mis-row.dr b { color: #0a5d22; }
-.mis-row.cr b { color: #a5121a; }
+
+/* M.R. Wise Sale & M.R. + All Items Report */
+.mr-date-box { padding: 18px 24px 16px; background: var(--marg-bg); font-family: "Courier New", monospace; font-size: 16px; font-weight: bold; }
+.mr-pop-head { font: bold 16px Tahoma, sans-serif; color: #1c4f9c; border-bottom: 2px solid #1c4f9c; padding-bottom: 6px; margin-bottom: 14px; }
+.mr-date-box .field-row { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
+.mr-date-box .field-label { width: 110px; color: #333; font-size: 15px; }
+.win.marg .mr-date-box input[type="text"] { width: 140px; font-size: 18px; font-weight: bold; color: #1f6fb0; }
+.mr-date-box select { font: bold 15px Tahoma, sans-serif; padding: 4px 8px; border: 1px solid #777; background: #fff; min-width: 260px; }
+.mr-date-box .format-opts { display: flex; gap: 16px; margin: 12px 0 16px 120px; font-size: 15px; }
+.mr-date-box .format-opts label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.mr-date-box .presets { display: flex; gap: 8px; margin-bottom: 12px; margin-left: 120px; }
+.mr-date-box .btns { display: flex; gap: 8px; margin-top: 14px; }
+.mr-date-box button { font: bold 15px Tahoma, sans-serif; padding: 4px 14px; background: #e4e4e4; border: 1px solid #999; cursor: pointer; }
+.mr-date-box button:focus { outline: 2px solid #1c4f9c; }
+.mr-date-box .btn-primary { background: #1c4f9c; color: #fff; border-color: #0b306b; }
+
+.mr-sale-screen { font-family: "Courier New", Consolas, monospace; height: 100%; display: flex; flex-direction: column; background: #fdfdfd; }
+.mr-sale-top { background: #eef2f7; padding: 8px 14px; border-bottom: 1px solid #c5d0dc; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+.mr-sale-modes { display: flex; gap: 6px; align-items: center; }
+.mr-sale-modes .btn-mode { font: bold 14px Tahoma, sans-serif; padding: 3px 12px; background: #e2e8f0; border: 1px solid #94a3b8; cursor: pointer; border-radius: 2px; }
+.mr-sale-modes .btn-mode.sel { background: #1c4f9c; color: #fff; border-color: #0b306b; }
+.mr-sale-info { display: flex; gap: 14px; align-items: center; font-size: 14px; }
+.mr-sale-info .btn-action { font: bold 12px Tahoma, sans-serif; padding: 2px 8px; background: #fff; border: 1px solid #777; cursor: pointer; border-radius: 2px; }
+.mr-sale-find { display: flex; align-items: center; gap: 6px; font-weight: bold; }
+.mr-sale-find input { font: bold 14px monospace; padding: 2px 6px; border: 1px solid #1c4f9c; background: #fff; width: 220px; }
+
+.mr-sale-grid-wrap { flex: 1; overflow: auto; padding: 4px; background: #fff; }
+.mr-sale-table { width: 100%; border-collapse: collapse; font-size: 13px; font-family: "Courier New", Consolas, monospace; }
+.mr-sale-table th { background: #003366; color: #fff; border: 1px solid #002244; padding: 4px 6px; text-align: left; position: sticky; top: 0; z-index: 2; font-size: 13px; }
+.mr-sale-table th.n, .mr-sale-table td.n { text-align: right; }
+.mr-sale-table td { border: 1px solid #dcdcdc; padding: 4px 6px; white-space: nowrap; }
+.mr-sale-table tbody tr:hover { background: #e6f2ff; cursor: pointer; }
+.mr-sale-table tbody tr.selected { background: #ffe082 !important; font-weight: bold; }
+.mr-group-hdr { background: #1c4f9c !important; color: #fff; font-weight: bold; font-size: 14px; padding: 6px 10px !important; letter-spacing: 0.5px; }
+.mr-subtotal-tr { background: #fff9c4 !important; font-weight: bold; color: #b78103; border-top: 1px solid #fbc02d; border-bottom: 2px solid #fbc02d; }
+.mr-subtotal-tr td { border-color: #fbc02d; }
+.mr-grandtotal-tr { background: #e8f5e9 !important; font-weight: bold; font-size: 14px; color: #1b5e20; border-top: 2px solid #2e7d32; border-bottom: 3px double #2e7d32; position: sticky; bottom: 0; z-index: 2; }
+.mr-grandtotal-tr td { border-color: #2e7d32; }
 
 
 

@@ -1072,3 +1072,723 @@ export async function productSummary(side: 'SALE' | 'PURCHASE' = 'SALE') {
   findInput.focus();
 }
 
+// ------------------------------------------------------------------ M.R. Wise Sale Report & M.R. + All Items
+export interface MrSaleSummaryRow {
+  mr_id: number;
+  mr_name: string;
+  mr_area: string;
+  sale_bills: number;
+  return_bills: number;
+  total_bills: number;
+  qty: number;
+  free_qty: number;
+  gross_amt: number;
+  disc_amt: number;
+  taxable: number;
+  tax: number;
+  sale_amt: number;
+  return_amt: number;
+  net_amt: number;
+}
+
+export interface MrSaleItemRow {
+  mr_id: number;
+  mr_name: string;
+  mr_area: string;
+  item_id: number;
+  item_name: string;
+  pack: string;
+  company: string;
+  batch: string;
+  expiry: string;
+  bills_count: number;
+  qty: number;
+  free_qty: number;
+  rate: number;
+  gross_amt: number;
+  disc_amt: number;
+  taxable: number;
+  tax: number;
+  net_amt: number;
+}
+
+async function askMrSaleParams(initial: {
+  from?: string; to?: string; mr_id?: string; mr_name?: string; mode?: 'summary' | 'items'
+}): Promise<{
+  from: string; to: string; mr_id: string; mr_name: string; mode: 'summary' | 'items'; action: 'view' | 'print' | 'excel'
+} | null> {
+  const curFrom = initial.from || `${today().slice(0, 7)}-01`;
+  const curTo = initial.to || today();
+  const curMrId = initial.mr_id || 'all';
+  const curMode: 'summary' | 'items' = initial.mode || 'summary';
+
+  let salesmenList: { id: number; name: string; area?: string }[] = [];
+  try {
+    salesmenList = await api('/salesmen');
+  } catch {}
+
+  return new Promise((resolve) => {
+    const titleText = curMode === 'items' ? 'M.R. + ALL ITEM SALE REPORT' : 'M.R. WISE SALE REPORT';
+    const p = margPop(titleText, '<span><b>Enter</b>-Next</span><span><b>1/2</b>-Format</span><span><b>V/P/E</b>-Action</span><span><b>Esc</b>-Cancel</span>', '520px');
+    const box = h('div', { class: 'mr-date-box' });
+
+    const mrOptions = [
+      `<option value="all" ${curMrId === 'all' ? 'selected' : ''}>&lt;ALL M.R. (ALL SALESMEN)&gt;</option>`,
+      `<option value="0" ${curMrId === '0' ? 'selected' : ''}>&lt;DIRECT / NO M.R.&gt;</option>`,
+      ...salesmenList.map((s) => `<option value="${s.id}" ${String(curMrId) === String(s.id) ? 'selected' : ''}>${esc(s.name)}${s.area ? ` [${esc(s.area)}]` : ''}</option>`),
+    ].join('');
+
+    box.innerHTML = `
+      <div class="mr-pop-head">${titleText} &mdash; SELECTION</div>
+      <div class="field-row">
+        <span class="field-label">FROM DATE</span>
+        <input type="text" data-f="from" value="${dmy(curFrom)}" autocomplete="off" spellcheck="false">
+        <span style="margin:0 4px;">TO</span>
+        <input type="text" data-f="to" value="${dmy(curTo)}" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="presets">
+        <button type="button" class="btn-preset" data-p="today"><u>T</u>oday</button>
+        <button type="button" class="btn-preset" data-p="month"><u>M</u>onth</button>
+        <button type="button" class="btn-preset" data-p="year"><u>Y</u>ear</button>
+      </div>
+      <div class="field-row">
+        <span class="field-label">SELECT M.R.</span>
+        <select data-f="mr_id">${mrOptions}</select>
+      </div>
+      <div class="field-row" style="align-items:flex-start;">
+        <span class="field-label">REPORT TYPE</span>
+        <div class="format-opts" style="margin-left:0;">
+          <label><input type="radio" name="mr_mode" value="summary" ${curMode === 'summary' ? 'checked' : ''}> <u>1</u>. M.R. Wise Summary</label>
+          <label><input type="radio" name="mr_mode" value="items" ${curMode === 'items' ? 'checked' : ''}> <u>2</u>. M.R. + All Items</label>
+        </div>
+      </div>
+      <div class="btns">
+        <button type="button" data-a="view" class="btn-primary"><u>V</u>iew</button>
+        <button type="button" data-a="print"><u>P</u>rint</button>
+        <button type="button" data-a="excel"><u>E</u>xcel</button>
+        <button type="button" data-a="cancel"><u>C</u>ancel</button>
+      </div>
+    `;
+    p.body.append(box);
+
+    const fInp = box.querySelector('input[data-f="from"]') as HTMLInputElement;
+    const tInp = box.querySelector('input[data-f="to"]') as HTMLInputElement;
+    const mrSel = box.querySelector('select[data-f="mr_id"]') as HTMLSelectElement;
+
+    const setPreset = (preset: string) => {
+      if (preset === 'today') {
+        fInp.value = dmy(today());
+        tInp.value = dmy(today());
+      } else if (preset === 'month') {
+        const ym = today().slice(0, 7);
+        fInp.value = dmy(`${ym}-01`);
+        tInp.value = dmy(today());
+      } else if (preset === 'year') {
+        fInp.value = dmy(fyStart());
+        tInp.value = dmy(today());
+      }
+      fInp.focus();
+      fInp.select();
+    };
+
+    box.querySelectorAll('.btn-preset').forEach((b) => {
+      b.addEventListener('click', () => setPreset((b as HTMLElement).dataset.p || 'today'));
+    });
+
+    const submit = (act: 'view' | 'print' | 'excel' | 'cancel') => {
+      if (act === 'cancel') { p.close(); resolve(null); return; }
+      const f = isoOf(fInp.value), t = isoOf(tInp.value);
+      if (!f || !t) { toast('Enter dates as DD-MM-YYYY', true); fInp.focus(); return; }
+      if (f > t) { toast('FROM date cannot be after TO date', true); fInp.focus(); return; }
+      const modeVal = (box.querySelector('input[name="mr_mode"]:checked') as HTMLInputElement)?.value === 'items' ? 'items' : 'summary';
+      const selectedMr = mrSel.value;
+      const selectedMrName = mrSel.options[mrSel.selectedIndex]?.text || '';
+      p.close();
+      resolve({ from: f, to: t, mr_id: selectedMr, mr_name: selectedMrName, mode: modeVal, action: act });
+    };
+
+    box.addEventListener('click', (e) => {
+      const b = (e.target as HTMLElement).closest('button[data-a]');
+      if (b) submit((b as HTMLElement).dataset.a as any);
+    });
+
+    fInp.focus();
+    fInp.select();
+
+    p.onKey = (_e, k) => {
+      const active = document.activeElement;
+      if (k === 'Enter') {
+        if (active === fInp) { tInp.focus(); tInp.select(); return true; }
+        if (active === tInp) { mrSel.focus(); return true; }
+        if (active === mrSel) { submit('view'); return true; }
+        if (active instanceof HTMLButtonElement && active.dataset.a) {
+          submit(active.dataset.a as any);
+          return true;
+        }
+      }
+      if (k === '1') {
+        const r = box.querySelector('input[name="mr_mode"][value="summary"]') as HTMLInputElement;
+        if (r) r.checked = true;
+        return true;
+      }
+      if (k === '2') {
+        const r = box.querySelector('input[name="mr_mode"][value="items"]') as HTMLInputElement;
+        if (r) r.checked = true;
+        return true;
+      }
+      if (k === 'T' || k === 't') { if (active instanceof HTMLInputElement) return false; setPreset('today'); return true; }
+      if (k === 'M' || k === 'm') { if (active instanceof HTMLInputElement) return false; setPreset('month'); return true; }
+      if (k === 'Y' || k === 'y') { if (active instanceof HTMLInputElement) return false; setPreset('year'); return true; }
+      if (k === 'V' || k === 'v') { submit('view'); return true; }
+      if (k === 'P' || k === 'p') { submit('print'); return true; }
+      if (k === 'E' || k === 'e') { submit('excel'); return true; }
+      if (k === 'Escape' || k === 'C' || k === 'c') { submit('cancel'); return true; }
+      return false;
+    };
+  });
+}
+
+function exportMrSaleExcel(rows: any[], mode: 'summary' | 'items', from: string, to: string, mrLabel: string) {
+  if (mode === 'items') {
+    const headers = ['M.R. Name', 'Area', 'Item Name', 'Packing', 'Company', 'Batch', 'Expiry', 'Bills', 'Qty Sold', 'Free Qty', 'Avg Rate', 'Gross Amount', 'Discount', 'Taxable', 'Tax Amount', 'Net Sale Amount'];
+    const data: (string | number)[][] = [];
+    let totQty = 0, totFree = 0, totGross = 0, totDisc = 0, totTaxable = 0, totTax = 0, totNet = 0;
+
+    for (const r of rows) {
+      totQty += Number(r.qty || 0);
+      totFree += Number(r.free_qty || 0);
+      totGross += Number(r.gross_amt || 0);
+      totDisc += Number(r.disc_amt || 0);
+      totTaxable += Number(r.taxable || 0);
+      totTax += Number(r.tax || 0);
+      totNet += Number(r.net_amt || 0);
+
+      data.push([
+        r.mr_name || '',
+        r.mr_area || '',
+        r.item_name || '',
+        r.pack || '',
+        r.company || '',
+        r.batch || '',
+        r.expiry || '',
+        r.bills_count || 0,
+        f2(r.qty),
+        f2(r.free_qty),
+        f2(r.rate),
+        f2(r.gross_amt),
+        f2(r.disc_amt),
+        f2(r.taxable),
+        f2(r.tax),
+        f2(r.net_amt),
+      ]);
+    }
+    data.push(['GRAND TOTAL', '', '', '', '', '', '', '', f2(totQty), f2(totFree), '', f2(totGross), f2(totDisc), f2(totTaxable), f2(totTax), f2(totNet)]);
+    downloadCsv(`MR_All_Items_Sale_${from}_to_${to}.csv`, headers, data);
+  } else {
+    const headers = ['M.R. Name', 'Area', 'Sale Bills', 'Return Bills', 'Total Bills', 'Qty Sold', 'Free Qty', 'Gross Amount', 'Discount', 'Taxable Value', 'GST / Tax', 'Sale Amount', 'Return Amount', 'Final Net Amount'];
+    const data: (string | number)[][] = [];
+    let totSaleB = 0, totRetB = 0, totB = 0, totQty = 0, totFree = 0, totGross = 0, totDisc = 0, totTaxable = 0, totTax = 0, totSale = 0, totRet = 0, totNet = 0;
+
+    for (const r of rows) {
+      totSaleB += Number(r.sale_bills || 0);
+      totRetB += Number(r.return_bills || 0);
+      totB += Number(r.total_bills || 0);
+      totQty += Number(r.qty || 0);
+      totFree += Number(r.free_qty || 0);
+      totGross += Number(r.gross_amt || 0);
+      totDisc += Number(r.disc_amt || 0);
+      totTaxable += Number(r.taxable || 0);
+      totTax += Number(r.tax || 0);
+      totSale += Number(r.sale_amt || 0);
+      totRet += Number(r.return_amt || 0);
+      totNet += Number(r.net_amt || 0);
+
+      data.push([
+        r.mr_name || '',
+        r.mr_area || '',
+        r.sale_bills || 0,
+        r.return_bills || 0,
+        r.total_bills || 0,
+        f2(r.qty),
+        f2(r.free_qty),
+        f2(r.gross_amt),
+        f2(r.disc_amt),
+        f2(r.taxable),
+        f2(r.tax),
+        f2(r.sale_amt),
+        f2(r.return_amt),
+        f2(r.net_amt),
+      ]);
+    }
+    data.push(['GRAND TOTAL', '', totSaleB, totRetB, totB, f2(totQty), f2(totFree), f2(totGross), f2(totDisc), f2(totTaxable), f2(totTax), f2(totSale), f2(totRet), f2(totNet)]);
+    downloadCsv(`MR_Wise_Sale_Summary_${from}_to_${to}.csv`, headers, data);
+  }
+}
+
+async function printMrSaleHtml(rows: any[], mode: 'summary' | 'items', from: string, to: string, mrLabel: string) {
+  let company: any = {};
+  try { company = await api('/company'); } catch {}
+
+  const title = mode === 'items' ? 'M.R. + ALL ITEM SALE REPORT' : 'M.R. WISE SALE REPORT (SUMMARY)';
+  let tableHtml = '';
+
+  if (mode === 'items') {
+    // Group by MR
+    const groups = new Map<string, any[]>();
+    for (const r of rows) {
+      const k = r.mr_name || '(No M.R. / Direct)';
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k)!.push(r);
+    }
+
+    let totQty = 0, totFree = 0, totGross = 0, totDisc = 0, totTaxable = 0, totTax = 0, totNet = 0;
+
+    tableHtml = `<table class="grid" style="width:100%; font-size:12px; font-family:'Courier New', monospace; border-collapse:collapse;" border="1">
+      <thead>
+        <tr style="background:#003366; color:#fff;">
+          <th>Item Name</th><th>Pack</th><th>Company</th><th>Batch</th><th>Exp</th>
+          <th style="text-align:right">Qty</th><th style="text-align:right">Free</th><th style="text-align:right">Rate</th>
+          <th style="text-align:right">Gross</th><th style="text-align:right">Disc</th><th style="text-align:right">Taxable</th><th style="text-align:right">Tax</th><th style="text-align:right">Net Amount</th>
+        </tr>
+      </thead>
+      <tbody>`;
+
+    for (const [mrName, items] of groups.entries()) {
+      let gQty = 0, gFree = 0, gGross = 0, gDisc = 0, gTaxable = 0, gTax = 0, gNet = 0;
+      tableHtml += `<tr style="background:#eef3fa; font-weight:bold;"><td colspan="13">M.R.: ${esc(mrName)} &nbsp;|&nbsp; Area: ${esc(items[0]?.mr_area || 'N/A')} &nbsp; (${items.length} Items)</td></tr>`;
+      for (const it of items) {
+        gQty += Number(it.qty || 0); gFree += Number(it.free_qty || 0); gGross += Number(it.gross_amt || 0);
+        gDisc += Number(it.disc_amt || 0); gTaxable += Number(it.taxable || 0); gTax += Number(it.tax || 0); gNet += Number(it.net_amt || 0);
+
+        tableHtml += `<tr>
+          <td>${esc(it.item_name)}</td><td>${esc(it.pack)}</td><td>${esc(it.company)}</td><td>${esc(it.batch)}</td><td>${esc(it.expiry)}</td>
+          <td style="text-align:right">${f2(it.qty)}</td><td style="text-align:right">${f2(it.free_qty)}</td><td style="text-align:right">${f2(it.rate)}</td>
+          <td style="text-align:right">${money(it.gross_amt)}</td><td style="text-align:right">${money(it.disc_amt)}</td>
+          <td style="text-align:right">${money(it.taxable)}</td><td style="text-align:right">${money(it.tax)}</td><td style="text-align:right"><b>${money(it.net_amt)}</b></td>
+        </tr>`;
+      }
+      tableHtml += `<tr style="background:#fff9c4; font-weight:bold;">
+        <td colspan="5">SUBTOTAL FOR ${esc(mrName)}</td>
+        <td style="text-align:right">${f2(gQty)}</td><td style="text-align:right">${f2(gFree)}</td><td></td>
+        <td style="text-align:right">${money(gGross)}</td><td style="text-align:right">${money(gDisc)}</td>
+        <td style="text-align:right">${money(gTaxable)}</td><td style="text-align:right">${money(gTax)}</td><td style="text-align:right">${money(gNet)}</td>
+      </tr>`;
+
+      totQty += gQty; totFree += gFree; totGross += gGross; totDisc += gDisc; totTaxable += gTaxable; totTax += gTax; totNet += gNet;
+    }
+
+    tableHtml += `<tr style="background:#e8f5e9; font-weight:bold; font-size:13px;">
+      <td colspan="5">GRAND TOTAL (${rows.length} Items)</td>
+      <td style="text-align:right">${f2(totQty)}</td><td style="text-align:right">${f2(totFree)}</td><td></td>
+      <td style="text-align:right">${money(totGross)}</td><td style="text-align:right">${money(totDisc)}</td>
+      <td style="text-align:right">${money(totTaxable)}</td><td style="text-align:right">${money(totTax)}</td><td style="text-align:right">${money(totNet)}</td>
+    </tr></tbody></table>`;
+  } else {
+    let totSaleB = 0, totRetB = 0, totB = 0, totQty = 0, totFree = 0, totGross = 0, totDisc = 0, totTaxable = 0, totTax = 0, totSale = 0, totRet = 0, totNet = 0;
+
+    tableHtml = `<table class="grid" style="width:100%; font-size:12px; font-family:'Courier New', monospace; border-collapse:collapse;" border="1">
+      <thead>
+        <tr style="background:#003366; color:#fff;">
+          <th>M.R. / Salesman</th><th>Area</th><th style="text-align:right">Sale Bills</th><th style="text-align:right">Returns</th>
+          <th style="text-align:right">Total Bills</th><th style="text-align:right">Qty</th><th style="text-align:right">Free</th>
+          <th style="text-align:right">Gross Amt</th><th style="text-align:right">Discount</th><th style="text-align:right">Taxable</th>
+          <th style="text-align:right">GST / Tax</th><th style="text-align:right">Sale Amt</th><th style="text-align:right">Return Amt</th><th style="text-align:right">Net Amount</th>
+        </tr>
+      </thead>
+      <tbody>`;
+
+    for (const r of rows) {
+      totSaleB += Number(r.sale_bills || 0); totRetB += Number(r.return_bills || 0); totB += Number(r.total_bills || 0);
+      totQty += Number(r.qty || 0); totFree += Number(r.free_qty || 0); totGross += Number(r.gross_amt || 0);
+      totDisc += Number(r.disc_amt || 0); totTaxable += Number(r.taxable || 0); totTax += Number(r.tax || 0);
+      totSale += Number(r.sale_amt || 0); totRet += Number(r.return_amt || 0); totNet += Number(r.net_amt || 0);
+
+      tableHtml += `<tr>
+        <td><b>${esc(r.mr_name)}</b></td><td>${esc(r.mr_area)}</td><td style="text-align:right">${r.sale_bills || 0}</td>
+        <td style="text-align:right">${r.return_bills || 0}</td><td style="text-align:right">${r.total_bills || 0}</td>
+        <td style="text-align:right">${f2(r.qty)}</td><td style="text-align:right">${f2(r.free_qty)}</td>
+        <td style="text-align:right">${money(r.gross_amt)}</td><td style="text-align:right">${money(r.disc_amt)}</td>
+        <td style="text-align:right">${money(r.taxable)}</td><td style="text-align:right">${money(r.tax)}</td>
+        <td style="text-align:right">${money(r.sale_amt)}</td><td style="text-align:right">${money(r.return_amt)}</td>
+        <td style="text-align:right"><b>${money(r.net_amt)}</b></td>
+      </tr>`;
+    }
+
+    tableHtml += `<tr style="background:#e8f5e9; font-weight:bold; font-size:13px;">
+      <td colspan="2">GRAND TOTAL (${rows.length} M.R.s)</td>
+      <td style="text-align:right">${totSaleB}</td><td style="text-align:right">${totRetB}</td><td style="text-align:right">${totB}</td>
+      <td style="text-align:right">${f2(totQty)}</td><td style="text-align:right">${f2(totFree)}</td>
+      <td style="text-align:right">${money(totGross)}</td><td style="text-align:right">${money(totDisc)}</td>
+      <td style="text-align:right">${money(totTaxable)}</td><td style="text-align:right">${money(totTax)}</td>
+      <td style="text-align:right">${money(totSale)}</td><td style="text-align:right">${money(totRet)}</td>
+      <td style="text-align:right">${money(totNet)}</td>
+    </tr></tbody></table>`;
+  }
+
+  const html = `
+    <div style="font-family:'Courier New', monospace; padding:10px;">
+      <h2 style="text-align:center; margin:0 0 4px 0;">${esc(company.name || '')}</h2>
+      <h3 style="text-align:center; margin:0 0 6px 0;">${title}</h3>
+      <div style="text-align:center; font-size:13px; color:#555; margin-bottom:12px;">
+        Period: <b>${dmy(from)}</b> to <b>${dmy(to)}</b> &nbsp;|&nbsp; Selected M.R.: <b>${esc(mrLabel)}</b>
+      </div>
+      ${tableHtml}
+    </div>
+  `;
+
+  import('./billing.ts').then((mod) => mod.printHtml(html, 1));
+}
+
+async function showMrSaleScreen(params: {
+  from: string; to: string; mr_id: string; mr_name: string; mode: 'summary' | 'items'
+}) {
+  let curFrom = params.from;
+  let curTo = params.to;
+  let curMrId = params.mr_id;
+  let curMrName = params.mr_name;
+  let curMode: 'summary' | 'items' = params.mode;
+
+  const w = openWin(curMode === 'items' ? 'M.R. + ALL ITEMS REPORT' : 'M.R. WISE SALE REPORT', 'full', '');
+  w.el.classList.add('marg');
+  w.setFoot('<span><b>1/F5</b>-Summary</span><span><b>2/F6</b>-MR+All Items</span><span><b>Enter</b>-Drilldown</span><span><b>F2</b>-Period</span><span><b>F3</b>-MR Filter</span><span><b>Alt+X</b>-Excel</span><span><b>Alt+P</b>-PDF</span><span><b>Esc</b>-Close</span>');
+
+  const screen = h('div', { class: 'mr-sale-screen' });
+
+  const bar = margBar(curMode === 'items' ? `M.R. + ALL ITEM SALE REPORT [ ${dmy(curFrom)} - ${dmy(curTo)} ]` : `M.R. WISE SALE REPORT [ ${dmy(curFrom)} - ${dmy(curTo)} ]`);
+  addExportToMargBar(bar, {
+    onExcel: () => exportExcel(),
+    onPdf: () => printReport(),
+  });
+  screen.append(bar);
+
+  const topControls = h('div', { class: 'mr-sale-top' });
+  topControls.innerHTML = `
+    <div class="mr-sale-modes">
+      <span style="font-weight:bold;margin-right:4px;">Format:</span>
+      <button type="button" class="btn-mode ${curMode === 'summary' ? 'sel' : ''}" data-m="summary">📊 [1/F5] M.R. Wise Summary</button>
+      <button type="button" class="btn-mode ${curMode === 'items' ? 'sel' : ''}" data-m="items">📦 [2/F6] M.R. + All Items</button>
+    </div>
+    <div class="mr-sale-info">
+      <span>Period: <b>${dmy(curFrom)}</b> to <b>${dmy(curTo)}</b></span>
+      <button type="button" class="btn-action" data-a="period">📅 Date (F2)</button>
+      <span>M.R.: <b>${esc(curMrName || '<ALL>')}</b></span>
+      <button type="button" class="btn-action" data-a="pickmr">👤 Filter M.R. (F3)</button>
+      <div class="mr-sale-find"><span>Find &gt;&gt;</span> [ <input autocomplete="off" spellcheck="false" placeholder="Filter text..."> ]</div>
+    </div>
+  `;
+  screen.append(topControls);
+
+  const gridWrap = h('div', { class: 'mr-sale-grid-wrap' });
+  screen.append(gridWrap);
+  w.body.append(screen);
+
+  const findInp = topControls.querySelector('.mr-sale-find input') as HTMLInputElement;
+  const modeBtns = topControls.querySelectorAll<HTMLButtonElement>('.btn-mode');
+
+  let rowsData: any[] = [];
+  let selectedRowIndex = 0;
+
+  async function load() {
+    gridWrap.innerHTML = '<div style="padding:24px;text-align:center;font-size:16px;">Loading M.R. Sale Data...</div>';
+    const mrParam = curMrId ? `&mr_id=${encodeURIComponent(curMrId)}` : '';
+    rowsData = await api<any[]>(`/reports/mr-sale?from=${curFrom}&to=${curTo}&mode=${curMode}${mrParam}`);
+    selectedRowIndex = 0;
+    render();
+  }
+
+  function render() {
+    const titleText = curMode === 'items' ? `M.R. + ALL ITEM SALE REPORT [ ${dmy(curFrom)} - ${dmy(curTo)} ]` : `M.R. WISE SALE REPORT [ ${dmy(curFrom)} - ${dmy(curTo)} ]`;
+    const titleEl = bar.querySelector('.marg-bar-title');
+    if (titleEl) titleEl.textContent = titleText;
+
+    modeBtns.forEach((b) => b.classList.toggle('sel', b.dataset.m === curMode));
+
+    const q = findInp.value.trim().toLowerCase();
+
+    if (curMode === 'items') {
+      let filtered = rowsData;
+      if (q) {
+        filtered = filtered.filter((r) =>
+          String(r.mr_name || '').toLowerCase().includes(q) ||
+          String(r.item_name || '').toLowerCase().includes(q) ||
+          String(r.company || '').toLowerCase().includes(q) ||
+          String(r.batch || '').toLowerCase().includes(q) ||
+          String(r.mr_area || '').toLowerCase().includes(q)
+        );
+      }
+
+      if (!filtered.length) {
+        gridWrap.innerHTML = '<div style="padding:24px;text-align:center;color:#666;">No items found for the selected M.R. and period.</div>';
+        return;
+      }
+
+      // Group by MR
+      const groups = new Map<string, any[]>();
+      for (const r of filtered) {
+        const k = r.mr_name || '(No M.R. / Direct)';
+        if (!groups.has(k)) groups.set(k, []);
+        groups.get(k)!.push(r);
+      }
+
+      let totQty = 0, totFree = 0, totGross = 0, totDisc = 0, totTaxable = 0, totTax = 0, totNet = 0;
+
+      let html = `<table class="mr-sale-table">
+        <thead>
+          <tr>
+            <th>Item Name</th><th>Pack</th><th>Company</th><th>Batch</th><th>Exp</th>
+            <th class="n">Bills</th><th class="n">Qty</th><th class="n">Free</th><th class="n">Avg Rate</th>
+            <th class="n">Gross Amt</th><th class="n">Disc Amt</th><th class="n">Taxable</th><th class="n">Tax Amt</th><th class="n">Net Amount</th>
+          </tr>
+        </thead>
+        <tbody>`;
+
+      for (const [mrName, items] of groups.entries()) {
+        let gQty = 0, gFree = 0, gGross = 0, gDisc = 0, gTaxable = 0, gTax = 0, gNet = 0;
+        html += `<tr class="mr-group-hdr"><td colspan="14">M.R.: ${esc(mrName)} &nbsp;|&nbsp; Area: ${esc(items[0]?.mr_area || 'N/A')} &nbsp;|&nbsp; (${items.length} Items Sold)</td></tr>`;
+
+        for (const it of items) {
+          gQty += Number(it.qty || 0); gFree += Number(it.free_qty || 0); gGross += Number(it.gross_amt || 0);
+          gDisc += Number(it.disc_amt || 0); gTaxable += Number(it.taxable || 0); gTax += Number(it.tax || 0); gNet += Number(it.net_amt || 0);
+
+          html += `<tr>
+            <td><b>${esc(it.item_name)}</b></td><td>${esc(it.pack)}</td><td>${esc(it.company)}</td><td>${esc(it.batch)}</td><td>${esc(it.expiry)}</td>
+            <td class="n">${it.bills_count || 0}</td><td class="n">${f2(it.qty)}</td><td class="n">${f2(it.free_qty)}</td><td class="n">${f2(it.rate)}</td>
+            <td class="n">${money(it.gross_amt)}</td><td class="n">${money(it.disc_amt)}</td>
+            <td class="n">${money(it.taxable)}</td><td class="n">${money(it.tax)}</td><td class="n"><b>${money(it.net_amt)}</b></td>
+          </tr>`;
+        }
+
+        html += `<tr class="mr-subtotal-tr">
+          <td colspan="6">SUBTOTAL FOR ${esc(mrName)}</td>
+          <td class="n">${f2(gQty)}</td><td class="n">${f2(gFree)}</td><td></td>
+          <td class="n">${money(gGross)}</td><td class="n">${money(gDisc)}</td>
+          <td class="n">${money(gTaxable)}</td><td class="n">${money(gTax)}</td><td class="n">${money(gNet)}</td>
+        </tr>`;
+
+        totQty += gQty; totFree += gFree; totGross += gGross; totDisc += gDisc; totTaxable += gTaxable; totTax += gTax; totNet += gNet;
+      }
+
+      html += `<tr class="mr-grandtotal-tr">
+        <td colspan="6">GRAND TOTAL (${filtered.length} Items)</td>
+        <td class="n">${f2(totQty)}</td><td class="n">${f2(totFree)}</td><td></td>
+        <td class="n">${money(totGross)}</td><td class="n">${money(totDisc)}</td>
+        <td class="n">${money(totTaxable)}</td><td class="n">${money(totTax)}</td><td class="n">${money(totNet)}</td>
+      </tr></tbody></table>`;
+
+      gridWrap.innerHTML = html;
+    } else {
+      let filtered = rowsData;
+      if (q) {
+        filtered = filtered.filter((r) =>
+          String(r.mr_name || '').toLowerCase().includes(q) ||
+          String(r.mr_area || '').toLowerCase().includes(q)
+        );
+      }
+
+      if (!filtered.length) {
+        gridWrap.innerHTML = '<div style="padding:24px;text-align:center;color:#666;">No sales records found for M.R.s in this period.</div>';
+        return;
+      }
+
+      let totSaleB = 0, totRetB = 0, totB = 0, totQty = 0, totFree = 0, totGross = 0, totDisc = 0, totTaxable = 0, totTax = 0, totSale = 0, totRet = 0, totNet = 0;
+
+      let html = `<table class="mr-sale-table">
+        <thead>
+          <tr>
+            <th>M.R. / Salesman</th><th>Area</th><th class="n">Sale Bills</th><th class="n">Returns</th>
+            <th class="n">Total Bills</th><th class="n">Qty</th><th class="n">Free</th>
+            <th class="n">Gross Amt</th><th class="n">Discount</th><th class="n">Taxable</th>
+            <th class="n">GST / Tax</th><th class="n">Sale Amt</th><th class="n">Return Amt</th><th class="n">Final Net Amt</th>
+          </tr>
+        </thead>
+        <tbody>`;
+
+      filtered.forEach((r, idx) => {
+        totSaleB += Number(r.sale_bills || 0); totRetB += Number(r.return_bills || 0); totB += Number(r.total_bills || 0);
+        totQty += Number(r.qty || 0); totFree += Number(r.free_qty || 0); totGross += Number(r.gross_amt || 0);
+        totDisc += Number(r.disc_amt || 0); totTaxable += Number(r.taxable || 0); totTax += Number(r.tax || 0);
+        totSale += Number(r.sale_amt || 0); totRet += Number(r.return_amt || 0); totNet += Number(r.net_amt || 0);
+
+        html += `<tr class="${idx === selectedRowIndex ? 'selected' : ''}" data-idx="${idx}" data-id="${r.mr_id}" data-name="${esc(r.mr_name)}">
+          <td><b>${esc(r.mr_name)}</b></td><td>${esc(r.mr_area)}</td><td class="n">${r.sale_bills || 0}</td>
+          <td class="n">${r.return_bills || 0}</td><td class="n">${r.total_bills || 0}</td>
+          <td class="n">${f2(r.qty)}</td><td class="n">${f2(r.free_qty)}</td>
+          <td class="n">${money(r.gross_amt)}</td><td class="n">${money(r.disc_amt)}</td>
+          <td class="n">${money(r.taxable)}</td><td class="n">${money(r.tax)}</td>
+          <td class="n">${money(r.sale_amt)}</td><td class="n">${money(r.return_amt)}</td>
+          <td class="n"><b>${money(r.net_amt)}</b></td>
+        </tr>`;
+      });
+
+      html += `<tr class="mr-grandtotal-tr">
+        <td colspan="2">GRAND TOTAL (${filtered.length} M.R.s)</td>
+        <td class="n">${totSaleB}</td><td class="n">${totRetB}</td><td class="n">${totB}</td>
+        <td class="n">${f2(totQty)}</td><td class="n">${f2(totFree)}</td>
+        <td class="n">${money(totGross)}</td><td class="n">${money(totDisc)}</td>
+        <td class="n">${money(totTaxable)}</td><td class="n">${money(totTax)}</td>
+        <td class="n">${money(totSale)}</td><td class="n">${money(totRet)}</td>
+        <td class="n">${money(totNet)}</td>
+      </tr></tbody></table>`;
+
+      gridWrap.innerHTML = html;
+
+      // Handle row selection and double click
+      gridWrap.querySelectorAll('tbody tr[data-idx]').forEach((tr) => {
+        tr.addEventListener('click', () => {
+          selectedRowIndex = Number((tr as HTMLElement).dataset.idx || 0);
+          render();
+        });
+        tr.addEventListener('dblclick', () => {
+          const id = (tr as HTMLElement).dataset.id || '';
+          const name = (tr as HTMLElement).dataset.name || '';
+          drillDownItems(id, name);
+        });
+      });
+    }
+  }
+
+  function drillDownItems(mrId: string, mrName: string) {
+    curMrId = mrId;
+    curMrName = mrName;
+    curMode = 'items';
+    toast(`Drilling down to items for ${mrName}`);
+    load();
+  }
+
+  function exportExcel() {
+    exportMrSaleExcel(rowsData, curMode, curFrom, curTo, curMrName);
+  }
+
+  function printReport() {
+    printMrSaleHtml(rowsData, curMode, curFrom, curTo, curMrName);
+  }
+
+  async function openPeriodModal() {
+    const res = await askMrSaleParams({ from: curFrom, to: curTo, mr_id: curMrId, mr_name: curMrName, mode: curMode });
+    if (!res) return;
+    curFrom = res.from;
+    curTo = res.to;
+    curMrId = res.mr_id;
+    curMrName = res.mr_name;
+    curMode = res.mode;
+    if (res.action === 'excel') {
+      const data = await api<any[]>(`/reports/mr-sale?from=${curFrom}&to=${curTo}&mode=${curMode}${curMrId ? `&mr_id=${curMrId}` : ''}`);
+      exportMrSaleExcel(data, curMode, curFrom, curTo, curMrName);
+      return;
+    }
+    if (res.action === 'print') {
+      const data = await api<any[]>(`/reports/mr-sale?from=${curFrom}&to=${curTo}&mode=${curMode}${curMrId ? `&mr_id=${curMrId}` : ''}`);
+      printMrSaleHtml(data, curMode, curFrom, curTo, curMrName);
+      return;
+    }
+    load();
+  }
+
+  modeBtns.forEach((b) => {
+    b.addEventListener('click', () => {
+      curMode = (b.dataset.m || 'summary') as any;
+      load();
+    });
+  });
+
+  topControls.querySelectorAll('button[data-a]').forEach((b) => {
+    b.addEventListener('click', () => {
+      const act = (b as HTMLElement).dataset.a;
+      if (act === 'period' || act === 'pickmr') openPeriodModal();
+    });
+  });
+
+  findInp.addEventListener('input', () => render());
+
+  w.onKey = (_e, k) => {
+    if (k === '1' || k === 'F5') {
+      curMode = 'summary';
+      load();
+      return true;
+    }
+    if (k === '2' || k === 'F6') {
+      curMode = 'items';
+      load();
+      return true;
+    }
+    if (k === 'F2') {
+      openPeriodModal();
+      return true;
+    }
+    if (k === 'F3') {
+      openPeriodModal();
+      return true;
+    }
+    if (k === 'Alt+X') {
+      exportExcel();
+      return true;
+    }
+    if (k === 'Alt+P' || k === 'Ctrl+P' || k === 'F10') {
+      printReport();
+      return true;
+    }
+    if (k === 'ArrowDown' && curMode === 'summary') {
+      const max = gridWrap.querySelectorAll('tbody tr[data-idx]').length - 1;
+      if (selectedRowIndex < max) { selectedRowIndex++; render(); }
+      return true;
+    }
+    if (k === 'ArrowUp' && curMode === 'summary') {
+      if (selectedRowIndex > 0) { selectedRowIndex--; render(); }
+      return true;
+    }
+    if (k === 'Enter' && curMode === 'summary') {
+      const tr = gridWrap.querySelector(`tbody tr[data-idx="${selectedRowIndex}"]`) as HTMLElement;
+      if (tr) {
+        drillDownItems(tr.dataset.id || '', tr.dataset.name || '');
+        return true;
+      }
+    }
+    if (k === 'Escape') {
+      if (curMode === 'items' && curMrId !== 'all') {
+        curMrId = 'all';
+        curMrName = '<ALL>';
+        curMode = 'summary';
+        toast('Returning to All M.R. summary');
+        load();
+        return true;
+      }
+      w.close();
+      return true;
+    }
+    return false;
+  };
+
+  await load();
+  findInp.focus();
+}
+
+/**
+ * Main Entry for Reports -> Sale Analysis -> M.R. Wise Sale and M.R. / All Items
+ */
+export async function mrSaleReport(modeParam?: string) {
+  const initialMode: 'summary' | 'items' = modeParam === 'items' ? 'items' : 'summary';
+  const initialMrId = modeParam === 'single' ? '' : 'all';
+
+  const chosen = await askMrSaleParams({ mode: initialMode, mr_id: initialMrId });
+  if (!chosen) return;
+
+  if (chosen.action === 'excel') {
+    const data = await api<any[]>(`/reports/mr-sale?from=${chosen.from}&to=${chosen.to}&mode=${chosen.mode}${chosen.mr_id ? `&mr_id=${chosen.mr_id}` : ''}`);
+    exportMrSaleExcel(data, chosen.mode, chosen.from, chosen.to, chosen.mr_name);
+    return;
+  }
+  if (chosen.action === 'print') {
+    const data = await api<any[]>(`/reports/mr-sale?from=${chosen.from}&to=${chosen.to}&mode=${chosen.mode}${chosen.mr_id ? `&mr_id=${chosen.mr_id}` : ''}`);
+    printMrSaleHtml(data, chosen.mode, chosen.from, chosen.to, chosen.mr_name);
+    return;
+  }
+
+  showMrSaleScreen({
+    from: chosen.from,
+    to: chosen.to,
+    mr_id: chosen.mr_id,
+    mr_name: chosen.mr_name,
+    mode: chosen.mode,
+  });
+}
+

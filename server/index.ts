@@ -975,6 +975,106 @@ app.get('/api/reports/summary', h((req) => {
     .map((r: any) => ({ ...r, qty: r2(r.qty), taxable: r2(r.taxable), tax: r2(r.tax), amount: r2(r.amount), cost: r2(r.cost) }));
 }));
 
+// M.R. Wise Sale Analysis: Summary (by Salesman) and Detailed (M.R. + All Items)
+app.get('/api/reports/mr-sale', h((req) => {
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const from = String(req.query.from || todayStr);
+  const to = String(req.query.to || todayStr);
+  const mode = String(req.query.mode || 'summary');
+  const mrId = req.query.mr_id != null && req.query.mr_id !== '' && req.query.mr_id !== 'all' ? Number(req.query.mr_id) : null;
+
+  const mrCond = mrId != null
+    ? mrId === 0
+      ? ` AND (COALESCE(s.id, CAST(json_extract(l.details, '$.mr_id') AS INTEGER)) IS NULL OR COALESCE(s.id, CAST(json_extract(l.details, '$.mr_id') AS INTEGER)) = 0)`
+      : ` AND (COALESCE(s.id, CAST(json_extract(l.details, '$.mr_id') AS INTEGER)) = ${mrId})`
+    : '';
+
+  if (mode === 'items') {
+    const sql = `
+      SELECT
+        COALESCE(s.id, 0) AS mr_id,
+        COALESCE(s.name, NULLIF(json_extract(l.details, '$.mr_name'), ''), '(No M.R. / Direct)') AS mr_name,
+        COALESCE(s.area, '') AS mr_area,
+        i.id AS item_id,
+        i.name AS item_name,
+        COALESCE(i.pack, '') AS pack,
+        COALESCE(i.company, '') AS company,
+        COALESCE(bi.batch, i.batch, '') AS batch,
+        COALESCE(bi.expiry, i.expiry, '') AS expiry,
+        COUNT(DISTINCT b.id) AS bills_count,
+        SUM(CASE WHEN b.type='SALE_RETURN' THEN -(bi.qty) ELSE bi.qty END) AS qty,
+        SUM(CASE WHEN b.type='SALE_RETURN' THEN -(bi.free) ELSE bi.free END) AS free_qty,
+        AVG(bi.rate) AS rate,
+        SUM(CASE WHEN b.type='SALE_RETURN' THEN -(bi.qty * bi.rate) ELSE bi.qty * bi.rate END) AS gross_amt,
+        SUM(CASE WHEN b.type='SALE_RETURN' THEN -((bi.qty * bi.rate) - bi.taxable) ELSE ((bi.qty * bi.rate) - bi.taxable) END) AS disc_amt,
+        SUM(CASE WHEN b.type='SALE_RETURN' THEN -bi.taxable ELSE bi.taxable END) AS taxable,
+        SUM(CASE WHEN b.type='SALE_RETURN' THEN -bi.tax ELSE bi.tax END) AS tax,
+        SUM(CASE WHEN b.type='SALE_RETURN' THEN -bi.amount ELSE bi.amount END) AS net_amt
+      FROM bill_items bi
+      JOIN bills b ON b.id = bi.bill_id
+      JOIN items i ON i.id = bi.item_id
+      JOIN ledgers l ON l.id = b.party_id
+      LEFT JOIN salesmen s ON s.id = COALESCE(b.mr_id, CAST(json_extract(l.details, '$.mr_id') AS INTEGER))
+      WHERE b.type IN ('SALE','COUNTER_SALE','SALE_RETURN')
+        AND b.date BETWEEN ? AND ?
+        ${mrCond}
+      GROUP BY 1, 2, 3, i.id, bi.batch
+      ORDER BY mr_name ASC, i.name ASC, bi.batch ASC
+    `;
+    return db.prepare(sql).all(from, to).map((r: any) => ({
+      ...r,
+      qty: r2(r.qty),
+      free_qty: r2(r.free_qty),
+      rate: r2(r.rate),
+      gross_amt: r2(r.gross_amt),
+      disc_amt: r2(r.disc_amt),
+      taxable: r2(r.taxable),
+      tax: r2(r.tax),
+      net_amt: r2(r.net_amt),
+    }));
+  }
+
+  const sql = `
+    SELECT
+      COALESCE(s.id, 0) AS mr_id,
+      COALESCE(s.name, NULLIF(json_extract(l.details, '$.mr_name'), ''), '(No M.R. / Direct)') AS mr_name,
+      COALESCE(s.area, '') AS mr_area,
+      COUNT(DISTINCT CASE WHEN b.type IN ('SALE','COUNTER_SALE') THEN b.id END) AS sale_bills,
+      COUNT(DISTINCT CASE WHEN b.type = 'SALE_RETURN' THEN b.id END) AS return_bills,
+      COUNT(DISTINCT b.id) AS total_bills,
+      SUM(CASE WHEN b.type='SALE_RETURN' THEN -(bi.qty) ELSE bi.qty END) AS qty,
+      SUM(CASE WHEN b.type='SALE_RETURN' THEN -(bi.free) ELSE bi.free END) AS free_qty,
+      SUM(CASE WHEN b.type='SALE_RETURN' THEN -(bi.qty * bi.rate) ELSE bi.qty * bi.rate END) AS gross_amt,
+      SUM(CASE WHEN b.type='SALE_RETURN' THEN -((bi.qty * bi.rate) - bi.taxable) ELSE ((bi.qty * bi.rate) - bi.taxable) END) AS disc_amt,
+      SUM(CASE WHEN b.type='SALE_RETURN' THEN -bi.taxable ELSE bi.taxable END) AS taxable,
+      SUM(CASE WHEN b.type='SALE_RETURN' THEN -bi.tax ELSE bi.tax END) AS tax,
+      SUM(CASE WHEN b.type='SALE_RETURN' THEN 0 ELSE bi.amount END) AS sale_amt,
+      SUM(CASE WHEN b.type='SALE_RETURN' THEN bi.amount ELSE 0 END) AS return_amt,
+      SUM(CASE WHEN b.type='SALE_RETURN' THEN -bi.amount ELSE bi.amount END) AS net_amt
+    FROM bill_items bi
+    JOIN bills b ON b.id = bi.bill_id
+    JOIN ledgers l ON l.id = b.party_id
+    LEFT JOIN salesmen s ON s.id = COALESCE(b.mr_id, CAST(json_extract(l.details, '$.mr_id') AS INTEGER))
+    WHERE b.type IN ('SALE','COUNTER_SALE','SALE_RETURN')
+      AND b.date BETWEEN ? AND ?
+      ${mrCond}
+    GROUP BY 1, 2, 3
+    ORDER BY net_amt DESC, mr_name ASC
+  `;
+  return db.prepare(sql).all(from, to).map((r: any) => ({
+    ...r,
+    qty: r2(r.qty),
+    free_qty: r2(r.free_qty),
+    gross_amt: r2(r.gross_amt),
+    disc_amt: r2(r.disc_amt),
+    taxable: r2(r.taxable),
+    tax: r2(r.tax),
+    sale_amt: r2(r.sale_amt),
+    return_amt: r2(r.return_amt),
+    net_amt: r2(r.net_amt),
+  }));
+}));
+
 
 // Outstanding ageing: each party's unpaid credit sale bills split into age slabs (days since bill date).
 app.get('/api/reports/ageing', h((req) => {

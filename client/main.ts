@@ -59,6 +59,7 @@ const ACTIONS: Record<string, (arg?: string) => unknown> = {
   'report.summary': (spec) => R.summary(spec!),
   'report.ageing': () => R.ageing(),
   'report.negstock': () => R.negativeStock(),
+  'report.mrsale': (mode) => R.mrSaleReport(mode),
   'salesman.list': () => salesmanList(),
   // Alt+E / T / B / S / D / R / G / F: drop open that top menu (main screen only).
   'menu.open': (hot) => { if (!winCount()) { const i = topMenuIndex(hot!); if (i >= 0) openTop(i); } },
