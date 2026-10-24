@@ -132,7 +132,10 @@ export async function allLedgers() {
     if (k === 'F2') { askUpto(upto).then((d) => { if (d) { upto = d; load(); } }); return true; }
     if (k === 'F3' && view[sel]) {
       if (!canAction('ledger.list')) { toast('Access denied — your role cannot edit ledgers', true); return true; }
-      api<Ledger>(`/ledgers/${view[sel].id}`).then((l) => ledgerForm(l)).then((l) => { if (l) load(); });
+      api<Ledger>(`/ledgers/${view[sel].id}`).then(async (l) => {
+        const { postSaveMenu } = await import('./ledgerform.ts');
+        return postSaveMenu(l);
+      }).then((l) => { if (l) load(); });
       return true;
     }
     if (k === 'F10') { balanceOnly = !balanceOnly; toast(balanceOnly ? 'Showing ledgers with a balance only' : 'Showing all ledgers'); filter(); return true; }

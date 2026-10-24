@@ -342,10 +342,11 @@ export function postSaveMenu(l: Ledger, isUnregistered = false): Promise<Ledger>
 
       if (opt.key === 'A') {
         // Screenshot 2: MODIFY LEDGER Review Screen
-        w.close();
+        w.el.style.display = 'none';
         const updated = await modifyLedgerScreen(cur);
         if (updated) cur = updated;
-        resolve(cur);
+        w.el.style.display = '';
+        draw();
         return;
       }
 
@@ -759,8 +760,9 @@ export function modifyLedgerScreen(existing: Ledger): Promise<Ledger | null> {
             <div class="ml-bottom-actions">
               <button type="button" class="ml-btn act-exit${!editMode && focusedBtn === 0 ? ' sel' : ''}" data-act="exit" tabindex="${editMode ? '-1' : '0'}">Exit</button>
               <button type="button" class="ml-btn act-modify${!editMode && focusedBtn === 1 ? ' sel' : ''}" data-act="modify" tabindex="${editMode ? '-1' : '0'}">Modify</button>
-              <button type="button" class="ml-btn act-gstn${!editMode && focusedBtn === 2 ? ' sel' : ''}" data-act="gstn" tabindex="${editMode ? '-1' : '0'}">GSTN Verification</button>
-              <button type="button" class="ml-btn act-attach${!editMode && focusedBtn === 3 ? ' sel' : ''}" data-act="attach" tabindex="${editMode ? '-1' : '0'}">ATTACH DOCUMENTS</button>
+              <button type="button" class="ml-btn act-other${!editMode && focusedBtn === 2 ? ' sel' : ''}" data-act="other" tabindex="${editMode ? '-1' : '0'}">Other Detail</button>
+              <button type="button" class="ml-btn act-gstn${!editMode && focusedBtn === 3 ? ' sel' : ''}" data-act="gstn" tabindex="${editMode ? '-1' : '0'}">GSTN Verification</button>
+              <button type="button" class="ml-btn act-attach${!editMode && focusedBtn === 4 ? ' sel' : ''}" data-act="attach" tabindex="${editMode ? '-1' : '0'}">ATTACH DOCUMENTS</button>
             </div>
           </div>
           <div class="lf-status">
@@ -776,13 +778,13 @@ export function modifyLedgerScreen(existing: Ledger): Promise<Ledger | null> {
                 <span>DESC.</span><span class="n">LIMIT</span><span class="n">PRIMARY</span><span class="n">BALANCE</span>
               </div>
               <div class="cs-tr">
-                <span>Amount :</span><span class="n">0</span><span class="n">0</span><span class="n">0</span>
+                <span>Amount :</span><span class="n">${esc(String(cur.credit_limit || 0))}</span><span class="n">0</span><span class="n">${esc(String(cur.balance || 0))}</span>
               </div>
               <div class="cs-tr">
-                <span>Bills &nbsp;:</span><span class="n">0</span><span class="n">0</span><span class="n">0</span>
+                <span>Bills &nbsp;:</span><span class="n">${esc(det.credit_limit_bills || '0')}</span><span class="n">0</span><span class="n">0</span>
               </div>
               <div class="cs-tr">
-                <span>Days &nbsp;&nbsp;:</span><span class="n">0</span><span class="n">0</span><span class="n">0</span>
+                <span>Days &nbsp;&nbsp;:</span><span class="n">${esc(det.due_days || '0')}</span><span class="n">0</span><span class="n">0</span>
               </div>
             </div>
             <div class="cs-ratio">
@@ -800,11 +802,20 @@ export function modifyLedgerScreen(existing: Ledger): Promise<Ledger | null> {
       const btns = [...w.body.querySelectorAll<HTMLButtonElement>('.ml-btn')];
       const btnExit = w.body.querySelector('.act-exit') as HTMLButtonElement | null;
       const btnMod = w.body.querySelector('.act-modify') as HTMLButtonElement | null;
+      const btnOther = w.body.querySelector('.act-other') as HTMLButtonElement | null;
       const btnGstn = w.body.querySelector('.act-gstn') as HTMLButtonElement | null;
       const btnAttach = w.body.querySelector('.act-attach') as HTMLButtonElement | null;
 
       btnExit?.addEventListener('click', () => { w.close(); resolve(cur); });
       btnMod?.addEventListener('click', () => { editMode = true; render(); });
+      btnOther?.addEventListener('click', async () => {
+        const updated = await otherDetailDialog(cur);
+        if (updated) {
+          cur = updated;
+          try { det = JSON.parse(cur.details || '{}'); } catch { /* ignore */ }
+          render();
+        }
+      });
       btnGstn?.addEventListener('click', () => { gstnVerifyDialog(cur); });
       btnAttach?.addEventListener('click', () => { attachDocsDialog(cur); });
 
@@ -921,6 +932,16 @@ export function modifyLedgerScreen(existing: Ledger): Promise<Ledger | null> {
       if (!editMode) {
         if (k === 'Escape' || k === 'X' || k === 'x') { w.close(); resolve(cur); return true; }
         if (k === 'M' || k === 'm') { editMode = true; render(); return true; }
+        if (k === 'O' || k === 'o' || k === 'B' || k === 'b') {
+          otherDetailDialog(cur).then((updated) => {
+            if (updated) {
+              cur = updated;
+              try { det = JSON.parse(cur.details || '{}'); } catch { /* ignore */ }
+              render();
+            }
+          });
+          return true;
+        }
         if (k === 'G' || k === 'g') { gstnVerifyDialog(cur); return true; }
         if (k === 'A' || k === 'a') { attachDocsDialog(cur); return true; }
         const btns = [...w.body.querySelectorAll<HTMLButtonElement>('.ml-btn')];
