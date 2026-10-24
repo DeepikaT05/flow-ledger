@@ -372,7 +372,7 @@ export async function saleEntry(type = 'SALE', billId?: number) {
       <div class="kv"><span class="k">DISCOUNT</span><b>${f2(gross - taxable)}</b></div>
       <div class="kv"><span class="k">GST%</span><b>${f2(tax)}</b></div>
       <div class="kv clickable" data-fld="cd" title="Click or Press F8 to edit Cash Discount"><span class="k">CASH DISCOUNT ${cdp ? `(${cdp}%)` : ''}</span><b>${f2(cda)}</b></div>
-      <div class="kv clickable" data-fld="freight" title="Click or Press F9 to edit Freight"><span class="k">FREIGHT / TRANSPORT</span><b>${f2(fr)}</b></div>
+      <div class="kv clickable" data-fld="freight" title="Click or Press F9 to edit Freight"><span class="k">FREIGHT</span><b>${f2(fr)}</b></div>
       ${ot ? `<div class="kv clickable" data-fld="other" title="Click to edit Other Charges"><span class="k">OTHER CHARGES</span><b>${f2(ot)}</b></div>` : ''}
       <div class="kv clickable" data-fld="round" title="Click to edit Round Off"><span class="k">ROUND OFF</span><b>${f2(ro)}</b></div>`;
     screen.querySelectorAll('.info3 .clickable').forEach((el) => {
@@ -619,7 +619,7 @@ export async function saleEntry(type = 'SALE', billId?: number) {
             <td>₹ <input type="number" step="0.01" class="sundry-inp" data-f="cd_amt" value="${tempCdAmt ? f2(tempCdAmt) : ''}" placeholder="0.00"></td>
           </tr>
           <tr>
-            <td class="lbl">Freight / Transport (FHRITE)</td>
+            <td class="lbl">Freight Charges (FREIGHT)</td>
             <td>₹ <input type="number" step="0.01" class="sundry-inp" data-f="freight" value="${tempFreight ? f2(tempFreight) : ''}" placeholder="0.00"></td>
           </tr>
           <tr>
