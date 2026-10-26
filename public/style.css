@@ -34,12 +34,6 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: #111; font-s
 .dd-item .new { position: absolute; left: 2px; top: 50%; transform: translateY(-50%); color: #c00; background: #ff0; font-size: 9px; font-weight: bold; padding: 0 2px; }
 .dd-sep { border-top: 1px solid #bbb; margin: 2px 2px; }
 
-/* dropdown header with title and close button [✖ Esc] */
-.dd-header { display: flex !important; align-items: center !important; justify-content: space-between !important; background: #1c3f94 !important; color: #ffffff !important; padding: 3px 8px !important; font-size: 11px !important; font-weight: bold !important; border-bottom: 1px solid #0f2b6b !important; margin-bottom: 2px !important; user-select: none !important; }
-.dd-header .dd-title { white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; font-family: Tahoma, Arial, sans-serif !important; letter-spacing: 0.5px !important; color: #ffffff !important; font-size: 11px !important; text-transform: uppercase !important; }
-.dd-header .dd-close-btn { background: #a5121a !important; color: #ffffff !important; border: 1px solid rgba(255, 255, 255, 0.8) !important; font-weight: bold !important; font-size: 10px !important; padding: 1px 6px !important; cursor: pointer !important; border-radius: 2px !important; display: inline-flex !important; align-items: center !important; gap: 3px !important; line-height: 1.2 !important; transition: background 0.12s !important; }
-.dd-header .dd-close-btn:hover { background: #c61822 !important; border-color: #ffffff !important; }
-
 /* ---------- desktop */
 #desktop { display: grid; grid-template-columns: 260px 1fr 280px; height: calc(100% - 26px - 29px - 140px); }
 #leftpanel { background: var(--panel); border-right: 1px solid #ccc; padding: 4px 0 0; display: flex; flex-direction: column; min-height: 0; }

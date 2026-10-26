@@ -261,21 +261,14 @@ const labelHtml = (m: MenuItem) => {
   return j < 0 ? esc(m.label) : `${esc(m.label.slice(0, j))}<u>${esc(m.label[j])}</u>${esc(m.label.slice(j + 1))}`;
 };
 
-function renderDropdown(items: MenuEntry[], level: number, parentTitle = ''): string {
-  const title = parentTitle || (path[0] !== undefined && TREE[path[0]] ? TREE[path[0]].label : 'Menu');
-  const headerHtml = `
-    <div class="dd-header" data-close-level="${level}">
-      <span class="dd-title">${esc(title)}</span>
-      <button type="button" class="dd-close-btn" data-close-level="${level}" title="Close / Back (Esc)" aria-label="Close" tabindex="-1">&#10006; Esc</button>
-    </div>`;
-
-  return `<div class="dropdown">${headerHtml}${items.map((m, i) => {
+function renderDropdown(items: MenuEntry[], level: number): string {
+  return `<div class="dropdown">${items.map((m, i) => {
     if (m === '-') return '<div class="dd-sep"></div>';
     const active = path[level] === i;
     const open = active && m.children && path.length > level + 1;
     return `<div class="dd-item${m.bold ? ' bold' : ''}${m.disabled ? ' disabled' : ''}${m.children ? ' sub' : ''}${active ? ' active' : ''}" data-l="${level}" data-i="${i}">
       ${m.isNew ? '<span class="new">NEW</span>' : ''}${m.icon ? `<span class="ico">${esc(m.icon)}</span>` : ''}<span class="lbl">${labelHtml(m)}</span>${m.shortcut ? `<span class="sc">${esc(m.shortcut)}</span>` : ''}
-      ${open ? renderDropdown(m.children!, level + 1, m.label) : ''}</div>`;
+      ${open ? renderDropdown(m.children!, level + 1) : ''}</div>`;
   }).join('')}</div>`;
 }
 
@@ -285,7 +278,7 @@ function renderMenu() {
   bar.innerHTML = TREE.map((m, i) => {
     const open = path[0] === i;
     return `<div class="mb-item${open ? ' open' : ''}${!open && menuActive && barFocus === i ? ' focus' : ''}" data-top="${i}">${labelHtml(m)}
-      ${open && m.children ? renderDropdown(m.children, 1, m.label) : ''}</div>`;
+      ${open && m.children ? renderDropdown(m.children, 1) : ''}</div>`;
   }).join('');
   keepDropdownsOnScreen();
 }
@@ -389,18 +382,6 @@ function menuKey(k: string): boolean {
 bar.addEventListener('mousedown', (e) => {
   e.preventDefault();
   if (e.button !== 0) return;   // right-click opens the shortcut menu instead
-  const closeBtn = (e.target as HTMLElement).closest('.dd-close-btn') as HTMLElement | null;
-  if (closeBtn) {
-    e.stopPropagation();
-    const lvl = Number(closeBtn.dataset.closeLevel || 1);
-    if (lvl > 1) {
-      path = path.slice(0, lvl - 1);
-      renderMenu();
-    } else {
-      closeMenu();
-    }
-    return;
-  }
   const dd = (e.target as HTMLElement).closest('.dd-item') as HTMLElement | null;
   if (dd) { e.stopPropagation(); activate(Number(dd.dataset.l), Number(dd.dataset.i)); return; }
   if ((e.target as HTMLElement).closest('.dropdown')) return;  // gap inside a dropdown: ignore
