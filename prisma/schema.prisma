@@ -1,0 +1,360 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ---------------------------------------------------------
+// System & Authentication Models
+// ---------------------------------------------------------
+
+model Role {
+  id         Int      @id @default(autoincrement())
+  name       String   @unique
+  is_super   Boolean  @default(false)
+  perms      String   @default("[]") // JSON string of permission keys
+  menu_perms Int      @default(1)
+  users      User[]
+
+  @@map("roles")
+}
+
+model User {
+  id       Int      @id @default(autoincrement())
+  name     String   @unique
+  salt     String
+  hash     String
+  isAdmin  Boolean  @default(false) @map("is_admin")
+  roleId   Int?     @map("role_id")
+  role     Role?    @relation(fields: [roleId], references: [id])
+  sessions Session[]
+
+  @@map("users")
+}
+
+model Session {
+  token     String   @id
+  userId    Int      @map("user_id")
+  seen      BigInt
+  companyId Int?     @map("company_id")
+  yearId    Int?     @map("year_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([seen])
+  @@map("sessions")
+}
+
+model Migration {
+  name String @id
+
+  @@map("migrations")
+}
+
+// ---------------------------------------------------------
+// Multi-Tenant Company Models
+// ---------------------------------------------------------
+
+model Company {
+  id          Int            @id @default(autoincrement())
+  name        String
+  station     String         @default("")
+  address1    String?
+  address2    String?
+  gstin       String?
+  state       String?
+  fyStart     String?        @map("fy_start")
+  fyEnd       String?        @map("fy_end")
+  email       String?
+  phone       String?
+  details     String         @default("{}") // Working style, licences, contact details (JSON)
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+
+  years       CompanyYear[]
+  groups      AccountGroup[]
+  ledgers     Ledger[]
+  items       Item[]
+  batches     Batch[]
+  salesmen    Salesman[]
+  bills       Bill[]
+  vouchers    Voucher[]
+  entries     LedgerEntry[]
+
+  @@map("companies")
+}
+
+model CompanyYear {
+  id         Int      @id @default(autoincrement())
+  companyId  Int      @map("company_id")
+  code       String
+  fyStart    String   @map("fy_start")
+  fyEnd      String   @map("fy_end")
+  backupUpto String?  @map("backup_upto")
+  freezUpto  String?  @map("freez_upto")
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, code])
+  @@map("company_years")
+}
+
+model AccountGroup {
+  id        Int      @id @default(autoincrement())
+  companyId Int      @map("company_id")
+  name      String
+  nature    String   // ASSET, LIABILITY, INCOME, EXPENSE
+  isSystem  Boolean  @default(false) @map("is_system")
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  ledgers   Ledger[]
+
+  @@unique([companyId, name])
+  @@map("account_groups")
+}
+
+model Ledger {
+  id           Int            @id @default(autoincrement())
+  companyId    Int            @map("company_id")
+  name         String
+  groupId      Int            @map("group_id")
+  address      String?
+  city         String?
+  phone        String?
+  gstin        String?
+  state        String?
+  opening      Float          @default(0)
+  openingType  String         @default("Dr") @map("opening_type")
+  creditLimit  Float          @default(0) @map("credit_limit")
+  isSystem     Boolean        @default(false) @map("is_system")
+  details      String         @default("{}") // DL, food lic, route, contact info (JSON)
+
+  company      Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  group        AccountGroup   @relation(fields: [groupId], references: [id])
+  bills        Bill[]
+  voucherLines VoucherLine[]
+  billPayments BillPayment[]
+  entries      LedgerEntry[]
+
+  @@unique([companyId, name])
+  @@index([companyId, groupId])
+  @@map("ledgers")
+}
+
+model Item {
+  id           Int         @id @default(autoincrement())
+  companyId    Int         @map("company_id")
+  name         String
+  companyName  String?     @map("company")
+  unit         String      @default("PCS")
+  pack         String?
+  hsn          String?
+  gstRate      Float       @default(0) @map("gst_rate")
+  mrp          Float       @default(0)
+  saleRate     Float       @default(0) @map("sale_rate")
+  purchaseRate Float       @default(0) @map("purchase_rate")
+  openingStock Float       @default(0) @map("opening_stock")
+  minStock     Float       @default(0) @map("min_stock")
+  reorderQty   Float       @default(0) @map("reorder_qty")
+  expiry       String?     @default("")
+  batch        String?     @default("")
+  details      String      @default("{}") // Rack, schedule, color type (JSON)
+
+  company      Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  batches      Batch[]
+  billItems    BillItem[]
+
+  @@unique([companyId, name, pack])
+  @@index([companyId, name])
+  @@map("items")
+}
+
+model Batch {
+  id           Int         @id @default(autoincrement())
+  companyId    Int         @map("company_id")
+  itemId       Int         @map("item_id")
+  batch        String      @default("")
+  expiry       String?
+  mrp          Float       @default(0)
+  rate         Float       @default(0)
+  fRate        Float       @default(0) @map("f_rate")
+  purchaseRate Float       @default(0) @map("purchase_rate")
+  openingQty   Float       @default(0) @map("opening_qty")
+  supplier     String?
+  invoiceNo    String?     @map("invoice_no")
+  invoiceDate  String?     @map("invoice_date")
+
+  company      Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  item         Item        @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  billItems    BillItem[]
+
+  @@index([itemId])
+  @@index([companyId, itemId])
+  @@map("batches")
+}
+
+model Salesman {
+  id        Int      @id @default(autoincrement())
+  companyId Int      @map("company_id")
+  name      String
+  area      String?
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, name])
+  @@map("salesmen")
+}
+
+model Bill {
+  id            Int            @id @default(autoincrement())
+  companyId     Int            @map("company_id")
+  type          String         // SALE, PURCHASE, SALE_CHALLAN, PURCHASE_CHALLAN, SALE_RETURN, PURCHASE_RETURN, COUNTER_SALE
+  no            String
+  date          String
+  partyId       Int            @map("party_id")
+  mode          String         @default("CREDIT")
+  gross         Float          @default(0)
+  discount      Float          @default(0)
+  taxable       Float          @default(0)
+  tax           Float          @default(0)
+  cdPct         Float          @default(0) @map("cd_pct")
+  cdAmt         Float          @default(0) @map("cd_amt")
+  freight       Float          @default(0)
+  otherCharges  Float          @default(0) @map("other_charges")
+  roundOff      Float          @default(0) @map("round_off")
+  net           Float          @default(0)
+  narration     String?
+  refNo         String?        @map("ref_no")
+  refDate       String?        @map("ref_date")
+  reason        String?
+  againstBillId Int?           @map("against_bill_id")
+  calcType      String?        @map("calc_type")
+  mrId          Int?           @map("mr_id")
+  saleType      String         @default("LOCAL") @map("sale_type")
+  walkinName    String?        @map("walkin_name")
+  walkinGstin   String?        @map("walkin_gstin")
+  walkinMobile  String?        @map("walkin_mobile")
+  walkinAddress String?        @map("walkin_address")
+  createdAt     DateTime       @default(now()) @map("created_at")
+
+  company       Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  party         Ledger         @relation(fields: [partyId], references: [id])
+  items         BillItem[]
+  payments      BillPayment[]
+  adjustments   VoucherAdjustment[]
+
+  @@unique([companyId, type, no])
+  @@index([companyId, partyId])
+  @@index([companyId, date])
+  @@map("bills")
+}
+
+model BillItem {
+  id       Int     @id @default(autoincrement())
+  billId   Int     @map("bill_id")
+  itemId   Int     @map("item_id")
+  batchId  Int?    @map("batch_id")
+  batch    String?
+  expiry   String?
+  qty      Float
+  free     Float   @default(0)
+  rate     Float
+  discPct  Float   @default(0) @map("disc_pct")
+  gstRate  Float   @default(0) @map("gst_rate")
+  taxable  Float
+  tax      Float
+  amount   Float
+  mrp      Float   @default(0)
+
+  bill     Bill    @relation(fields: [billId], references: [id], onDelete: Cascade)
+  item     Item    @relation(fields: [itemId], references: [id])
+  batchRel Batch?  @relation(fields: [batchId], references: [id])
+
+  @@index([billId])
+  @@index([itemId])
+  @@map("bill_items")
+}
+
+model BillPayment {
+  id       Int     @id @default(autoincrement())
+  billId   Int     @map("bill_id")
+  ledgerId Int     @map("ledger_id")
+  amount   Float
+  remark   String?
+  detail   String?
+
+  bill     Bill    @relation(fields: [billId], references: [id], onDelete: Cascade)
+  ledger   Ledger  @relation(fields: [ledgerId], references: [id])
+
+  @@index([billId])
+  @@index([ledgerId])
+  @@map("bill_payments")
+}
+
+model Voucher {
+  id          Int                 @id @default(autoincrement())
+  companyId   Int                 @map("company_id")
+  type        String              // RECEIPT, PAYMENT, CONTRA, JOURNAL, DEBIT_NOTE, CREDIT_NOTE
+  no          String
+  date        String
+  narration   String?
+  createdAt   DateTime            @default(now()) @map("created_at")
+
+  company     Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  lines       VoucherLine[]
+  adjustments VoucherAdjustment[]
+
+  @@unique([companyId, type, no])
+  @@index([companyId, date])
+  @@map("vouchers")
+}
+
+model VoucherLine {
+  id        Int     @id @default(autoincrement())
+  voucherId Int     @map("voucher_id")
+  ledgerId  Int     @map("ledger_id")
+  debit     Float   @default(0)
+  credit    Float   @default(0)
+
+  voucher   Voucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  ledger    Ledger  @relation(fields: [ledgerId], references: [id])
+
+  @@index([voucherId])
+  @@index([ledgerId])
+  @@map("voucher_lines")
+}
+
+model VoucherAdjustment {
+  id        Int     @id @default(autoincrement())
+  voucherId Int     @map("voucher_id")
+  billId    Int?    @map("bill_id")
+  amount    Float
+  remark    String?
+
+  voucher   Voucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  bill      Bill?   @relation(fields: [billId], references: [id], onDelete: Cascade)
+
+  @@index([voucherId])
+  @@index([billId])
+  @@map("voucher_adjustments")
+}
+
+model LedgerEntry {
+  id        Int     @id @default(autoincrement())
+  companyId Int     @map("company_id")
+  source    String  // BILL, VOUCHER
+  sourceId  Int     @map("source_id")
+  date      String
+  ledgerId  Int     @map("ledger_id")
+  debit     Float   @default(0)
+  credit    Float   @default(0)
+  vtype     String
+  vno       String
+  narration String?
+
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  ledger    Ledger  @relation(fields: [ledgerId], references: [id])
+
+  @@index([companyId, ledgerId, date])
+  @@index([source, sourceId])
+  @@map("ledger_entries")
+}

@@ -9,15 +9,22 @@
     "build:admin": "esbuild admin/main.ts --bundle --outfile=admin-public/admin.js --target=es2020 --sourcemap",
     "dev": "npm run build && tsx server/index.ts",
     "start": "npm run build && tsx server/index.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prisma:generate": "prisma generate",
+    "prisma:push": "prisma db push",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:studio": "prisma studio",
+    "db:migrate-sqlite": "tsx scripts/migrate-sqlite-to-prisma.ts"
   },
   "dependencies": {
+    "@prisma/client": "^6.19.3",
     "express": "^4.21.2"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
     "@types/node": "^22.10.0",
     "esbuild": "^0.24.0",
+    "prisma": "^6.19.3",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   }
