@@ -750,7 +750,8 @@ export async function receiptEntry(type: VType = 'RECEIPT') {
     return false;
   };
   w.beforeEsc = async () => {
-    if (!dirty) return true;
+    const hasLines = lines.some((l) => l.ledger && l.amount > 0);
+    if (!dirty && !hasLines) return true;
     const { margConfirm } = await import('./margui.ts');
     return margConfirm('Exit W/o Save');
   };

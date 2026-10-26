@@ -31,7 +31,7 @@ export function margBar(title: string) {
     e.stopPropagation();
     const winEl = el.closest('.win') as HTMLElement | null;
     const w = winEl ? getWinForElement(winEl) : topWin();
-    triggerEsc(w, true);
+    triggerEsc(w);
   });
 
   return el;

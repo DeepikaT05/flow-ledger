@@ -1079,7 +1079,8 @@ export async function saleEntry(type = 'SALE', billId?: number) {
     return false;
   };
   w.beforeEsc = async () => {
-    if (!dirty) return true;
+    const hasItems = rows.some((r) => r.item_id);
+    if (!dirty && !hasItems && !party) return true;
     return margConfirm('Exit W/o Save');
   };
   w.setFoot('<span><b>Enter</b>-Next</span><span><b>←</b>-Bill No.</span><span><b>Ctrl+W/End/F10</b>-Save</span><span><b>Ctrl+Del</b>-Delete Row</span>' +

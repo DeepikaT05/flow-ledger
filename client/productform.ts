@@ -3,7 +3,7 @@
 // discount fields. Enter / ↓ moves to the next field; Enter on the last one asks "Save ?".
 // Fields the item table has no column for are kept in items.details (JSON).
 import { api, esc, h, toast, confirmBox } from './ui.ts';
-import { margPop } from './margui.ts';
+import { margPop, margConfirm } from './margui.ts';
 import { seeCost } from './session.ts';
 import type { Item } from './masters.ts';
 
@@ -195,12 +195,18 @@ export function productScreen(existing?: Partial<Item> & { details?: string }): 
       } catch (e) { toast((e as Error).message, true); }
     };
 
+    p.beforeEsc = async () => {
+      if (!dirty) { finish(null); return true; }
+      const y = await margConfirm('Exit W/o Save');
+      if (y) finish(null);
+      return y;
+    };
+
     p.onKey = (e, k) => {
       const t = e.target as HTMLElement;
       const i = inputs.indexOf(t as HTMLInputElement);
       if (k === 'Escape') {
-        if (!dirty) { finish(null); return true; }
-        confirmBox('Exit W/o Save ?', false).then((y) => { if (y) finish(null); else t.focus(); });
+        p.beforeEsc!();
         return true;
       }
       if (i < 0) return false;
@@ -216,6 +222,5 @@ export function productScreen(existing?: Partial<Item> & { details?: string }): 
       if (k === 'Ctrl+W' || k === 'Ctrl+S' || k === 'PageDown') { save(); return true; }   // MARG saves with Ctrl+W → "Yes"
       return false;
     };
-    p.beforeEsc = async () => false;   // Esc is handled above
   });
 }

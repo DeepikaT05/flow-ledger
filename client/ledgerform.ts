@@ -1,6 +1,6 @@
 // CREATE LEDGER / MODIFY LEDGER — Authentic MARG ERP Ledger Master screen, UNDER GROUP & Post-Save Menu
 import { api, esc, h, toast, confirmBox, today, fmtDate, openWin } from './ui.ts';
-import { margBar } from './margui.ts';
+import { margBar, margConfirm } from './margui.ts';
 import type { Ledger } from './masters.ts';
 
 interface Group { id: number; name: string; nature: string }
@@ -1879,12 +1879,18 @@ export function ledgerScreen(existing?: Partial<Ledger> & { details?: string }, 
     let done = false;
     const finish = (r: Ledger | null) => { if (done) return; done = true; w.close(); resolve(r); };
 
-    const cancelAction = () => {
+    const cancelAction = async () => {
       if (!dirty) { finish(null); return; }
-      confirmBox('Exit W/o Save ?', false).then((y) => {
-        if (y) finish(null);
-        else (document.activeElement as HTMLElement)?.focus();
-      });
+      const y = await margConfirm('Exit W/o Save');
+      if (y) finish(null);
+      else (document.activeElement as HTMLElement)?.focus();
+    };
+
+    w.beforeEsc = async () => {
+      if (!dirty) return true;
+      const y = await margConfirm('Exit W/o Save');
+      if (y) finish(null);
+      return y;
     };
 
     btnSave?.addEventListener('click', () => { save(); });
@@ -2018,7 +2024,7 @@ export function ledgerScreen(existing?: Partial<Ledger> & { details?: string }, 
         return true;
       }
       if (k === 'Escape') {
-        cancelAction();
+        w.beforeEsc!();
         return true;
       }
 

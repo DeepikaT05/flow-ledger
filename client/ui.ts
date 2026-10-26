@@ -76,25 +76,31 @@ export function getWinForElement(el: HTMLElement): Win | undefined {
   return winEl ? winMap.get(winEl) : undefined;
 }
 
-/** Triggers Escape key action on the target window (or top window), running onKey, beforeEsc, or close.
- * When isExplicitClose is true (e.g. mouse click on [✖ Esc]), unsaved confirmation is asked and the window closes directly.
+/** Triggers Escape key action on the target window (or top window), running beforeEsc, onKey, or close.
+ * Guarantees that clicking the close button with mouse runs the exact same 'Exit W/o Save' check as pressing Esc.
  */
-export async function triggerEsc(targetWin?: Win, isExplicitClose = false): Promise<boolean> {
+export async function triggerEsc(targetWin?: Win): Promise<boolean> {
   const w = targetWin || topWin();
   if (!w) return false;
-  if (isExplicitClose) {
-    if (w.beforeEsc && !(await w.beforeEsc())) return true;
+
+  // 1. If window has beforeEsc guard (e.g. Exit W/o Save confirmation):
+  if (w.beforeEsc) {
+    const canClose = await w.beforeEsc();
+    if (!canClose) return true; // Cancelled exit (clicked No)
     w.close();
-    return true;
+    return true; // Confirmed exit (clicked Yes)
   }
+
+  // 2. Otherwise run onKey for Escape (popups, choosers, search filters)
   const dummyEvent = new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true });
   if (w.onKey?.(dummyEvent, 'Escape')) return true;
-  if (w.beforeEsc && !(await w.beforeEsc())) return true;
+
+  // 3. Fallback close
   w.close();
   return true;
 }
 
-// Global click handler (capture phase): any close button or footer Esc item clicked in any window triggers immediate close
+// Global click handler (capture phase): any close button or footer Esc item clicked in any window triggers immediate Escape action
 if (typeof document !== 'undefined') {
   document.addEventListener('click', (e) => {
     const target = e.target as HTMLElement;
@@ -104,7 +110,7 @@ if (typeof document !== 'undefined') {
       e.stopPropagation();
       const winEl = btn.closest('.win') as HTMLElement | null;
       const w = winEl ? getWinForElement(winEl) : topWin();
-      triggerEsc(w, true);
+      triggerEsc(w);
       return;
     }
     // Also check if user clicked on any footer span/button that mentions Esc / Exit / Close / Cancel / Back
@@ -116,7 +122,7 @@ if (typeof document !== 'undefined') {
         e.stopPropagation();
         const winEl = footSpan.closest('.win') as HTMLElement | null;
         const w = winEl ? getWinForElement(winEl) : topWin();
-        triggerEsc(w, true);
+        triggerEsc(w);
         return;
       }
     }
@@ -154,7 +160,7 @@ export function openWin(title: string, size: 'full' | 'wide' | 'mid' | 'small' =
           s.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            triggerEsc(w, true);
+            triggerEsc(w);
           });
         }
       });
@@ -175,7 +181,7 @@ export function openWin(title: string, size: 'full' | 'wide' | 'mid' | 'small' =
   winCloseBtn?.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    triggerEsc(w, true);
+    triggerEsc(w);
   });
 
   back.addEventListener('mousedown', (e) => { if (e.target === back) e.preventDefault(); });

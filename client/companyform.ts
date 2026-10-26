@@ -2,7 +2,7 @@
 // two columns of fields, the State Code's list on the right, Enter / ↓ to the next field,
 // "Save ?" after the last one.
 import { api, esc, h, toast, confirmBox, openWin, triggerEsc } from './ui.ts';
-import { margBar } from './margui.ts';
+import { margBar, margConfirm } from './margui.ts';
 import { session } from './session.ts';
 
 export interface CompanyRec {
@@ -268,10 +268,15 @@ export function companyScreen(c?: CompanyRec): Promise<number | null> {
       }
       if (k === 'F2' || k === 'Ctrl+S' || k === 'PageDown') { if (t === stateI && !commitState()) return true; save(); return true; }
       if (k === 'Escape') {
-        confirmBox(isNew ? 'Quit W/o Save ?' : 'Exit W/o Save ?', false).then((y) => { if (y) finish(null); else t.focus(); });
+        w.beforeEsc!();
         return true;
       }
       return false;
+    };
+    w.beforeEsc = async () => {
+      const y = await margConfirm(isNew ? 'Quit W/o Save' : 'Exit W/o Save');
+      if (y) finish(null);
+      return y;
     };
     stateI.addEventListener('blur', () => { if (findState(stateI.value) !== null) pickState(findState(stateI.value)!); else stateI.value = stateLabel(v.state); });
   });
