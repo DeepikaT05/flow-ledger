@@ -232,10 +232,12 @@ table.marg-grid { width: 100%; border-collapse: collapse; font-family: inherit; 
 table.marg-grid th { background: #d8e7f3; color: var(--marg-lbl); font-size: 17px; text-align: left; padding: 5px 8px; border: 1px solid #b9c7d2; }
 table.marg-grid td { border: 1px solid #cfdae4; padding: 3px 8px; height: 27px; font-size: 17px; color: var(--marg-red); white-space: nowrap; overflow: hidden; }
 table.marg-grid td.n, table.marg-grid th.n { text-align: right; }
+table.marg-grid td.c, table.marg-grid th.c { text-align: center; }
 table.marg-grid tr.sel td { background: var(--marg-sel); color: #fff; }
 table.marg-grid td input { width: 100%; border: none; background: transparent; font: inherit; color: inherit; padding: 0; }
 table.marg-grid td input:focus { background: var(--marg-sel); color: #fff; outline: none; }
 table.marg-grid td input.num, table.marg-grid td.n input { text-align: right; }
+table.marg-grid td input.exp-inp, table.marg-grid td.c input { text-align: center; }
 .marg-rows { flex: 1; overflow: auto; }
 .marg-foot { display: grid; grid-template-columns: 1.5fr 1fr 1.2fr; border-top: 1px solid #b9c7d2; font-size: 16px; }
 .marg-foot > div { padding: 6px 12px; border-right: 1px solid #cfdae4; }

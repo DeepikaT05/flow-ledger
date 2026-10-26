@@ -604,9 +604,20 @@ function saveBill(body: BillIn, id?: number) {
         VALUES (?,?,?,?,?,?,?,0,?,?,?)`);
       for (const l of c.lines) {
         const batch = String(l.batch ?? '').trim().toUpperCase();
-        if (l.batch_id || !batch) continue;
+        if (l.batch_id || !batch) {
+          if (l.batch_id && l.expiry) {
+            db.prepare("UPDATE batches SET expiry=? WHERE id=? AND (expiry IS NULL OR expiry='' OR expiry!=?)").run(l.expiry, l.batch_id, l.expiry);
+          }
+          continue;
+        }
         const found = findB.get(l.item_id, batch, num(l.mrp)) as { id: number } | undefined;
-        if (found) { l.batch_id = found.id; continue; }
+        if (found) {
+          l.batch_id = found.id;
+          if (l.expiry) {
+            db.prepare("UPDATE batches SET expiry=? WHERE id=? AND (expiry IS NULL OR expiry='' OR expiry!=?)").run(l.expiry, found.id, l.expiry);
+          }
+          continue;
+        }
         const it = db.prepare('SELECT sale_rate FROM items WHERE id=?').get(l.item_id) as { sale_rate: number } | undefined;
         const sale = num(it?.sale_rate);
         l.batch_id = Number(insB.run(l.item_id, batch, l.expiry ?? '', num(l.mrp), sale, sale, body.type === 'SALE_RETURN' ? 0 : l.rate,

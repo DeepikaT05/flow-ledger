@@ -52,7 +52,30 @@ const iso = (d: string) => {
   const m = d.match(/^(\d{2})-(\d{2})-(\d{4})$/);
   return m ? `${m[3]}-${m[2]}-${m[1]}` : d;
 };
-const expShort = (e: string) => (e ? `${e.slice(5, 7)}/${e.slice(2, 4)}` : '');
+const expShort = (e: string) => {
+  if (!e) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(e)) return `${e.slice(5, 7)}/${e.slice(2, 4)}`;
+  const m = e.match(/^(\d{1,2})[/-]?(\d{2})$/);
+  if (m) return `${m[1].padStart(2, '0')}/${m[2]}`;
+  return e;
+};
+function parseExpiry(e: string): string | null {
+  if (!e) return '';
+  const s = e.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  let m = s.match(/^(\d{1,2})[/-](\d{2}|\d{4})$/);
+  if (!m) m = s.match(/^(\d{2})(\d{2})$/);
+  if (!m) m = s.match(/^(\d{1})(\d{2})$/);
+  if (m) {
+    const mm = Number(m[1]);
+    if (mm >= 1 && mm <= 12) {
+      const yy = m[2].length === 2 ? 2000 + Number(m[2]) : Number(m[2]);
+      const lastDay = new Date(yy, mm, 0).getDate();
+      return `${yy}-${String(mm).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+    }
+  }
+  return null;
+}
 function calc(r: Row) {
   const gross = r2(r.qty * r.rate);
   const taxable = r2(gross * (1 - r.disc / 100));
@@ -60,12 +83,13 @@ function calc(r: Row) {
   return { gross, taxable, tax, amount: r2(taxable + tax) };
 }
 
-const GRID_COLS: { key: keyof Row; label: string; w: string; num?: boolean; edit?: boolean }[] = [
-  { key: 'name', label: 'PRODUCT', w: '34%' },
-  { key: 'pack', label: 'PACK', w: '9%' },
-  { key: 'batch', label: 'BATCH', w: '11%' },
-  { key: 'qty', label: 'QTY', w: '10%', num: true, edit: true },
-  { key: 'rate', label: 'RATE', w: '11%', num: true, edit: true },
+const GRID_COLS: { key: keyof Row; label: string; w: string; num?: boolean; edit?: boolean; center?: boolean }[] = [
+  { key: 'name', label: 'PRODUCT', w: '30%' },
+  { key: 'pack', label: 'PACK', w: '8%' },
+  { key: 'batch', label: 'BATCH', w: '11%', edit: true },
+  { key: 'expiry', label: 'EXP.', w: '8%', edit: true, center: true },
+  { key: 'qty', label: 'QTY', w: '9%', num: true, edit: true },
+  { key: 'rate', label: 'RATE', w: '10%', num: true, edit: true },
   { key: 'disc', label: 'DIS1%', w: '8%', num: true, edit: true },
 ];
 const TOOLS = ['SALE', 'PURC', 'SC', 'PC', 'SR', 'PR', 'O/S', 'CASH', 'CHG', 'VOU', 'SAVE'];
@@ -302,7 +326,7 @@ export async function saleEntry(type = 'SALE', billId?: number) {
       <label>Type</label><input class="val" data-f="type" readonly>
     </div>
     <div class="marg-rows"><table class="marg-grid"><thead><tr>
-      ${GRID_COLS.map((c) => `<th class="${c.num ? 'n' : ''}" style="width:${c.w}">${c.key === 'rate' && isPurchase(type) ? 'P.RATE' : c.label}</th>`).join('')}
+      ${GRID_COLS.map((c) => `<th class="${c.num ? 'n' : ''}${c.center ? ' c' : ''}" style="width:${c.w};${c.center ? 'text-align:center;' : ''}">${c.key === 'rate' && isPurchase(type) ? 'P.RATE' : c.label}</th>`).join('')}
       <th class="n">AMOUNT</th></tr></thead><tbody></tbody></table></div>
     <div class="marg-foot">
       <div class="info1"></div><div class="info2"></div><div class="info3"></div>
@@ -329,11 +353,24 @@ export async function saleEntry(type = 'SALE', billId?: number) {
     const filler = Math.max(0, 12 - rows.length);
     const cell = (r: Row, i: number, c: typeof GRID_COLS[number]) => {
       const v = r[c.key];
-      if (c.edit) return `<td class="n"><input data-r="${i}" data-c="${c.key}" class="num" value="${r.item_id ? (v ?? 0) : ''}"></td>`;
       if (c.key === 'name') {
         const hint = !r.item_id && i === 0 && party ? ' placeholder="← key to change Bill No."' : '';
         return `<td><input data-r="${i}" data-c="name" value="${esc(v ?? '')}" autocomplete="off"${hint}></td>`;
       }
+      if (c.key === 'expiry') {
+        const expStr = expShort(String(r.expiry || ''));
+        if (r.item_id) {
+          return `<td class="c"><input data-r="${i}" data-c="expiry" class="exp-inp" value="${esc(expStr)}" placeholder="MM/YY" maxlength="7" autocomplete="off" style="text-align:center;text-transform:uppercase"></td>`;
+        }
+        return `<td class="c"></td>`;
+      }
+      if (c.key === 'batch') {
+        if (r.item_id && isPurchase(type)) {
+          return `<td><input data-r="${i}" data-c="batch" class="batch-inp" value="${esc(v ?? '')}" placeholder="BATCH" autocomplete="off" style="text-transform:uppercase"></td>`;
+        }
+        return `<td>${esc(v ?? '')}</td>`;
+      }
+      if (c.edit) return `<td class="n"><input data-r="${i}" data-c="${c.key}" class="num" value="${r.item_id ? (v ?? 0) : ''}"></td>`;
       return `<td class="${c.num ? 'n' : ''}">${esc(v ?? '')}</td>`;
     };
     tbody.innerHTML = rows.map((r, i) => `<tr data-r="${i}">${GRID_COLS.map((c) => cell(r, i, c)).join('')}
@@ -491,11 +528,19 @@ export async function saleEntry(type = 'SALE', billId?: number) {
       const style = String(company.working_style || 'Self-Secondary');
       if (style.startsWith('Normal')) {
         rows[rowIdx] = {
-          item_id: it.id, name: it.name.toUpperCase(), pack: (it.pack ?? '').toUpperCase(), batch: '', expiry: '',
+          item_id: it.id, name: it.name.toUpperCase(), pack: (it.pack ?? '').toUpperCase(),
+          batch: (it.batch || '').toUpperCase(), expiry: it.expiry || '',
           qty: 1, free: 0, rate: isPurchase(type) ? (it.purchase_rate ?? 0) : netRate(it.sale_rate, it.gst_rate), disc: 0, gst: it.gst_rate,
           mrp: it.mrp, cost: it.purchase_rate, stock: it.stock, unit: it.unit,
         };
-        dirty = true; renderRows(); focusCell(rowIdx, 'qty');
+        dirty = true; renderRows();
+        if (isPurchase(type)) {
+          if (!rows[rowIdx].batch) focusCell(rowIdx, 'batch');
+          else if (!rows[rowIdx].expiry) focusCell(rowIdx, 'expiry');
+          else focusCell(rowIdx, 'qty');
+        } else {
+          focusCell(rowIdx, 'qty');
+        }
         return;
       }
       const b = inward ? await pickBatch(it, true) : await chooseBatch(it, style);
@@ -508,14 +553,9 @@ export async function saleEntry(type = 'SALE', billId?: number) {
           const e = await margAsk('Expiry (MM/YY)', '');
           if (e == null) { focusCell(rowIdx, 'name'); return; }
           if (!e) break;
-          const m = e.match(/^(\d{1,2})[/-](\d{2}|\d{4})$/);
-          const mm = m ? Number(m[1]) : 0;
-          if (m && mm >= 1 && mm <= 12) {
-            const yy = m[2].length === 2 ? 2000 + Number(m[2]) : Number(m[2]);
-            expiry = `${yy}-${String(mm).padStart(2, '0')}-${String(new Date(yy, mm, 0).getDate()).padStart(2, '0')}`;
-            break;
-          }
-          toast('Enter the expiry as MM/YY, e.g. 03/27', true);
+          const parsed = parseExpiry(e);
+          if (parsed) { expiry = parsed; break; }
+          toast('Enter the expiry as MM/YY or MMYY, e.g. 03/27 or 0327', true);
         }
         const mrpS = await margAsk(isPurchase(type) ? 'M.R.P.' : 'MRP for Search', f2(it.mrp));
         if (mrpS == null) { focusCell(rowIdx, 'name'); return; }
@@ -523,7 +563,9 @@ export async function saleEntry(type = 'SALE', billId?: number) {
           item_id: it.id, name: it.name.toUpperCase(), pack: (it.pack ?? '').toUpperCase(), batch: batch.toUpperCase(), expiry,
           qty: 1, free: 0, rate: isPurchase(type) ? (it.purchase_rate ?? 0) : netRate(it.sale_rate, it.gst_rate), disc: 0, gst: it.gst_rate, mrp: Number(mrpS) || it.mrp, unit: it.unit,
         };
-        dirty = true; renderRows(); focusCell(rowIdx, 'qty');
+        dirty = true; renderRows();
+        if (isPurchase(type) && !expiry) focusCell(rowIdx, 'expiry');
+        else focusCell(rowIdx, 'qty');
         return;
       }
       if (!b) { focusCell(rowIdx, 'name'); return; }
@@ -534,7 +576,13 @@ export async function saleEntry(type = 'SALE', billId?: number) {
       };
       dirty = true;
       renderRows();
-      focusCell(rowIdx, 'qty');
+      if (isPurchase(type)) {
+        if (!b.batch) focusCell(rowIdx, 'batch');
+        else if (!b.expiry) focusCell(rowIdx, 'expiry');
+        else focusCell(rowIdx, 'qty');
+      } else {
+        focusCell(rowIdx, 'qty');
+      }
     } finally { busy = false; }
   }
 
@@ -882,9 +930,42 @@ export async function saleEntry(type = 'SALE', billId?: number) {
     if (!c) return;
     const r = rows[Number(t.dataset.r)];
     if (!r) return;
+    if (c === 'expiry') {
+      const parsed = parseExpiry(t.value);
+      if (parsed) r.expiry = parsed;
+      else if (!t.value.trim()) r.expiry = '';
+      dirty = true;
+      return;
+    }
+    if (c === 'batch') {
+      r.batch = t.value.trim().toUpperCase();
+      dirty = true;
+      return;
+    }
     (r as any)[c] = Number(t.value || 0);
     dirty = true;
     renderTotals();
+  });
+  tbody.addEventListener('change', (e) => {
+    const t = e.target as HTMLInputElement;
+    const c = t.dataset.c;
+    if (c === 'expiry') {
+      const r = rows[Number(t.dataset.r)];
+      if (r) {
+        const parsed = parseExpiry(t.value);
+        if (parsed) {
+          r.expiry = parsed;
+          t.value = expShort(parsed);
+        } else if (t.value.trim()) {
+          toast('Invalid expiry! Enter as MM/YY or MMYY (e.g. 03/27 or 0327)', true);
+          t.value = expShort(r.expiry || '');
+        } else {
+          r.expiry = '';
+          t.value = '';
+        }
+        dirty = true;
+      }
+    }
   });
   tbody.addEventListener('focusin', (e) => {
     const t = e.target as HTMLElement;
@@ -946,12 +1027,39 @@ export async function saleEntry(type = 'SALE', billId?: number) {
           if (rows.filter((r) => r.item_id).length) finishBill(); else productStep(ri, '');
           return true;
         }
-        if (k === 'Enter' && rows[ri].item_id) { focusCell(ri, 'qty'); return true; }
+        if (k === 'Enter' && rows[ri].item_id) {
+          if (isPurchase(type)) {
+            if (!rows[ri].batch) focusCell(ri, 'batch');
+            else if (!rows[ri].expiry) focusCell(ri, 'expiry');
+            else focusCell(ri, 'qty');
+          } else {
+            focusCell(ri, 'qty');
+          }
+          return true;
+        }
         if (k.length === 1 && !e.ctrlKey && !e.altKey) { productStep(ri, k); return true; }
       }
       if (k === 'Enter' || k === 'Tab') {
-        if (ci < GRID_COLS.length - 1) focusCell(ri, GRID_COLS[ci + 1].key as string);
-        else {
+        if (c === 'expiry') {
+          const parsed = parseExpiry(t.value);
+          if (parsed) {
+            rows[ri].expiry = parsed;
+            t.value = expShort(parsed);
+          }
+        }
+        if (ci < GRID_COLS.length - 1) {
+          let nextKey = GRID_COLS[ci + 1].key as string;
+          let nextEl = tbody.querySelector(`input[data-r="${ri}"][data-c="${nextKey}"]`);
+          if (!nextEl) {
+            for (let j = ci + 1; j < GRID_COLS.length; j++) {
+              if (tbody.querySelector(`input[data-r="${ri}"][data-c="${GRID_COLS[j].key}"]`)) {
+                nextKey = GRID_COLS[j].key as string;
+                break;
+              }
+            }
+          }
+          focusCell(ri, nextKey);
+        } else {
           if (ri === rows.length - 1) { rows.push(blank()); renderRows(); }
           focusCell(ri + 1, 'name');
         }
