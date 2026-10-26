@@ -76,10 +76,17 @@ export function getWinForElement(el: HTMLElement): Win | undefined {
   return winEl ? winMap.get(winEl) : undefined;
 }
 
-/** Triggers Escape key action on the target window (or top window), running onKey, beforeEsc, or close. */
-export async function triggerEsc(targetWin?: Win): Promise<boolean> {
+/** Triggers Escape key action on the target window (or top window), running onKey, beforeEsc, or close.
+ * When isExplicitClose is true (e.g. mouse click on [✖ Esc]), unsaved confirmation is asked and the window closes directly.
+ */
+export async function triggerEsc(targetWin?: Win, isExplicitClose = false): Promise<boolean> {
   const w = targetWin || topWin();
   if (!w) return false;
+  if (isExplicitClose) {
+    if (w.beforeEsc && !(await w.beforeEsc())) return true;
+    w.close();
+    return true;
+  }
   const dummyEvent = new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true });
   if (w.onKey?.(dummyEvent, 'Escape')) return true;
   if (w.beforeEsc && !(await w.beforeEsc())) return true;
@@ -87,17 +94,17 @@ export async function triggerEsc(targetWin?: Win): Promise<boolean> {
   return true;
 }
 
-// Global click handler: any close button or footer Esc item clicked in any window triggers its Escape action
+// Global click handler (capture phase): any close button or footer Esc item clicked in any window triggers immediate close
 if (typeof document !== 'undefined') {
   document.addEventListener('click', (e) => {
     const target = e.target as HTMLElement;
-    const btn = target.closest('.marg-close-btn, .win-close-btn, .win-title .x, [data-win-close], .esc-clickable');
+    const btn = target.closest('.marg-close-btn, .win-close-btn, .win-title .x, [data-win-close], .esc-clickable, .btn-win-close');
     if (btn) {
       e.preventDefault();
       e.stopPropagation();
       const winEl = btn.closest('.win') as HTMLElement | null;
       const w = winEl ? getWinForElement(winEl) : topWin();
-      triggerEsc(w);
+      triggerEsc(w, true);
       return;
     }
     // Also check if user clicked on any footer span/button that mentions Esc / Exit / Close / Cancel / Back
@@ -109,11 +116,11 @@ if (typeof document !== 'undefined') {
         e.stopPropagation();
         const winEl = footSpan.closest('.win') as HTMLElement | null;
         const w = winEl ? getWinForElement(winEl) : topWin();
-        triggerEsc(w);
+        triggerEsc(w, true);
         return;
       }
     }
-  });
+  }, true);
 }
 
 /** Call right after opening a window: runs fn when that (top) window closes. */
@@ -128,7 +135,7 @@ export function openWin(title: string, size: 'full' | 'wide' | 'mid' | 'small' =
   const prevFocus = document.activeElement as HTMLElement | null;
   const back = h('div', { class: 'win-backdrop' });
   const el = h('div', { class: `win ${size}` });
-  el.innerHTML = `<div class="win-title"><span>${esc(title)}</span><button type="button" class="win-close-btn x" title="Close / Back (Esc)" aria-label="Close" tabindex="-1">&#10006; Esc</button></div>`;
+  el.innerHTML = `<div class="win-title"><span class="win-title-text">${esc(title)}</span><button type="button" class="win-close-btn x" title="Close / Back (Esc)" aria-label="Close" tabindex="-1">&#10006; Esc</button></div>`;
   const body = h('div', { class: 'win-body' });
   const footEl = h('div', { class: 'win-foot' }, foot);
   el.append(body, footEl);
@@ -144,6 +151,11 @@ export function openWin(title: string, size: 'full' | 'wide' | 'mid' | 'small' =
         if (/\b(esc|exit|close|cancel|back)\b/i.test(txt) && !/\b(save|print|excel|next)\b/i.test(txt)) {
           s.classList.add('esc-clickable');
           s.setAttribute('title', 'Click or Press Esc to Close');
+          s.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            triggerEsc(w, true);
+          });
         }
       });
     },
@@ -157,6 +169,15 @@ export function openWin(title: string, size: 'full' | 'wide' | 'mid' | 'small' =
   };
   winMap.set(el, w);
   w.setFoot(foot);
+
+  // Direct click listener on window title close button
+  const winCloseBtn = el.querySelector('.win-close-btn');
+  winCloseBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    triggerEsc(w, true);
+  });
+
   back.addEventListener('mousedown', (e) => { if (e.target === back) e.preventDefault(); });
   stack.push(w);
   return w;

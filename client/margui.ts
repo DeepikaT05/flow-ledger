@@ -1,6 +1,6 @@
 // Building blocks for the classic MARG screens: the green header bar, the popup
 // lists (LEDGERS / item search / BATCH / M.R.) and the red "Exit W/o Save" box.
-import { openWin, esc, h, type Win } from './ui.ts';
+import { openWin, esc, h, triggerEsc, getWinForElement, topWin, type Win } from './ui.ts';
 
 export const clock = () => {
   const d = new Date();
@@ -23,6 +23,17 @@ export function margBar(title: string) {
     if (!el.isConnected) { clearInterval(t); return; }
     if (clockEl) clockEl.textContent = clock();
   }, 1000);
+
+  // Direct click listener on close button
+  const closeBtn = el.querySelector('.marg-close-btn');
+  closeBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const winEl = el.closest('.win') as HTMLElement | null;
+    const w = winEl ? getWinForElement(winEl) : topWin();
+    triggerEsc(w, true);
+  });
+
   return el;
 }
 
@@ -153,6 +164,8 @@ export function margConfirm(msg: string, defaultYes = true): Promise<boolean> {
     const finish = (v: boolean) => { if (done) return; done = true; w.close(); resolve(v); };
     const btns = [...w.body.querySelectorAll('button:not(.marg-close-btn)')] as HTMLButtonElement[];
     btns.forEach((b) => b.addEventListener('click', () => finish(b.dataset.v === '1')));
+    const closeBtn = w.body.querySelector('.marg-close-btn');
+    closeBtn?.addEventListener('click', () => finish(false));
     btns[defaultYes ? 1 : 0].focus();
     w.onKey = (_e, k) => {
       if (k === 'Y') { finish(true); return true; }
@@ -191,6 +204,8 @@ export function notExist(what = ''): Promise<void> {
     let done = false;
     const finish = () => { if (done) return; done = true; notExistOpen = false; w.close(); resolve(); };
     btn.addEventListener('click', finish);
+    const closeBtn = w.body.querySelector('.marg-close-btn');
+    closeBtn?.addEventListener('click', finish);
     btn.focus();
     w.onKey = (_e, k) => {
       if (k === 'Enter' || k === 'Escape' || k === 'Space') { finish(); return true; }
@@ -215,6 +230,8 @@ export function margNumber(label: string, def = 1): Promise<number | null> {
     w.body.style.background = 'transparent';
     w.body.innerHTML = `<div class="marg-ask" style="display:flex;align-items:center;gap:6px"><label>${esc(label)}</label><input class="marg-amt" value="${def}"><button type="button" class="marg-close-btn" title="Close (Esc)" style="padding:1px 6px;font-size:11px">&#10006; Esc</button></div>`;
     const inp = w.body.querySelector('input') as HTMLInputElement;
+    const closeBtn = w.body.querySelector('.marg-close-btn');
+    closeBtn?.addEventListener('click', () => finish(null));
     inp.focus();
     inp.select();
     let done = false;
@@ -240,6 +257,8 @@ export function margAsk(label: string, def = ''): Promise<string | null> {
     w.body.style.background = 'transparent';
     w.body.innerHTML = `<div class="marg-ask" style="display:flex;align-items:center;gap:6px"><label>${esc(label)}</label><input class="marg-amt" value="${esc(def)}" style="width:160px"><button type="button" class="marg-close-btn" title="Close (Esc)" style="padding:1px 6px;font-size:11px">&#10006; Esc</button></div>`;
     const inp = w.body.querySelector('input') as HTMLInputElement;
+    const closeBtn = w.body.querySelector('.marg-close-btn');
+    closeBtn?.addEventListener('click', () => finish(null));
     inp.focus();
     inp.select();
     let done = false;
