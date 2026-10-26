@@ -87,16 +87,31 @@ export async function triggerEsc(targetWin?: Win): Promise<boolean> {
   return true;
 }
 
-// Global click handler: any close button clicked in any window triggers its Escape action
+// Global click handler: any close button or footer Esc item clicked in any window triggers its Escape action
 if (typeof document !== 'undefined') {
   document.addEventListener('click', (e) => {
-    const btn = (e.target as HTMLElement).closest('.marg-close-btn, .win-close-btn, .win-title .x, [data-win-close]');
+    const target = e.target as HTMLElement;
+    const btn = target.closest('.marg-close-btn, .win-close-btn, .win-title .x, [data-win-close], .esc-clickable');
     if (btn) {
       e.preventDefault();
       e.stopPropagation();
       const winEl = btn.closest('.win') as HTMLElement | null;
       const w = winEl ? getWinForElement(winEl) : topWin();
       triggerEsc(w);
+      return;
+    }
+    // Also check if user clicked on any footer span/button that mentions Esc / Exit / Close / Cancel / Back
+    const footSpan = target.closest('.win-foot span, .marg-foot span, .cf-foot-keys span');
+    if (footSpan) {
+      const txt = footSpan.textContent || '';
+      if (/\b(esc|exit|close|cancel|back)\b/i.test(txt) && !/\b(save|print|excel|next)\b/i.test(txt)) {
+        e.preventDefault();
+        e.stopPropagation();
+        const winEl = footSpan.closest('.win') as HTMLElement | null;
+        const w = winEl ? getWinForElement(winEl) : topWin();
+        triggerEsc(w);
+        return;
+      }
     }
   });
 }
@@ -121,7 +136,17 @@ export function openWin(title: string, size: 'full' | 'wide' | 'mid' | 'small' =
   document.getElementById('windows')!.append(back);
   const w: Win = {
     el, body,
-    setFoot: (html) => { footEl.innerHTML = html; footEl.style.display = html ? '' : 'none'; },
+    setFoot: (html) => {
+      footEl.innerHTML = html;
+      footEl.style.display = html ? '' : 'none';
+      footEl.querySelectorAll('span').forEach((s) => {
+        const txt = s.textContent || '';
+        if (/\b(esc|exit|close|cancel|back)\b/i.test(txt) && !/\b(save|print|excel|next)\b/i.test(txt)) {
+          s.classList.add('esc-clickable');
+          s.setAttribute('title', 'Click or Press Esc to Close');
+        }
+      });
+    },
     close: () => {
       const i = stack.indexOf(w);
       if (i >= 0) stack.splice(i, 1);

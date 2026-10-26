@@ -17,7 +17,7 @@ export function margWin(title: string, foot = ''): Win & { bar: HTMLElement } {
 
 export function margBar(title: string) {
   const el = h('div', { class: 'marg-bar' });
-  el.innerHTML = `<span>${esc(title)}</span><div class="marg-bar-right"><span class="clock">${clock()}</span><button type="button" class="marg-close-btn" title="Close / Back (Esc)" aria-label="Close" tabindex="-1">&#10006; Esc</button></div>`;
+  el.innerHTML = `<span class="marg-bar-title">${esc(title)}</span><div class="marg-bar-right"><span class="clock">${clock()}</span><button type="button" class="marg-close-btn" title="Close / Back (Esc)" aria-label="Close" tabindex="-1">&#10006; Esc</button></div>`;
   const clockEl = el.querySelector('.clock');
   const t = setInterval(() => {
     if (!el.isConnected) { clearInterval(t); return; }
@@ -147,11 +147,11 @@ export function margConfirm(msg: string, defaultYes = true): Promise<boolean> {
     w.el.style.boxShadow = 'none';
     w.setFoot('');
     w.body.style.background = 'transparent';
-    w.body.innerHTML = `<div class="marg-confirm"><div class="msg">${esc(msg)}</div>
+    w.body.innerHTML = `<div class="marg-confirm" style="position:relative"><button type="button" class="marg-close-btn" title="Close (Esc)" style="position:absolute;top:6px;right:6px;padding:1px 6px;font-size:11px">&#10006; Esc</button><div class="msg">${esc(msg)}</div>
       <button data-v="0">No</button> &nbsp; <button data-v="1">Yes</button></div>`;
     let done = false;
     const finish = (v: boolean) => { if (done) return; done = true; w.close(); resolve(v); };
-    const btns = [...w.body.querySelectorAll('button')] as HTMLButtonElement[];
+    const btns = [...w.body.querySelectorAll('button:not(.marg-close-btn)')] as HTMLButtonElement[];
     btns.forEach((b) => b.addEventListener('click', () => finish(b.dataset.v === '1')));
     btns[defaultYes ? 1 : 0].focus();
     w.onKey = (_e, k) => {
@@ -185,9 +185,9 @@ export function notExist(what = ''): Promise<void> {
     w.el.style.boxShadow = 'none';
     w.setFoot('');
     w.body.style.background = 'transparent';
-    w.body.innerHTML = `<div class="marg-confirm not-exist"><div class="code">404</div><div class="msg">NOT EXIST</div>
+    w.body.innerHTML = `<div class="marg-confirm not-exist" style="position:relative"><button type="button" class="marg-close-btn" title="Close (Esc)" style="position:absolute;top:6px;right:6px;padding:1px 6px;font-size:11px">&#10006; Esc</button><div class="code">404</div><div class="msg">NOT EXIST</div>
       ${what ? `<div class="what">${esc(what)}</div>` : ''}<button>OK</button></div>`;
-    const btn = w.body.querySelector('button') as HTMLButtonElement;
+    const btn = w.body.querySelector('button:not(.marg-close-btn)') as HTMLButtonElement;
     let done = false;
     const finish = () => { if (done) return; done = true; notExistOpen = false; w.close(); resolve(); };
     btn.addEventListener('click', finish);
@@ -213,7 +213,7 @@ export function margNumber(label: string, def = 1): Promise<number | null> {
     w.el.style.boxShadow = 'none';
     w.setFoot('');
     w.body.style.background = 'transparent';
-    w.body.innerHTML = `<div class="marg-ask"><label>${esc(label)}</label><input class="marg-amt" value="${def}"></div>`;
+    w.body.innerHTML = `<div class="marg-ask" style="display:flex;align-items:center;gap:6px"><label>${esc(label)}</label><input class="marg-amt" value="${def}"><button type="button" class="marg-close-btn" title="Close (Esc)" style="padding:1px 6px;font-size:11px">&#10006; Esc</button></div>`;
     const inp = w.body.querySelector('input') as HTMLInputElement;
     inp.focus();
     inp.select();
@@ -238,7 +238,7 @@ export function margAsk(label: string, def = ''): Promise<string | null> {
     w.el.style.boxShadow = 'none';
     w.setFoot('');
     w.body.style.background = 'transparent';
-    w.body.innerHTML = `<div class="marg-ask"><label>${esc(label)}</label><input class="marg-amt" value="${esc(def)}" style="width:160px"></div>`;
+    w.body.innerHTML = `<div class="marg-ask" style="display:flex;align-items:center;gap:6px"><label>${esc(label)}</label><input class="marg-amt" value="${esc(def)}" style="width:160px"><button type="button" class="marg-close-btn" title="Close (Esc)" style="padding:1px 6px;font-size:11px">&#10006; Esc</button></div>`;
     const inp = w.body.querySelector('input') as HTMLInputElement;
     inp.focus();
     inp.select();
