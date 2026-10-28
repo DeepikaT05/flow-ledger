@@ -113,7 +113,7 @@ export async function pickParty(initial = '', group?: string): Promise<Ledger | 
     ],
     rowCls: (r) => (r.balance < -0.004 ? 'due' : ''),
     detail: (r) => !r ? '' : `<div>Address&nbsp;: <b>${esc((r.address || r.name).toUpperCase())}</b></div><div>[${esc(r.group_name)}]</div>
-      <div>&nbsp;</div><div>[${r.gstin ? esc(r.gstin) : 'UNREGISTERED'}]</div>
+      <div>Cr.Limit&nbsp;: <b>${r.credit_limit ? money(r.credit_limit) : '0.00'}</b></div><div>[${r.gstin ? esc(r.gstin) : 'UNREGISTERED'}]</div>
       <div>Phone&nbsp;&nbsp;&nbsp;: <b>${esc(r.phone ?? '')}</b></div><div>[${esc((r.state ?? '').toUpperCase())}]</div>
       <div>D.L.No.&nbsp;: &nbsp; &nbsp; S.T.No.:</div><div></div>
       <div>Area&nbsp;&nbsp;&nbsp;&nbsp;: &nbsp; &nbsp; Route&nbsp;&nbsp;:</div><div></div>`,
@@ -486,7 +486,8 @@ export async function saleEntry(type = 'SALE', billId?: number) {
     screen.querySelector('.info2')!.innerHTML = `
       <div class="kv"><span class="k">MRP Value :</span><b>${f2(mrpValue)}</b></div>
       <div class="kv"><span class="k">Amount :</span><b>${f2(gross)}</b></div>
-      <div class="kv"><span class="k">Balance :</span><b>${party ? f2(Math.abs(party.balance + (PARTY_DR.has(type) ? net : -net))) : '0.00'}</b></div>`;
+      <div class="kv"><span class="k">Balance :</span><b>${party ? f2(Math.abs(party.balance + (PARTY_DR.has(type) ? net : -net))) : '0.00'}</b></div>
+      <div class="kv"><span class="k">Cr.Limit :</span><b>${party?.credit_limit ? f2(party.credit_limit) : '0.00'}</b></div>`;
     screen.querySelector('.info3')!.innerHTML = `
       <div class="kv"><span class="k">VALUE OF GOODS</span><b>${f2(taxable)}</b></div>
       <div class="kv"><span class="k">DISCOUNT</span><b>${f2(gross - taxable)}</b></div>

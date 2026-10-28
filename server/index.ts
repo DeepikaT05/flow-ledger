@@ -761,10 +761,16 @@ app.get('/api/ledgers/:id/status', h((req) => {
   try { det = JSON.parse(String(l.details || '{}')); } catch { /* ignore */ }
   const phoneStr = String(l.phone || '');
   const mob = det.mobile || (phoneStr.length === 10 ? phoneStr : '') || '';
+  const crLimit = Number(l.credit_limit || 0);
+  const crBills = Number(det.credit_limit_bills || 0);
+  const crDays = Number(det.due_days || det.credit_days || 0);
   return {
     name: l.name, phone: l.phone ?? '', balance: r2(l.balance),
     mobile: mob, payid: mob ? `${mob},` : '',
     type_desc: det.ledger_category ? `${det.ledger_category} - Indicate` : 'Manual-Only Indicate',
+    credit_limit: crLimit,
+    credit_limit_bills: crBills,
+    credit_days: crDays,
     bills: bills.length, days: bills.length ? bills[0].days : 0,
     last_sale: lastSale ? { ...lastSale, days: daysSince(lastSale.date) } : null,
     last_receipt: receipts[0] ? { ...receipts[0], days: daysSince(receipts[0].date) } : null,
@@ -924,7 +930,7 @@ app.get('/api/reports/ledger/:id', h((req) => {
 // balance up to a date, plus whether it has unpaid credit sale bills (shown in red).
 app.get('/api/reports/ledger-accounts', h((req) => {
   const upto = String(req.query.upto || '9999-12-31');
-  return db.prepare(`SELECT l.id, l.name, l.city, l.address, l.phone, l.gstin, l.state, l.details, g.name AS group_name,
+  return db.prepare(`SELECT l.id, l.name, l.city, l.address, l.phone, l.gstin, l.state, l.details, l.credit_limit, g.name AS group_name,
       (CASE WHEN l.opening_type='Dr' THEN l.opening ELSE -l.opening END) AS opening,
       COALESCE((SELECT SUM(debit) FROM ledger_entries e WHERE e.ledger_id=l.id AND e.date<=?),0) AS debit,
       COALESCE((SELECT SUM(credit) FROM ledger_entries e WHERE e.ledger_id=l.id AND e.date<=?),0) AS credit,
@@ -934,7 +940,7 @@ app.get('/api/reports/ledger-accounts', h((req) => {
                   - COALESCE((SELECT SUM(r.net) FROM bills r WHERE r.type='SALE_RETURN' AND r.against_bill_id=b.id),0) > 0.004) AS has_due
     FROM ledgers l JOIN account_groups g ON g.id=l.group_id
     ORDER BY CASE WHEN g.name IN ('Cash-in-hand','Bank Accounts') THEN 0 ELSE 1 END, l.name`).all(upto, upto, upto)
-    .map((r: any) => ({ ...r, balance: r2(r.opening + r.debit - r.credit), has_due: !!r.has_due }));
+    .map((r: any) => ({ ...r, credit_limit: Number(r.credit_limit || 0), balance: r2(r.opening + r.debit - r.credit), has_due: !!r.has_due }));
 }));
 
 app.get('/api/reports/trial-balance', h(() => db.prepare(`SELECT * FROM (${LEDGER_BAL}) WHERE ABS(balance) > 0.004 ORDER BY group_name, name`).all()));

@@ -543,10 +543,12 @@ body.boot #bootfoot { display: flex; justify-content: space-between; align-items
 .db-rows .r.sel { background: var(--marg-sel); color: #fff; font-weight: bold; }
 .db-rows .empty { padding: 20px; color: #666; }
 .db-cols .n, .db-rows .n { text-align: right; }
-.db-foot { display: grid; grid-template-columns: 1fr 1.4fr; border-top: 1px solid #333; padding: 10px 10px 18px; font-size: 18px; background: #f7f7f7; }
+.db-foot { display: grid; grid-template-columns: 1fr 1.6fr; border-top: 1px solid #333; padding: 10px 10px 14px; font-size: 18px; background: #f7f7f7; }
 .db-foot .k { color: var(--marg-lbl); }
-.db-foot .tot { display: grid; grid-template-columns: 1fr 120px 120px; gap: 8px; align-items: start; }
-.db-foot .tot b { text-align: right; color: #1f6fb0; font-weight: normal; }
+.db-foot .tot { display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
+.db-foot .tot-row { display: flex; gap: 12px; justify-content: flex-end; align-items: center; width: 100%; }
+.db-foot .tot b { text-align: right; color: #1f6fb0; font-weight: bold; min-width: 120px; }
+.db-foot .tot b.net { color: var(--marg-red, #b22222); font-weight: bold; min-width: 140px; }
 .db-detail { font-size: 12px; background: #f4f4f4; overflow: auto; }
 .db-detail > div { padding: 1px 8px; }
 .db-detail .bar { background: var(--marg-bar); color: #fff; padding: 2px 8px; }

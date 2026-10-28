@@ -11,7 +11,7 @@ import { downloadCsv, addExportToMargBar } from './export.ts';
 
 interface Acc {
   id: number; name: string; city: string; address: string; phone: string; gstin: string; state: string; group_name: string;
-  opening: number; debit: number; credit: number; balance: number; has_due: boolean; details?: string;
+  opening: number; debit: number; credit: number; balance: number; has_due: boolean; details?: string; credit_limit?: number;
 }
 interface Entry { source: 'BILL' | 'VOUCHER'; source_id: number; date: string; vtype: string; vno: string; debit: number; credit: number; narration: string; against: string }
 
@@ -299,7 +299,7 @@ export async function allLedgers() {
       <div class="kv"><span>Debit &nbsp;&nbsp;:</span><b>${f2(a.debit)} Dr</b></div>
       <div class="kv"><span>Credit &nbsp;:</span><b>${f2(a.credit)} Cr</b></div>
       <div class="kv"><span>Balance :</span><b>${drcr(a.balance)}</b></div>
-      <div class="kv"><span>P.D.C. &nbsp;:</span><b></b></div>
+      <div class="kv"><span>Cr.Limit:</span><b>${a.credit_limit ? money(a.credit_limit) : '0.00'}</b></div>
       <div class="kv"><span>Net &nbsp;&nbsp;&nbsp;&nbsp;:</span><b>${drcr(a.balance)}</b></div>
       <div class="kv"><span>Type &nbsp;&nbsp;&nbsp;:</span><b>${esc(a.group_name)}</b></div>`;
     const panel = screen.querySelector('.rv-status') as HTMLElement;
@@ -539,7 +539,7 @@ export async function ledgerAlteration(group?: string, mode: 'modify' | 'delete'
       <div class="kv"><span>Debit &nbsp;&nbsp;:</span><b>${f2(a.debit)} Dr</b></div>
       <div class="kv"><span>Credit &nbsp;:</span><b>${f2(a.credit)} Cr</b></div>
       <div class="kv"><span>Balance :</span><b>${drcr(a.balance)}</b></div>
-      <div class="kv"><span>P.D.C. &nbsp;:</span><b></b></div>
+      <div class="kv"><span>Cr.Limit:</span><b>${a.credit_limit ? money(a.credit_limit) : '0.00'}</b></div>
       <div class="kv"><span>Net &nbsp;&nbsp;&nbsp;&nbsp;:</span><b>${drcr(a.balance)}</b></div>
       <div class="kv"><span>Type &nbsp;&nbsp;&nbsp;:</span><b>${esc(a.group_name)}</b></div>`;
     const panel = screen.querySelector('.rv-status') as HTMLElement;

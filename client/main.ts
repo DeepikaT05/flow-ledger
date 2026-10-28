@@ -44,6 +44,7 @@ const ACTIONS: Record<string, (arg?: string) => unknown> = {
   'report.tb': () => R.trialBalance(),
   'report.pl': () => R.profitLoss(),
   'report.bs': () => R.balanceSheet(),
+  'report.credit_limits': () => R.creditLimitsManagement(),
   'report.outstanding': (k) => R.outstanding(k!),
   'report.stock': (arg) => (arg === 'filtered' ? filteredStock() : currentStock()),
   'report.filtered_stock': () => filteredStock(),

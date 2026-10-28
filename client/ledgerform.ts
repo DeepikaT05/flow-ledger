@@ -443,6 +443,9 @@ export function modifyLedgerScreen(existing: Ledger): Promise<Ledger | null> {
       balancing_method: det.balancing_method ?? 'Bill by Bill',
       opening: cur.opening != null ? Number(cur.opening).toFixed(2) : '0.00',
       opening_type: cur.opening_type ?? 'Dr',
+      credit_limit: cur.credit_limit != null ? String(cur.credit_limit) : '0',
+      credit_limit_bills: det.credit_limit_bills ?? '0',
+      due_days: det.due_days ?? '0',
       mail_to: det.mail_to ?? cur.name ?? '',
       address1: det.address1 ?? cur.address?.split('\n')[0] ?? '',
       address2: det.address2 ?? cur.address?.split('\n')[1] ?? '',
@@ -552,6 +555,18 @@ export function modifyLedgerScreen(existing: Ledger): Promise<Ledger | null> {
                 <input data-k="opening" class="lf-num" value="${esc(v.opening)}" autocomplete="off" style="width:110px;text-align:right"${ro}>
                 ${sel('opening_type', ['Dr', 'Cr'], '56px')}
               </span>
+            </div>
+            <div class="lf-row split">
+              <div class="lf-left">
+                <span class="lf-l">Credit Limit (Rs.)</span><span class="lf-c">:</span>
+                <span class="lf-v">${txt('credit_limit', '140px')}</span>
+              </div>
+              <div class="lf-right" style="min-width:280px">
+                <span class="lf-sub">Limit (Bills):</span>
+                ${txt('credit_limit_bills', '60px')}
+                <span class="lf-sub" style="margin-left:12px">Due Days:</span>
+                ${txt('due_days', '60px')}
+              </div>
             </div>
             <div class="lf-row">
               <span class="lf-l">Mail to</span><span class="lf-c">:</span>
@@ -778,13 +793,13 @@ export function modifyLedgerScreen(existing: Ledger): Promise<Ledger | null> {
                 <span>DESC.</span><span class="n">LIMIT</span><span class="n">PRIMARY</span><span class="n">BALANCE</span>
               </div>
               <div class="cs-tr">
-                <span>Amount :</span><span class="n">${esc(String(cur.credit_limit || 0))}</span><span class="n">0</span><span class="n">${esc(String(cur.balance || 0))}</span>
+                <span>Amount :</span><span class="n cs-lim-amt">${esc(String(v.credit_limit || cur.credit_limit || 0))}</span><span class="n">0</span><span class="n">${esc(String(cur.balance || 0))}</span>
               </div>
               <div class="cs-tr">
-                <span>Bills &nbsp;:</span><span class="n">${esc(det.credit_limit_bills || '0')}</span><span class="n">0</span><span class="n">0</span>
+                <span>Bills &nbsp;:</span><span class="n cs-lim-bills">${esc(v.credit_limit_bills || det.credit_limit_bills || '0')}</span><span class="n">0</span><span class="n">0</span>
               </div>
               <div class="cs-tr">
-                <span>Days &nbsp;&nbsp;:</span><span class="n">${esc(det.due_days || '0')}</span><span class="n">0</span><span class="n">0</span>
+                <span>Days &nbsp;&nbsp;:</span><span class="n cs-lim-days">${esc(v.due_days || det.due_days || '0')}</span><span class="n">0</span><span class="n">0</span>
               </div>
             </div>
             <div class="cs-ratio">
@@ -909,10 +924,18 @@ export function modifyLedgerScreen(existing: Ledger): Promise<Ledger | null> {
         state: out.state,
         opening: Number(out.opening) || 0,
         opening_type: out.opening_type === 'Cr' ? 'Cr' : 'Dr',
-        credit_limit: cur.credit_limit ?? 0,
+        credit_limit: Number(out.credit_limit !== undefined ? out.credit_limit : cur.credit_limit) || 0,
       };
 
-      const details: Record<string, string> = { ...det, ...out, mr_on: v.mr_on, mr_name: v.mr_name || '', mr_id: v.mr_id || '' };
+      const details: Record<string, string> = {
+        ...det,
+        ...out,
+        credit_limit_bills: out.credit_limit_bills || '0',
+        due_days: out.due_days || '0',
+        mr_on: v.mr_on,
+        mr_name: v.mr_name || '',
+        mr_id: v.mr_id || ''
+      };
       body.details = details;
 
       try {
@@ -1552,6 +1575,9 @@ export function ledgerScreen(existing?: Partial<Ledger> & { details?: string }, 
       state: existing?.state || det.state || '22-CHHATTISGARH',
       country_on: det.country_on ?? 'Yes',
       country: det.country ?? 'INDIA',
+      credit_limit: existing?.credit_limit != null ? String(existing.credit_limit) : '0',
+      credit_limit_bills: det.credit_limit_bills ?? '0',
+      due_days: det.due_days ?? '0',
       ledger_type: det.ledger_type ?? 'REGISTERED',
       hide: det.hide ?? 'No',
     };
@@ -1598,6 +1624,18 @@ export function ledgerScreen(existing?: Partial<Ledger> & { details?: string }, 
             <input data-k="opening" class="lf-num" value="${esc(v.opening)}" autocomplete="off" style="width:110px;text-align:right">
             ${sel('opening_type', ['Dr', 'Cr'], '56px')}
           </span>
+        </div>
+        <div class="lf-row split">
+          <div class="lf-left">
+            <span class="lf-l">Credit Limit (Rs.)</span><span class="lf-c">:</span>
+            <span class="lf-v">${txt('credit_limit', '140px')}</span>
+          </div>
+          <div class="lf-right" style="min-width:280px">
+            <span class="lf-sub">Limit (Bills):</span>
+            ${txt('credit_limit_bills', '60px')}
+            <span class="lf-sub" style="margin-left:12px">Due Days:</span>
+            ${txt('due_days', '60px')}
+          </div>
         </div>
         <div class="lf-row">
           <span class="lf-l">Mail to</span><span class="lf-c">:</span>
@@ -1821,13 +1859,13 @@ export function ledgerScreen(existing?: Partial<Ledger> & { details?: string }, 
             <span>DESC.</span><span class="n">LIMIT</span><span class="n">PRIMARY</span><span class="n">BALANCE</span>
           </div>
           <div class="cs-tr">
-            <span>Amount :</span><span class="n">0</span><span class="n">0</span><span class="n">0</span>
+            <span>Amount :</span><span class="n cs-lim-amt">${esc(String(v.credit_limit || existing?.credit_limit || 0))}</span><span class="n">0</span><span class="n">${esc(String(existing?.balance || 0))}</span>
           </div>
           <div class="cs-tr">
-            <span>Bills &nbsp;:</span><span class="n">0</span><span class="n">0</span><span class="n">0</span>
+            <span>Bills &nbsp;:</span><span class="n cs-lim-bills">${esc(v.credit_limit_bills || '0')}</span><span class="n">0</span><span class="n">0</span>
           </div>
           <div class="cs-tr">
-            <span>Days &nbsp;&nbsp;:</span><span class="n">0</span><span class="n">0</span><span class="n">0</span>
+            <span>Days &nbsp;&nbsp;:</span><span class="n cs-lim-days">${esc(v.due_days || '0')}</span><span class="n">0</span><span class="n">0</span>
           </div>
         </div>
         <div class="cs-ratio">
@@ -1997,10 +2035,18 @@ export function ledgerScreen(existing?: Partial<Ledger> & { details?: string }, 
         state: out.state,
         opening: Number(out.opening) || 0,
         opening_type: out.opening_type === 'Cr' ? 'Cr' : 'Dr',
-        credit_limit: existing?.credit_limit ?? 0,
+        credit_limit: Number(out.credit_limit !== undefined ? out.credit_limit : existing?.credit_limit) || 0,
       };
 
-      const details: Record<string, string> = { ...det, ...out, mr_on: v.mr_on, mr_name: v.mr_name || '', mr_id: v.mr_id || '' };
+      const details: Record<string, string> = {
+        ...det,
+        ...out,
+        credit_limit_bills: out.credit_limit_bills || '0',
+        due_days: out.due_days || '0',
+        mr_on: v.mr_on,
+        mr_name: v.mr_name || '',
+        mr_id: v.mr_id || ''
+      };
       body.details = details;
 
       try {

@@ -3,7 +3,7 @@
 // REMARK / VOUCHER TOTAL footer, the Voucher Detail panel and the "0994 PRINTING" box.
 // Day book shows everything that happened (sales cash or credit, receipts, contra …);
 // sale book shows only the sales whose money has been received.
-import { api, esc, toast, h, today, money, openWin, confirmBox } from './ui.ts';
+import { api, esc, toast, h, today, money, drcr, openWin, confirmBox } from './ui.ts';
 import { margBar, margPop } from './margui.ts';
 import { pickParty } from './sale.ts';
 import { canAction, canDelete, NO_DELETE } from './session.ts';
@@ -126,23 +126,30 @@ function bookHtml(title: string, company: any, from: string, to: string, rows: R
   if (o.fmt === 'T') {
     const side = (list: Row[], key: 'debit' | 'credit') => `<table class="grid"><tr><th>Date</th><th>Particulars</th><th>Type</th><th class="n">Amount</th></tr>
       ${list.map((r) => `<tr><td>${dm(r.date)}</td><td>${esc(r.party)}${remark(r) ? `<br><small>${remark(r)}</small>` : ''}</td><td>${esc(r.type)}</td><td class="n">${money(r[key])}</td></tr>`).join('')}
-      <tr class="total"><td colspan="3"><b>Total</b></td><td class="n"><b>${money(key === 'debit' ? dr : cr)}</b></td></tr></table>`;
+      <tr class="total"><td colspan="3"><b>Total</b></td><td class="n"><b>${money(key === 'debit' ? dr : cr)} ${key === 'debit' ? 'Dr' : 'Cr'}</b></td></tr></table>`;
     return `${head}<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div><b>DEBIT</b>${side(rows.filter((r) => r.debit), 'debit')}</div>
-      <div><b>CREDIT</b>${side(rows.filter((r) => r.credit), 'credit')}</div></div>`;
+      <div><b>CREDIT</b>${side(rows.filter((r) => r.credit), 'credit')}</div></div>
+      <div style="margin-top:10px;text-align:right;font-size:14px;padding:6px 12px;background:#f0f4f8;border:1px solid #ccc"><b>Net Closing Balance : ${drcr(dr - cr)}</b></div>`;
   }
   const simple = o.fmt === 'S';
   return `${head}<table class="grid"><tr><th>Date</th><th>Party Name</th>${simple ? '' : '<th>Remark</th>'}<th class="n">Debit</th><th class="n">Credit</th><th>Type</th></tr>
     ${rows.map((r) => `<tr><td>${dm(r.date)}</td><td>${esc(r.party)}</td>${simple ? '' : `<td>${remark(r)}</td>`}
       <td class="n">${r.debit ? money(r.debit) : ''}</td><td class="n">${r.credit ? money(r.credit) : ''}</td><td>${esc(r.type)}</td></tr>`).join('')}
-    ${o.total ? `<tr class="total"><td colspan="${simple ? 2 : 3}"><b>Total (${rows.length} entries)</b></td><td class="n"><b>${money(dr)}</b></td><td class="n"><b>${money(cr)}</b></td><td></td></tr>` : ''}</table>`;
+    ${o.total ? `<tr class="total"><td colspan="${simple ? 2 : 3}"><b>Total (${rows.length} entries)</b></td><td class="n"><b>${money(dr)} Dr</b></td><td class="n"><b>${money(cr)} Cr</b></td><td></td></tr>
+    <tr class="total" style="background:#f0f4f8"><td colspan="${simple ? 2 : 3}"><b>Net Closing Balance</b></td><td colspan="2" class="n"><b>${drcr(dr - cr)}</b></td><td></td></tr>` : ''}</table>`;
 }
 
 function downloadCsv(name: string, rows: Row[]) {
+  const dr = r2(rows.reduce((s, r) => s + r.debit, 0)), cr = r2(rows.reduce((s, r) => s + r.credit, 0));
   const q = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const lines = [['Date', 'Party Name', 'Remark', 'Voucher No', 'Debit', 'Credit', 'Type'].map(q).join(','),
-    ...rows.map((r) => [dmy(r.date), r.party, r.narration || r.remark, r.no, r.debit ? f2(r.debit) : '', r.credit ? f2(r.credit) : '', r.type].map(q).join(','))];
+  const lines = [
+    ['Date', 'Party Name', 'Remark', 'Voucher No', 'Debit', 'Credit', 'Type'].map(q).join(','),
+    ...rows.map((r) => [dmy(r.date), r.party, r.narration || r.remark, r.no, r.debit ? f2(r.debit) : '', r.credit ? f2(r.credit) : '', r.type].map(q).join(',')),
+    ['Total', '', '', '', `${f2(dr)} Dr`, `${f2(cr)} Cr`, ''].map(q).join(','),
+    ['Net Closing Balance', '', '', '', drcr(dr - cr), '', ''].map(q).join(','),
+  ];
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv' }));
+  a.href = URL.createObjectURL(new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv' }));
   a.download = name;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
@@ -167,7 +174,13 @@ export async function bookScreen(kind: Kind) {
       <div class="db-top"><span class="co">${esc(company.name)}${ledger ? ` : ${esc(ledger.name.toUpperCase())}` : ''}</span><span class="per"></span></div>
       <div class="db-cols"><span>DATE</span><span>PARTY NAME</span><span>REMARK</span><span class="n">DEBIT</span><span class="n">CREDIT</span><span class="n">TYPE</span></div>
       <div class="db-rows"></div>
-      <div class="db-foot"><div><span class="k">REMARK :</span><div class="rm"></div></div><div class="tot"><span class="k">VOUCHER TOTAL :</span><b class="dr"></b><b class="cr"></b></div></div>
+      <div class="db-foot">
+        <div><span class="k">REMARK :</span><div class="rm"></div></div>
+        <div class="tot">
+          <div class="tot-row"><span class="k">VOUCHER TOTAL :</span><b class="dr"></b><b class="cr"></b></div>
+          <div class="tot-row"><span class="k">NET CLOSING :</span><b class="net"></b></div>
+        </div>
+      </div>
     </div>
     <div class="db-detail"></div>`;
   screen.prepend(margBar(title));
@@ -185,8 +198,10 @@ export async function bookScreen(kind: Kind) {
       : '<div class="empty">No entries in this period</div>';
     rowsBox.querySelector('.sel')?.scrollIntoView({ block: 'nearest' });
     const dr = r2(rows.reduce((s, r) => s + r.debit, 0)), cr = r2(rows.reduce((s, r) => s + r.credit, 0));
-    (screen.querySelector('.tot .dr') as HTMLElement).textContent = f2(dr);
-    (screen.querySelector('.tot .cr') as HTMLElement).textContent = f2(cr);
+    (screen.querySelector('.tot .dr') as HTMLElement).textContent = `${f2(dr)} Dr`;
+    (screen.querySelector('.tot .cr') as HTMLElement).textContent = `${f2(cr)} Cr`;
+    const netEl = screen.querySelector('.tot .net') as HTMLElement | null;
+    if (netEl) netEl.textContent = drcr(dr - cr);
     const cur = rows[sel];
     (screen.querySelector('.rm') as HTMLElement).textContent = cur ? (cur.narration || cur.remark) : '';
     detail();

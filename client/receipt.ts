@@ -16,6 +16,7 @@ interface Adj { bill: Pending | null; amount: number; remark: string }
 export interface Status {
   name: string; phone: string; balance: number; bills: number; days: number;
   mobile?: string; payid?: string; type_desc?: string;
+  credit_limit?: number; credit_limit_bills?: number; credit_days?: number;
   last_sale: { net: number; date: string; days: number } | null;
   last_receipt: { amount: number; date: string; days: number } | null;
   receipts: { date: string; amount: number; mode: string; days: number }[];
@@ -236,9 +237,9 @@ export function statusHtml(s: Status, supplier = false) {
       <div>Type &nbsp;&nbsp;: ${esc(s.type_desc || 'Manual-Only Indicate')}</div>
       <div class="cs-table">
         <div class="cs-tr cs-th"><span>DESC.</span><span class="n">LIMIT</span><span class="n">PRIMARY</span><span class="n">BALANCE</span></div>
-        <div class="cs-tr"><span>Amount :</span><span class="n">0</span><span class="n">0</span><span class="n">${balAmt ? Math.round(balAmt) : 0}</span></div>
-        <div class="cs-tr"><span>Bills &nbsp;:</span><span class="n">0</span><span class="n">0</span><span class="n">${s.bills || 0}</span></div>
-        <div class="cs-tr"><span>Days &nbsp;&nbsp;:</span><span class="n">0</span><span class="n">0</span><span class="n">${s.days || 0}</span></div>
+        <div class="cs-tr"><span>Amount :</span><span class="n" style="${s.credit_limit && balAmt > s.credit_limit ? 'color:#a5121a;font-weight:bold;' : ''}">${s.credit_limit ? Math.round(s.credit_limit) : 0}</span><span class="n">0</span><span class="n">${balAmt ? Math.round(balAmt) : 0}</span></div>
+        <div class="cs-tr"><span>Bills &nbsp;:</span><span class="n" style="${s.credit_limit_bills && (s.bills || 0) > s.credit_limit_bills ? 'color:#a5121a;font-weight:bold;' : ''}">${s.credit_limit_bills || 0}</span><span class="n">0</span><span class="n">${s.bills || 0}</span></div>
+        <div class="cs-tr"><span>Days &nbsp;&nbsp;:</span><span class="n" style="${s.credit_days && (s.days || 0) > s.credit_days ? 'color:#a5121a;font-weight:bold;' : ''}">${s.credit_days || 0}</span><span class="n">0</span><span class="n">${s.days || 0}</span></div>
       </div>
       <div class="cs-ratio">
         <div>Turnover Ratio :</div>

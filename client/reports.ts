@@ -1894,3 +1894,32 @@ export async function mrSaleReport(modeParam?: string) {
   });
 }
 
+export async function creditLimitsManagement() {
+  const all = await api<any[]>('/reports/ledger-accounts');
+  const debtors = all.filter((l) => l.group_name === 'Sundry Debtors' || l.group_name === 'Sundry Creditors' || Number(l.credit_limit || 0) > 0);
+  return reportWin<any>({
+    title: "LIVE CREDIT LIMIT'S MANAGEMENT",
+    period: false,
+    cols: [
+      { title: 'Party Name', get: (r) => r.name, width: '35%' },
+      { title: 'Station', get: (r) => r.city || '', width: '20%' },
+      { title: 'Group', get: (r) => r.group_name, width: '15%' },
+      { title: 'Cr. Limit', get: (r) => (Number(r.credit_limit || 0) > 0 ? money(r.credit_limit) : '-'), num: true, width: '15%' },
+      { title: 'Balance', get: (r) => drcr(r.balance), num: true, width: '15%' },
+    ],
+    search: (r) => `${r.name} ${r.city ?? ''}`,
+    load: async () => {
+      const data = await api<any[]>('/reports/ledger-accounts');
+      return data.filter((l) => l.group_name === 'Sundry Debtors' || l.group_name === 'Sundry Creditors' || Number(l.credit_limit || 0) > 0);
+    },
+    footer: (rows) => {
+      const totLim = rows.reduce((s, r) => s + Number(r.credit_limit || 0), 0);
+      const totBal = rows.reduce((s, r) => s + Number(r.balance || 0), 0);
+      return `<tr class="total"><td colspan="3"><b>Total (${rows.length} Parties)</b></td><td class="n"><b>${money(totLim)}</b></td><td class="n"><b>${drcr(totBal)}</b></td></tr>`;
+    },
+    onEnter: (r) => {
+      import('./ledgerform.ts').then((m) => m.ledgerScreen(r)).then(() => creditLimitsManagement());
+    },
+    extraFoot: '<span><b>Enter/F3</b> Modify Limit</span>',
+  });
+}
