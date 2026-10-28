@@ -82,12 +82,14 @@ export interface StockOptions {
   stockStatus?: 'available' | 'all' | 'zero' | 'negative';
   company?: string;
   title?: string;
+  search?: string;
 }
 
 export function filteredStockDialog(): Promise<{
   stores: string[];
   stockStatus: 'available' | 'all' | 'zero' | 'negative';
   company: string;
+  search?: string;
 } | null> {
   return new Promise(async (resolve) => {
     let companies: string[] = [];
@@ -129,6 +131,10 @@ export function filteredStockDialog(): Promise<{
           ${companies.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join('')}
         </select>
       </div>` : ''}
+      <div class="f-row" style="margin-bottom:10px;display:flex;align-items:center;">
+        <label style="min-width:140px;font-weight:bold;color:var(--marg-lbl,#000080);">Search Item :</label>
+        <input data-f="search" placeholder="Optional: item name / company / HSN..." style="flex:1;background:#fff;border:1px solid #777;padding:4px;font-weight:bold;">
+      </div>
       <div style="margin-top:10px;padding:6px 8px;background:rgba(0,0,128,0.06);border:1px dashed #000080;color:#000080;font-size:12px;line-height:1.4;">
         ℹ <b>Marg Filtered Stock:</b> Defaults to Available Stock Only (Stock &gt; 0). Zero stock items are excluded.
       </div>
@@ -142,11 +148,12 @@ export function filteredStockDialog(): Promise<{
     const selStatus = box.querySelector('[data-f="status"]') as HTMLSelectElement;
     const selStore = box.querySelector('[data-f="store"]') as HTMLSelectElement;
     const selCompany = box.querySelector('[data-f="company"]') as HTMLSelectElement | null;
+    const inpSearch = box.querySelector('[data-f="search"]') as HTMLInputElement | null;
     const btnApply = box.querySelector('.btn-apply') as HTMLButtonElement;
     const btnCancel = box.querySelector('.btn-cancel') as HTMLButtonElement;
 
     let done = false;
-    const finish = (val: { stores: string[]; stockStatus: 'available' | 'all' | 'zero' | 'negative'; company: string } | null) => {
+    const finish = (val: { stores: string[]; stockStatus: 'available' | 'all' | 'zero' | 'negative'; company: string; search?: string } | null) => {
       if (done) return;
       done = true;
       p.close();
@@ -158,7 +165,8 @@ export function filteredStockDialog(): Promise<{
       const storeVal = selStore.value;
       const stores = storeVal === 'ALL' ? [...STORES] : [storeVal];
       const company = selCompany ? selCompany.value : 'ALL';
-      finish({ stores, stockStatus: status, company });
+      const search = inpSearch?.value.trim() || undefined;
+      finish({ stores, stockStatus: status, company, search });
     };
 
     btnApply.addEventListener('click', submit);
@@ -181,6 +189,7 @@ export async function filteredStock() {
     inStockOnly: res.stockStatus === 'available',
     stockStatus: res.stockStatus,
     company: res.company,
+    search: res.search,
     title: 'FILTERED STOCK',
   });
 }
@@ -196,13 +205,21 @@ export async function closingStock(initialStores: string[] = ['MAIN STORE'], opt
 
   const w = openWin(winTitle, 'full', '');
   w.el.classList.add('marg');
-  w.setFoot('<span><b>F2</b>-New</span><span><b>F3</b>-Edit</span><span><b>F4</b>-Options</span><span><b>Enter</b>-Register</span><span><b>F6</b>-Total</span>' +
+  w.setFoot('<span><b>Tab/F5</b>-Search</span><span><b>F2</b>-New</span><span><b>F3</b>-Edit</span><span><b>F4</b>-Options</span><span><b>Enter</b>-Register</span><span><b>F6</b>-Total</span>' +
     '<span><b>F9</b>-Store</span><span><b>F10</b>-Filter</span><span><b>*</b>-Shortage</span><span><b>Alt+X</b>-Excel</span><span><b>Alt+P</b>-PDF</span>');
   const screen = h('div', { class: 'cs-screen' });
   screen.innerHTML = `
     <div class="cs-main">
       <div class="cs-cols"><span>DESCRIPTION</span><span>PACKING</span><span class="n">M.R.P.</span><span class="n">STOCK</span><span>UNIT</span></div>
       <div class="cs-rows"></div>
+      <div class="cs-find" style="display:flex;align-items:center;gap:6px;padding:4px 16px;background:#e9edf4;border-top:2px solid #333;font-size:16px;">
+        <span style="color:var(--marg-lbl,#000080);font-weight:bold;">Find ? &gt;&gt;</span>
+        <span style="color:#333;font-weight:bold;">[</span>
+        <input class="cs-find-input" autocomplete="off" spellcheck="false" placeholder="Search item, packing, company, HSN..." style="flex:1;max-width:320px;font-size:16px;font-weight:bold;padding:2px 8px;border:1px solid #778;background:#fff;color:#000;">
+        <span style="color:#333;font-weight:bold;">]</span>
+        <span class="search-ico" style="font-size:18px;cursor:pointer;padding:0 4px;" title="Search (Tab / F5)">&#128269;</span>
+        <span class="cs-find-count" style="margin-left:auto;font-size:13px;color:#000080;font-weight:bold;"></span>
+      </div>
       <div class="cs-detail"></div>
     </div>
     <div class="cs-side"><div class="cap">Batch Detail</div><div class="body"></div></div>`;
@@ -211,6 +228,12 @@ export async function closingStock(initialStores: string[] = ['MAIN STORE'], opt
   screen.prepend(bar);
   w.body.append(screen);
   const rowsBox = screen.querySelector('.cs-rows') as HTMLElement;
+  const findInput = screen.querySelector('.cs-find-input') as HTMLInputElement;
+  const findCount = screen.querySelector('.cs-find-count') as HTMLElement;
+  const searchIco = screen.querySelector('.cs-find .search-ico') as HTMLElement;
+  if (options.search) {
+    findInput.value = options.search;
+  }
   let all: Item[] = [];
   let view: Item[] = [];
   let sel = 0;
@@ -235,22 +258,34 @@ export async function closingStock(initialStores: string[] = ['MAIN STORE'], opt
     applyFilter();
   }
   function applyFilter() {
+    const q = findInput ? findInput.value.trim().toLowerCase() : '';
     view = all.filter((it) => {
-      const q = stockOf(it);
+      const s = stockOf(it);
       if (inStock || stockStatus === 'available') {
-        if (q <= 0) return false;
+        if (s <= 0) return false;
       } else if (stockStatus === 'zero') {
-        if (q !== 0) return false;
+        if (s !== 0) return false;
       } else if (stockStatus === 'negative') {
-        if (q >= 0) return false;
+        if (s >= 0) return false;
       }
-      if (shortage && q > (it.min_stock ?? 0)) return false;
+      if (shortage && s > (it.min_stock ?? 0)) return false;
       if (companyFilter && companyFilter !== 'ALL') {
         if ((it.company || 'OTHERS').toUpperCase() !== companyFilter) return false;
+      }
+      if (q) {
+        const match =
+          it.name.toLowerCase().includes(q) ||
+          (it.pack && it.pack.toLowerCase().includes(q)) ||
+          (it.company && it.company.toLowerCase().includes(q)) ||
+          (it.hsn && it.hsn.toLowerCase().includes(q));
+        if (!match) return false;
       }
       return true;
     });
     sel = Math.min(sel, Math.max(0, view.length - 1));
+    if (findCount) {
+      findCount.textContent = q ? `${view.length} found for "${q}"` : `${view.length} items`;
+    }
     draw();
   }
   let batchSeq = 0;
@@ -364,6 +399,38 @@ export async function closingStock(initialStores: string[] = ['MAIN STORE'], opt
     import('./billing.ts').then((m) => m.printHtml(html, 1));
   }
 
+  findInput.addEventListener('input', () => applyFilter());
+  searchIco?.addEventListener('click', () => {
+    findInput.focus();
+    findInput.select();
+  });
+  findInput.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'PageDown' || e.key === 'PageUp') {
+      e.preventDefault();
+      const page = Math.max(1, Math.floor(rowsBox.clientHeight / 24) - 1);
+      const step: Record<string, number> = { ArrowDown: 1, ArrowUp: -1, PageDown: page, PageUp: -page };
+      if (e.key in step && view.length) {
+        sel = Math.min(view.length - 1, Math.max(0, sel + step[e.key]));
+        draw();
+      }
+      return;
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (view[sel]) itemDisplay(view[sel], stores);
+      return;
+    }
+    if (e.key === 'Escape') {
+      if (findInput.value) {
+        e.preventDefault();
+        e.stopPropagation();
+        findInput.value = '';
+        applyFilter();
+        return;
+      }
+    }
+  });
+
   rowsBox.addEventListener('click', (e) => { const el = (e.target as HTMLElement).closest('[data-i]') as HTMLElement | null; if (el) { sel = Number(el.dataset.i); draw(); } });
   rowsBox.addEventListener('dblclick', () => view[sel] && itemDisplay(view[sel], stores));
   w.onKey = (e, k) => {
@@ -373,6 +440,11 @@ export async function closingStock(initialStores: string[] = ['MAIN STORE'], opt
     if (k === 'Home' || k === 'Ctrl+Home') { sel = 0; draw(); return true; }
     if (k === 'End' || k === 'Ctrl+End') { sel = Math.max(0, view.length - 1); draw(); return true; }
     if (k === 'Enter' && view[sel]) { itemDisplay(view[sel], stores); return true; }
+    if (k === 'Tab' || k === 'F5' || k === '?') {
+      findInput.focus();
+      findInput.select();
+      return true;
+    }
     if (k === 'F2') {
       itemForm().then((r) => { if (r) load(); });
       return true;
@@ -385,10 +457,11 @@ export async function closingStock(initialStores: string[] = ['MAIN STORE'], opt
     if (k === 'F4' && view[sel]) {
       itemOptionsPopup(view[sel], stores, (query) => {
         if (query) {
-          const q = query.toLowerCase();
-          const idx = view.findIndex((it) => it.name.toLowerCase().includes(q) || (it.pack && it.pack.toLowerCase().includes(q)) || (it.batch && it.batch.toLowerCase().includes(q)));
-          if (idx >= 0) { sel = idx; draw(); }
-          else toast(`No item matching "${query}"`, true);
+          findInput.value = query;
+          applyFilter();
+        } else {
+          findInput.focus();
+          findInput.select();
         }
       });
       return true;
@@ -426,6 +499,11 @@ export async function closingStock(initialStores: string[] = ['MAIN STORE'], opt
     if (k === '*') { shortage = !shortage; applyFilter(); return true; }
     if (k === 'Alt+X') { exportExcel(); return true; }
     if (k === 'Alt+P' || k === 'Ctrl+P') { printList(); return true; }
+    if (k === 'Escape' && findInput.value) {
+      findInput.value = '';
+      applyFilter();
+      return true;
+    }
     if (k === 'Backspace') { typed = typed.slice(0, -1); typedAt = Date.now(); draw(); return true; }
     if (k.length === 1 && !e.ctrlKey && !e.altKey) { jump(k); return true; }
     if (k === 'Space') { jump(' '); return true; }
@@ -1217,7 +1295,7 @@ export async function batchStock(initialStores: string[] = ['MAIN STORE']) {
   const w = openWin('BATCH STOCK', 'full', '');
   w.el.classList.add('marg');
   w.setFoot(
-    '<span><b>F2</b>-New</span><span><b>F3</b>-Edit</span><span><b>Enter</b>-Register</span><span><b>F6</b>-Total</span>' +
+    '<span><b>Tab/F5</b>-Search</span><span><b>F2</b>-New</span><span><b>F3</b>-Edit</span><span><b>Enter</b>-Register</span><span><b>F6</b>-Total</span>' +
     '<span><b>F9</b>-Store</span><span><b>F10</b>-Filter</span><span><b>Alt+X</b>-Excel</span><span><b>Alt+P</b>-PDF</span><span><b>Esc</b>-Close</span>'
   );
 
@@ -1234,6 +1312,14 @@ export async function batchStock(initialStores: string[] = ['MAIN STORE']) {
         <span>UNIT</span>
       </div>
       <div class="cs-rows bs-rows"></div>
+      <div class="cs-find bs-find" style="display:flex;align-items:center;gap:6px;padding:4px 16px;background:#e9edf4;border-top:2px solid #333;font-size:16px;">
+        <span style="color:var(--marg-lbl,#000080);font-weight:bold;">Find ? &gt;&gt;</span>
+        <span style="color:#333;font-weight:bold;">[</span>
+        <input class="bs-find-input" autocomplete="off" spellcheck="false" placeholder="Search product name, batch no, company, expiry..." style="flex:1;max-width:320px;font-size:16px;font-weight:bold;padding:2px 8px;border:1px solid #778;background:#fff;color:#000;">
+        <span style="color:#333;font-weight:bold;">]</span>
+        <span class="search-ico" style="font-size:18px;cursor:pointer;padding:0 4px;" title="Search (Tab / F5)">&#128269;</span>
+        <span class="bs-find-count" style="margin-left:auto;font-size:13px;color:#000080;font-weight:bold;"></span>
+      </div>
       <div class="cs-detail bs-detail"></div>
     </div>`;
 
@@ -1244,6 +1330,9 @@ export async function batchStock(initialStores: string[] = ['MAIN STORE']) {
 
   const rowsBox = screen.querySelector('.cs-rows') as HTMLElement;
   const detailBox = screen.querySelector('.cs-detail') as HTMLElement;
+  const findInput = screen.querySelector('.bs-find-input') as HTMLInputElement;
+  const findCount = screen.querySelector('.bs-find-count') as HTMLElement;
+  const searchIco = screen.querySelector('.bs-find .search-ico') as HTMLElement;
 
   let allBatches: BatchStockRow[] = [];
   let displayRows: BatchDisplayRow[] = [];
@@ -1291,10 +1380,38 @@ export async function batchStock(initialStores: string[] = ['MAIN STORE']) {
       }
     }
 
-    // 2. Filter products and sort alphabetically
-    visibleProducts = [...map.values()]
-      .filter((p) => !inStockOnly || p.batches.length > 0)
-      .sort((a, b) => a.name.localeCompare(b.name));
+    // 2. Filter products and batches with search query
+    const q = findInput ? findInput.value.trim().toLowerCase() : '';
+    visibleProducts = [];
+    for (const p of map.values()) {
+      if (inStockOnly && p.batches.length === 0) continue;
+      if (!q) {
+        visibleProducts.push(p);
+      } else {
+        const prodMatch =
+          p.name.toLowerCase().includes(q) ||
+          (p.pack && p.pack.toLowerCase().includes(q)) ||
+          (p.company && p.company.toLowerCase().includes(q)) ||
+          (p.hsn && p.hsn.toLowerCase().includes(q));
+        if (prodMatch) {
+          visibleProducts.push(p);
+        } else {
+          const matchingBatches = p.batches.filter((b) =>
+            (b.batch && b.batch.toLowerCase().includes(q)) ||
+            (b.expiry && b.expiry.toLowerCase().includes(q)) ||
+            (b.supplier && b.supplier.toLowerCase().includes(q))
+          );
+          if (matchingBatches.length > 0) {
+            visibleProducts.push({
+              ...p,
+              batches: matchingBatches,
+              total_stock: matchingBatches.reduce((s, b) => s + (Number(b.stock) || 0), 0),
+            });
+          }
+        }
+      }
+    }
+    visibleProducts.sort((a, b) => a.name.localeCompare(b.name));
 
     // 3. Build hierarchical rows: First Product Name, then First Batch, Second Batch...
     displayRows = [];
@@ -1306,6 +1423,10 @@ export async function batchStock(initialStores: string[] = ['MAIN STORE']) {
     }
 
     sel = Math.min(sel, Math.max(0, displayRows.length - 1));
+    if (findCount) {
+      const batchCount = displayRows.filter((r) => r.type === 'batch').length;
+      findCount.textContent = q ? `${visibleProducts.length} prods, ${batchCount} batches found` : `${visibleProducts.length} products`;
+    }
     draw();
   }
 
@@ -1573,6 +1694,38 @@ export async function batchStock(initialStores: string[] = ['MAIN STORE']) {
     itemDisplay(it, stores);
   };
 
+  findInput.addEventListener('input', () => applyFilter());
+  searchIco?.addEventListener('click', () => {
+    findInput.focus();
+    findInput.select();
+  });
+  findInput.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'PageDown' || e.key === 'PageUp') {
+      e.preventDefault();
+      const page = Math.max(1, Math.floor(rowsBox.clientHeight / 24) - 1);
+      const step: Record<string, number> = { ArrowDown: 1, ArrowUp: -1, PageDown: page, PageUp: -page };
+      if (e.key in step && displayRows.length) {
+        sel = Math.min(displayRows.length - 1, Math.max(0, sel + step[e.key]));
+        draw();
+      }
+      return;
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      openCurrentRegister();
+      return;
+    }
+    if (e.key === 'Escape') {
+      if (findInput.value) {
+        e.preventDefault();
+        e.stopPropagation();
+        findInput.value = '';
+        applyFilter();
+        return;
+      }
+    }
+  });
+
   rowsBox.addEventListener('dblclick', openCurrentRegister);
 
   w.onKey = (e, k) => {
@@ -1587,6 +1740,11 @@ export async function batchStock(initialStores: string[] = ['MAIN STORE']) {
     if (k === 'Home' || k === 'Ctrl+Home') { sel = 0; draw(); return true; }
     if (k === 'End' || k === 'Ctrl+End') { sel = Math.max(0, displayRows.length - 1); draw(); return true; }
     if (k === 'Enter') { openCurrentRegister(); return true; }
+    if (k === 'Tab' || k === 'F5' || k === '?') {
+      findInput.focus();
+      findInput.select();
+      return true;
+    }
     if (k === 'F2') {
       itemForm().then((r) => { if (r) load(); });
       return true;
@@ -1610,6 +1768,11 @@ export async function batchStock(initialStores: string[] = ['MAIN STORE']) {
     }
     if (k === 'Alt+X') { exportExcel(); return true; }
     if (k === 'Alt+P' || k === 'Ctrl+P') { printList(); return true; }
+    if (k === 'Escape' && findInput.value) {
+      findInput.value = '';
+      applyFilter();
+      return true;
+    }
     if (k === 'Backspace') { typed = typed.slice(0, -1); typedAt = Date.now(); draw(); return true; }
     if (k.length === 1 && !e.ctrlKey && !e.altKey) { jump(k); return true; }
     if (k === 'Space') { jump(' '); return true; }
