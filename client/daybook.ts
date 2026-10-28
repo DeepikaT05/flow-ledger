@@ -126,7 +126,7 @@ function bookHtml(title: string, company: any, from: string, to: string, rows: R
   if (o.fmt === 'T') {
     const side = (list: Row[], key: 'debit' | 'credit') => `<table class="grid"><tr><th>Date</th><th>Particulars</th><th>Type</th><th class="n">Amount</th></tr>
       ${list.map((r) => `<tr><td>${dm(r.date)}</td><td>${esc(r.party)}${remark(r) ? `<br><small>${remark(r)}</small>` : ''}</td><td>${esc(r.type)}</td><td class="n">${money(r[key])}</td></tr>`).join('')}
-      <tr class="total"><td colspan="3"><b>Total</b></td><td class="n"><b>${money(key === 'debit' ? dr : cr)} ${key === 'debit' ? 'Dr' : 'Cr'}</b></td></tr></table>`;
+      <tr class="total"><td colspan="3"><b>Total</b></td><td class="n"><b>${money(key === 'debit' ? dr : cr)}</b></td></tr></table>`;
     return `${head}<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div><b>DEBIT</b>${side(rows.filter((r) => r.debit), 'debit')}</div>
       <div><b>CREDIT</b>${side(rows.filter((r) => r.credit), 'credit')}</div></div>
       <div style="margin-top:10px;text-align:right;font-size:14px;padding:6px 12px;background:#f0f4f8;border:1px solid #ccc"><b>Net Closing Balance : ${drcr(dr - cr)}</b></div>`;
@@ -266,7 +266,7 @@ export async function bookScreen(kind: Kind) {
   function open(r: Row) {
     if (r.source === 'BILL') {
       // SALE ALTERATION: the saved bill with Next / Previous walking the bills of this book.
-      const bills = rows.filter((x) => x.source === 'BILL').map((x) => ({ id: x.source_id, type: x.vtype }));
+      const bills = [...new Map(rows.filter((x) => x.source === 'BILL').map((x) => [x.source_id, { id: x.source_id, type: x.vtype }])).values()];
       const at = bills.findIndex((x) => x.id === r.source_id);
       import('./billview.ts').then((m) => m.billAlteration(bills, at, () => load()));
     } else {

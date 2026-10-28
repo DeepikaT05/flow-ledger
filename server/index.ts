@@ -880,8 +880,8 @@ const BOOK_TYPE: Record<string, string> = {
 const BILL_DEBIT = new Set(['SALE', 'COUNTER_SALE', 'SALE_CHALLAN', 'PURCHASE_RETURN']);
 interface BookRow { source: 'BILL' | 'VOUCHER'; source_id: number; vtype: string; type: string; date: string; no: string; party: string; remark: string; narration: string; debit: number; credit: number }
 
-function bookBills(from: string, to: string, where = '', ledger = 0): BookRow[] {
-  const rows = db.prepare(`SELECT b.id, b.type, b.date, b.no, b.net, b.narration, b.walkin_name, l.name AS party, g.name AS grp, b.mode,
+function bookBills(from: string, to: string, where = '', ledger = 0, doubleEntry = false): BookRow[] {
+  const rows = db.prepare(`SELECT b.id, b.type, b.date, b.no, b.net, b.narration, b.walkin_name, l.name AS party, b.party_id, g.name AS grp, b.mode,
       COALESCE((SELECT SUM(amount) FROM bill_payments WHERE bill_id=b.id),0)
       + COALESCE((SELECT SUM(amount) FROM voucher_adjustments WHERE bill_id=b.id),0)
       + COALESCE((SELECT SUM(r.net) FROM bills r WHERE r.type='SALE_RETURN' AND r.against_bill_id=b.id),0) AS received
@@ -889,47 +889,158 @@ function bookBills(from: string, to: string, where = '', ledger = 0): BookRow[] 
     WHERE b.date BETWEEN ? AND ? ${where}
       ${ledger ? `AND (b.party_id=? OR EXISTS (SELECT 1 FROM ledger_entries e WHERE e.source='BILL' AND e.source_id=b.id AND e.ledger_id=?))` : ''}
     ORDER BY b.date, b.id`).all(from, to, ...(ledger ? [ledger, ledger] : [])) as Row[];
-  return rows.map((b: any) => ({
-    source: 'BILL', source_id: b.id, vtype: b.type, type: BOOK_TYPE[b.type] ?? b.type, date: b.date, no: b.no,
-    party: b.party, remark: b.no, narration: b.narration ?? '', received: b.received, mode: b.mode, grp: b.grp, net: b.net,
-    debit: BILL_DEBIT.has(b.type) ? b.net : 0, credit: BILL_DEBIT.has(b.type) ? 0 : b.net,
-  }));
+
+  const paysOf = db.prepare('SELECT bp.amount, l.name, bp.ledger_id FROM bill_payments bp JOIN ledgers l ON l.id=bp.ledger_id WHERE bp.bill_id=?');
+
+  const out: BookRow[] = [];
+  for (const b of rows as any[]) {
+    const isSale = b.type === 'SALE' || b.type === 'COUNTER_SALE';
+    const isSaleRet = b.type === 'SALE_RETURN';
+    const isPurc = b.type === 'PURCHASE';
+    const isPurcRet = b.type === 'PURCHASE_RETURN';
+    const isChallan = b.type.includes('CHALLAN');
+
+    const typeStr = BOOK_TYPE[b.type] ?? b.type;
+    const remark = b.no;
+    const narration = b.narration ?? '';
+
+    if (!doubleEntry || ledger) {
+      const partyDr = BILL_DEBIT.has(b.type);
+      out.push({
+        source: 'BILL', source_id: b.id, vtype: b.type, type: typeStr, date: b.date, no: b.no,
+        party: b.party, remark, narration,
+        debit: partyDr ? b.net : 0, credit: partyDr ? 0 : b.net,
+      });
+      continue;
+    }
+
+    if (isChallan) {
+      out.push({
+        source: 'BILL', source_id: b.id, vtype: b.type, type: typeStr, date: b.date, no: b.no,
+        party: b.party, remark, narration, debit: 0, credit: 0,
+      });
+      continue;
+    }
+
+    if (isSale) {
+      const pays = paysOf.all(b.id) as { amount: number; name: string }[];
+      const paid = r2(pays.reduce((s, p) => s + p.amount, 0));
+      const rem = r2(b.net - paid);
+
+      if (b.mode === 'CASH' || b.type === 'COUNTER_SALE') {
+        out.push({
+          source: 'BILL', source_id: b.id, vtype: b.type, type: typeStr, date: b.date, no: b.no,
+          party: b.walkin_name ? `Cash (${b.walkin_name})` : 'Cash',
+          remark, narration, debit: b.net, credit: 0,
+        });
+      } else {
+        for (const p of pays) {
+          if (p.amount > 0) {
+            out.push({
+              source: 'BILL', source_id: b.id, vtype: b.type, type: typeStr, date: b.date, no: b.no,
+              party: p.name, remark, narration, debit: p.amount, credit: 0,
+            });
+          }
+        }
+        if (rem > 0 || pays.length === 0) {
+          out.push({
+            source: 'BILL', source_id: b.id, vtype: b.type, type: typeStr, date: b.date, no: b.no,
+            party: b.party, remark, narration, debit: rem > 0 ? rem : b.net, credit: 0,
+          });
+        }
+      }
+      out.push({
+        source: 'BILL', source_id: b.id, vtype: b.type, type: typeStr, date: b.date, no: b.no,
+        party: SYS.SALES, remark, narration, debit: 0, credit: b.net,
+      });
+    } else if (isPurc) {
+      out.push({
+        source: 'BILL', source_id: b.id, vtype: b.type, type: typeStr, date: b.date, no: b.no,
+        party: SYS.PURCHASE, remark, narration, debit: b.net, credit: 0,
+      });
+      out.push({
+        source: 'BILL', source_id: b.id, vtype: b.type, type: typeStr, date: b.date, no: b.no,
+        party: b.party, remark, narration, debit: 0, credit: b.net,
+      });
+    } else if (isSaleRet) {
+      out.push({
+        source: 'BILL', source_id: b.id, vtype: b.type, type: typeStr, date: b.date, no: b.no,
+        party: SYS.SALE_RET, remark, narration, debit: b.net, credit: 0,
+      });
+      out.push({
+        source: 'BILL', source_id: b.id, vtype: b.type, type: typeStr, date: b.date, no: b.no,
+        party: b.party, remark, narration, debit: 0, credit: b.net,
+      });
+    } else if (isPurcRet) {
+      out.push({
+        source: 'BILL', source_id: b.id, vtype: b.type, type: typeStr, date: b.date, no: b.no,
+        party: b.party, remark, narration, debit: b.net, credit: 0,
+      });
+      out.push({
+        source: 'BILL', source_id: b.id, vtype: b.type, type: typeStr, date: b.date, no: b.no,
+        party: SYS.PUR_RET, remark, narration, debit: 0, credit: b.net,
+      });
+    }
+  }
+  return out;
 }
 
-function bookVouchers(from: string, to: string, ledger = 0): BookRow[] {
+function bookVouchers(from: string, to: string, ledger = 0, doubleEntry = false): BookRow[] {
   const vs = db.prepare(`SELECT * FROM vouchers v WHERE v.date BETWEEN ? AND ?
       ${ledger ? 'AND EXISTS (SELECT 1 FROM voucher_lines x WHERE x.voucher_id=v.id AND x.ledger_id=?)' : ''}
     ORDER BY v.date, v.id`).all(from, to, ...(ledger ? [ledger] : [])) as Row[];
-  const linesOf = db.prepare(`SELECT vl.debit, vl.credit, l.name, g.name AS grp FROM voucher_lines vl JOIN ledgers l ON l.id=vl.ledger_id
+  const linesOf = db.prepare(`SELECT vl.debit, vl.credit, vl.ledger_id, l.name, g.name AS grp FROM voucher_lines vl JOIN ledgers l ON l.id=vl.ledger_id
     JOIN account_groups g ON g.id=l.group_id WHERE vl.voucher_id=? ORDER BY vl.id`);
-  return vs.map((v: any) => {
-    const ls = linesOf.all(v.id) as { debit: number; credit: number; name: string; grp: string }[];
-    const amount = r2(ls.reduce((s, l) => s + l.debit, 0));
-    const cashGrp = (g: string) => g === 'Cash-in-hand' || g === 'Bank Accounts';
-    // The "party" is the account on the other side of cash: credited in a receipt, debited in a payment.
-    const pick = v.type === 'RECEIPT' || v.type === 'CREDIT_NOTE'
-      ? ls.find((l) => l.credit > 0 && !cashGrp(l.grp)) ?? ls.find((l) => l.credit > 0)
-      : ls.find((l) => l.debit > 0 && (v.type === 'CONTRA' || !cashGrp(l.grp))) ?? ls.find((l) => l.debit > 0);
-    const credit = v.type === 'RECEIPT' || v.type === 'CREDIT_NOTE';
-    return {
-      source: 'VOUCHER' as const, source_id: v.id, vtype: v.type, type: BOOK_TYPE[v.type] ?? v.type, date: v.date, no: v.no,
-      party: pick?.name ?? '', remark: v.narration || v.no, narration: v.narration ?? '',
-      debit: credit ? 0 : amount, credit: credit ? amount : 0,
-    };
-  });
+
+  const out: BookRow[] = [];
+  for (const v of vs as any[]) {
+    const ls = linesOf.all(v.id) as { debit: number; credit: number; ledger_id: number; name: string; grp: string }[];
+    const typeStr = BOOK_TYPE[v.type] ?? v.type;
+    const remark = v.narration || v.no;
+    const narration = v.narration ?? '';
+
+    if (!doubleEntry || ledger) {
+      const amount = r2(ls.reduce((s, l) => s + l.debit, 0));
+      const cashGrp = (g: string) => g === 'Cash-in-hand' || g === 'Bank Accounts';
+      const pick = v.type === 'RECEIPT' || v.type === 'CREDIT_NOTE'
+        ? ls.find((l) => l.credit > 0 && !cashGrp(l.grp)) ?? ls.find((l) => l.credit > 0)
+        : ls.find((l) => l.debit > 0 && (v.type === 'CONTRA' || !cashGrp(l.grp))) ?? ls.find((l) => l.debit > 0);
+      const credit = v.type === 'RECEIPT' || v.type === 'CREDIT_NOTE';
+      out.push({
+        source: 'VOUCHER', source_id: v.id, vtype: v.type, type: typeStr, date: v.date, no: v.no,
+        party: pick?.name ?? '', remark, narration,
+        debit: credit ? 0 : amount, credit: credit ? amount : 0,
+      });
+      continue;
+    }
+
+    for (const l of ls) {
+      if (l.debit > 0 || l.credit > 0) {
+        out.push({
+          source: 'VOUCHER', source_id: v.id, vtype: v.type, type: typeStr, date: v.date, no: v.no,
+          party: l.name, remark, narration,
+          debit: l.debit, credit: l.credit,
+        });
+      }
+    }
+  }
+  return out;
 }
-const byDate = (a: BookRow, b: BookRow) => a.date.localeCompare(b.date) || (a.source === b.source ? a.source_id - b.source_id : a.source === 'BILL' ? -1 : 1);
+const byDate = (a: BookRow, b: BookRow) =>
+  a.date.localeCompare(b.date)
+  || (a.source === b.source ? a.source_id - b.source_id : a.source === 'BILL' ? -1 : 1)
+  || (b.debit - a.debit);
 
 app.get('/api/reports/day-book', h((req) => {
   const { from, to } = req.query as Record<string, string>;
   const ledger = Number(req.query.ledger) || 0;
-  return [...bookBills(from, to, '', ledger), ...bookVouchers(from, to, ledger)].sort(byDate);
+  return [...bookBills(from, to, '', ledger, true), ...bookVouchers(from, to, ledger, true)].sort(byDate);
 }));
 // Sale book: only sales whose money has been received — cash / counter sales, sales paid
 // on the bill, and credit sales once receipts have settled them in full.
 app.get('/api/reports/sale-book', h((req) => {
   const { from, to } = req.query as Record<string, string>;
-  return bookBills(from, to, "AND b.type IN ('SALE','COUNTER_SALE')").filter((b: any) =>
+  return bookBills(from, to, "AND b.type IN ('SALE','COUNTER_SALE')", 0, false).filter((b: any) =>
     b.mode === 'CASH' || b.vtype === 'COUNTER_SALE' || b.grp === 'Cash-in-hand' || b.received >= b.net - 0.005);
 }));
 app.get('/api/reports/ledger/:id', h((req) => {
