@@ -1216,7 +1216,7 @@ export const MENU: MenuItem[] = [
       { label: 'Current Stock', hot: 'C', action: 'report.stock' },
       { label: 'Stock Analysis', hot: 'A', bold: true, action: 'report.itemsale' },
       '-',
-      { label: 'Filtered Stock', hot: 'F', action: 'report.stock' },
+      { label: 'Filtered Stock', hot: 'F', action: 'report.filtered_stock' },
       { label: 'Batch Stock', hot: 'B', action: 'report.batch' },
       { label: 'Dump Stock', hot: 'D' },
       { label: 'Hold/Ban Stock', hot: 'H' },

@@ -77,9 +77,124 @@ export async function currentStock() {
   if (stores) await closingStock(stores);
 }
 
-export async function closingStock(initialStores: string[] = ['MAIN STORE']) {
+export interface StockOptions {
+  inStockOnly?: boolean;
+  stockStatus?: 'available' | 'all' | 'zero' | 'negative';
+  company?: string;
+  title?: string;
+}
+
+export function filteredStockDialog(): Promise<{
+  stores: string[];
+  stockStatus: 'available' | 'all' | 'zero' | 'negative';
+  company: string;
+} | null> {
+  return new Promise(async (resolve) => {
+    let companies: string[] = [];
+    try {
+      const coList = await api<any[]>('/companies');
+      if (Array.isArray(coList)) {
+        companies = coList.map((c) => (typeof c === 'string' ? c : c.name || '')).filter(Boolean);
+      }
+    } catch {}
+
+    const p = margPop('FILTERED STOCK', '<span><b>Enter</b> View Stock</span><span><b>Space/↑↓</b> Change</span><span><b>Esc</b> Cancel</span>', '520px');
+    const box = h('div', { class: 'lf-box' });
+    box.innerHTML = `
+      <div style="background:var(--marg-bar,#000080);color:#ffff00;padding:5px 8px;font-weight:bold;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #fff;">
+        <span>SELECT FILTER OPTIONS</span>
+        <span style="font-size:11px;color:#fff;">Marg ERP 9+</span>
+      </div>
+      <div class="f-row" style="margin-bottom:10px;display:flex;align-items:center;">
+        <label style="min-width:140px;font-weight:bold;color:var(--marg-lbl,#000080);">Stock Status :</label>
+        <select data-f="status" style="flex:1;background:#fff;border:1px solid #777;padding:4px;font-weight:bold;">
+          <option value="available" selected>AVAILABLE STOCK ONLY (Stock &gt; 0)</option>
+          <option value="all">WHOLE STOCK (All Items)</option>
+          <option value="zero">ZERO STOCK ITEMS (Stock = 0)</option>
+          <option value="negative">NEGATIVE STOCK (Stock &lt; 0)</option>
+        </select>
+      </div>
+      <div class="f-row" style="margin-bottom:10px;display:flex;align-items:center;">
+        <label style="min-width:140px;font-weight:bold;color:var(--marg-lbl,#000080);">Store :</label>
+        <select data-f="store" style="flex:1;background:#fff;border:1px solid #777;padding:4px;font-weight:bold;">
+          ${STORES.map((s) => `<option value="${esc(s)}"${s === 'MAIN STORE' ? ' selected' : ''}>${esc(s)}</option>`).join('')}
+          <option value="ALL">ALL STORES</option>
+        </select>
+      </div>
+      ${companies.length ? `
+      <div class="f-row" style="margin-bottom:10px;display:flex;align-items:center;">
+        <label style="min-width:140px;font-weight:bold;color:var(--marg-lbl,#000080);">Company :</label>
+        <select data-f="company" style="flex:1;background:#fff;border:1px solid #777;padding:4px;">
+          <option value="ALL">-- ALL COMPANIES --</option>
+          ${companies.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join('')}
+        </select>
+      </div>` : ''}
+      <div style="margin-top:10px;padding:6px 8px;background:rgba(0,0,128,0.06);border:1px dashed #000080;color:#000080;font-size:12px;line-height:1.4;">
+        ℹ <b>Marg Filtered Stock:</b> Defaults to Available Stock Only (Stock &gt; 0). Zero stock items are excluded.
+      </div>
+      <div class="f-btns" style="margin-top:14px;display:flex;gap:10px;justify-content:flex-end;">
+        <button type="button" class="btn-apply" style="padding:5px 14px;background:#006600;color:#fff;font-weight:bold;border:1px solid #004400;cursor:pointer;">✓ View Stock (Enter)</button>
+        <button type="button" class="btn-cancel" style="padding:5px 14px;background:#888;color:#fff;border:1px solid #666;cursor:pointer;">Esc Cancel</button>
+      </div>
+    `;
+    p.body.append(box);
+
+    const selStatus = box.querySelector('[data-f="status"]') as HTMLSelectElement;
+    const selStore = box.querySelector('[data-f="store"]') as HTMLSelectElement;
+    const selCompany = box.querySelector('[data-f="company"]') as HTMLSelectElement | null;
+    const btnApply = box.querySelector('.btn-apply') as HTMLButtonElement;
+    const btnCancel = box.querySelector('.btn-cancel') as HTMLButtonElement;
+
+    let done = false;
+    const finish = (val: { stores: string[]; stockStatus: 'available' | 'all' | 'zero' | 'negative'; company: string } | null) => {
+      if (done) return;
+      done = true;
+      p.close();
+      resolve(val);
+    };
+
+    const submit = () => {
+      const status = (selStatus.value || 'available') as 'available' | 'all' | 'zero' | 'negative';
+      const storeVal = selStore.value;
+      const stores = storeVal === 'ALL' ? [...STORES] : [storeVal];
+      const company = selCompany ? selCompany.value : 'ALL';
+      finish({ stores, stockStatus: status, company });
+    };
+
+    btnApply.addEventListener('click', submit);
+    btnCancel.addEventListener('click', () => finish(null));
+
+    selStatus.focus();
+
+    p.onKey = (_e, k) => {
+      if (k === 'Escape') { finish(null); return true; }
+      if (k === 'Enter') { submit(); return true; }
+      return false;
+    };
+  });
+}
+
+export async function filteredStock() {
+  const res = await filteredStockDialog();
+  if (!res) return;
+  await closingStock(res.stores, {
+    inStockOnly: res.stockStatus === 'available',
+    stockStatus: res.stockStatus,
+    company: res.company,
+    title: 'FILTERED STOCK',
+  });
+}
+
+export async function closingStock(initialStores: string[] = ['MAIN STORE'], options: StockOptions = {}) {
   let stores = initialStores;
-  const w = openWin('CLOSING STOCK', 'full', '');
+  let stockStatus: 'available' | 'all' | 'zero' | 'negative' = options.stockStatus || (options.inStockOnly ? 'available' : 'all');
+  let inStock = stockStatus === 'available' || !!options.inStockOnly;
+  let shortage = false;
+  let companyFilter = (options.company || 'ALL').toUpperCase();
+  const isFiltered = !!options.title || options.inStockOnly || stockStatus !== 'all' || (companyFilter !== 'ALL' && !!companyFilter);
+  const winTitle = options.title || (isFiltered ? 'FILTERED STOCK' : 'CLOSING STOCK');
+
+  const w = openWin(winTitle, 'full', '');
   w.el.classList.add('marg');
   w.setFoot('<span><b>F2</b>-New</span><span><b>F3</b>-Edit</span><span><b>F4</b>-Options</span><span><b>Enter</b>-Register</span><span><b>F6</b>-Total</span>' +
     '<span><b>F9</b>-Store</span><span><b>F10</b>-Filter</span><span><b>*</b>-Shortage</span><span><b>Alt+X</b>-Excel</span><span><b>Alt+P</b>-PDF</span>');
@@ -99,20 +214,42 @@ export async function closingStock(initialStores: string[] = ['MAIN STORE']) {
   let all: Item[] = [];
   let view: Item[] = [];
   let sel = 0;
-  let inStock = false, shortage = false;
   let typed = '';
   let typedAt = 0;
 
   /** Stock in the chosen stores — everything is held in MAIN STORE in this edition. */
   const stockOf = (it: Item) => (stores.includes('MAIN STORE') ? it.stock : 0);
-  const setTitle = () => { (bar.firstElementChild as HTMLElement).textContent = `${stores.join(', ')} : CLOSING STOCK : ${dmy(today())}`; };
+  const setTitle = () => {
+    let statusLabel = '';
+    if (inStock || stockStatus === 'available') statusLabel = ' : [Available Stock Only]';
+    else if (stockStatus === 'zero') statusLabel = ' : [Zero Stock Only]';
+    else if (stockStatus === 'negative') statusLabel = ' : [Negative Stock Only]';
+    if (shortage) statusLabel += ' : [Shortage Only]';
+    if (companyFilter && companyFilter !== 'ALL') statusLabel += ` : [${companyFilter}]`;
+
+    (bar.firstElementChild as HTMLElement).textContent = `${stores.join(', ')} : ${winTitle} : ${dmy(today())}${statusLabel}`;
+  };
 
   async function load() {
     all = await api<Item[]>('/items');
     applyFilter();
   }
   function applyFilter() {
-    view = all.filter((it) => (!inStock || stockOf(it) > 0) && (!shortage || stockOf(it) <= (it.min_stock ?? 0)));
+    view = all.filter((it) => {
+      const q = stockOf(it);
+      if (inStock || stockStatus === 'available') {
+        if (q <= 0) return false;
+      } else if (stockStatus === 'zero') {
+        if (q !== 0) return false;
+      } else if (stockStatus === 'negative') {
+        if (q >= 0) return false;
+      }
+      if (shortage && q > (it.min_stock ?? 0)) return false;
+      if (companyFilter && companyFilter !== 'ALL') {
+        if ((it.company || 'OTHERS').toUpperCase() !== companyFilter) return false;
+      }
+      return true;
+    });
     sel = Math.min(sel, Math.max(0, view.length - 1));
     draw();
   }
@@ -124,6 +261,13 @@ export async function closingStock(initialStores: string[] = ['MAIN STORE']) {
       || '<div class="empty">No items</div>';
     rowsBox.querySelector('.sel')?.scrollIntoView({ block: 'nearest' });
     const it = view[sel];
+    let filterStatusBadge = '';
+    if (inStock || stockStatus === 'available') filterStatusBadge = ' &nbsp;[Available Stock Only]';
+    else if (stockStatus === 'zero') filterStatusBadge = ' &nbsp;[Zero Stock Only]';
+    else if (stockStatus === 'negative') filterStatusBadge = ' &nbsp;[Negative Stock Only]';
+    if (shortage) filterStatusBadge += ' &nbsp;[Shortage]';
+    if (companyFilter && companyFilter !== 'ALL') filterStatusBadge += ` &nbsp;[Co: ${esc(companyFilter)}]`;
+
     (screen.querySelector('.cs-detail') as HTMLElement).innerHTML = !it ? '' : `
       <div><span>PurRate:</span><b>${c2(it.purchase_rate)}</b></div><div><span>M.R.P. :</span><b>${f2(it.mrp)}</b></div><div><span>Company:</span><b>${esc((it.company || 'OTHERS').toUpperCase())}</b></div>
       <div><span>Cost &nbsp;&nbsp;:</span><b>${c2(it.purchase_rate)}</b></div><div><span>Rate &nbsp;&nbsp;:</span><b>${f2(it.sale_rate)}</b></div><div><span>Salt &nbsp;&nbsp;:</span><b></b></div>
@@ -131,7 +275,7 @@ export async function closingStock(initialStores: string[] = ['MAIN STORE']) {
       <div><span>W/oDeal:</span><b>${c2(it.purchase_rate)}</b></div><div><span>CESS &nbsp;&nbsp;:</span><b></b></div><div><span>Mfr. &nbsp;&nbsp;:</span><b></b></div>
       <div><span>Margin%:</span><b>${margin(it.sale_rate, it.purchase_rate)}</b></div><div><span>F.Rate :</span><b>${f2(it.sale_rate)}</b></div><div><span>Barcode:</span><b></b></div>
       <div><span>Expiry &nbsp;:</span><b>${it.expiry ? (it.expiry.length >= 7 ? `${it.expiry.slice(5, 7)}/${it.expiry.slice(2, 4)}` : it.expiry) : ''}</b></div><div><span>Deal[F]:</span><b></b></div><div><span>Rack No:</span><b></b></div>
-      <div><span>PurDisc:</span><b></b></div><div><span>Excise :</span><b></b></div><div><b>${view.length} Items</b>${typed ? ` &nbsp; <span class="typed">Find: ${esc(typed)}</span>` : ''}${inStock ? ' &nbsp;[In Stock]' : ''}${shortage ? ' &nbsp;[Shortage]' : ''}</div>`;
+      <div><span>PurDisc:</span><b></b></div><div><span>Excise :</span><b></b></div><div><b>${view.length} Items</b>${typed ? ` &nbsp; <span class="typed">Find: ${esc(typed)}</span>` : ''}${filterStatusBadge}</div>`;
     const side = screen.querySelector('.cs-side .body') as HTMLElement;
     const seq = ++batchSeq;
     if (!it) { side.innerHTML = ''; return; }
@@ -139,8 +283,9 @@ export async function closingStock(initialStores: string[] = ['MAIN STORE']) {
       if (seq !== batchSeq) return;
       api<any[]>(`/items/${it.id}/batches`).then((bs) => {
         if (seq !== batchSeq) return;
-        side.innerHTML = bs.length ? `<div class="g h"><span>BATCH</span><span>STOCK</span><span>MRP</span><span>EXP.</span></div>
-          ${bs.map((b) => `<div class="g"><span>${esc(b.batch || '-')}</span><span>${qty(b.stock)}</span><span>${f2(b.mrp)}</span><span>${b.expiry ? `${b.expiry.slice(5, 7)}/${b.expiry.slice(2, 4)}` : ''}</span></div>`).join('')}` : '';
+        const filteredBs = (inStock || stockStatus === 'available') ? bs.filter((b) => (b.stock ?? 0) > 0) : bs;
+        side.innerHTML = filteredBs.length ? `<div class="g h"><span>BATCH</span><span>STOCK</span><span>MRP</span><span>EXP.</span></div>
+          ${filteredBs.map((b) => `<div class="g"><span>${esc(b.batch || '-')}</span><span>${qty(b.stock)}</span><span>${f2(b.mrp)}</span><span>${b.expiry ? `${b.expiry.slice(5, 7)}/${b.expiry.slice(2, 4)}` : ''}</span></div>`).join('')}` : '<div style="padding:10px;color:var(--marg-dim,#888);font-size:12px;">No active batches</div>';
       }).catch(() => {});
     }, 150);
   }
@@ -204,13 +349,15 @@ export async function closingStock(initialStores: string[] = ['MAIN STORE']) {
       '',
       '',
     ]);
-    downloadCsv(`Closing_Stock_${stores.join('_')}_${today()}.csv`, headers, rows);
+    const filename = `${winTitle.replace(/\s+/g, '_')}_${stores.join('_')}_${today()}.csv`;
+    downloadCsv(filename, headers, rows);
   }
 
   async function printList() {
     let coName = '';
     try { const co = await api<any>('/company'); coName = co.name; } catch {}
-    const html = `<h2>${esc(coName)}</h2><h3 style="text-align:center">${esc(stores.join(', '))} : CLOSING STOCK : ${dmy(today())}</h3>
+    const statusTag = inStock || stockStatus === 'available' ? ' [Available Stock Only]' : '';
+    const html = `<h2>${esc(coName)}</h2><h3 style="text-align:center">${esc(stores.join(', '))} : ${esc(winTitle)} : ${dmy(today())}${statusTag}</h3>
       <table class="grid"><tr><th>Description</th><th>Packing</th><th class="n">M.R.P.</th><th class="n">Stock</th><th>Unit</th></tr>
       ${view.map((it) => `<tr><td>${esc(it.name)}</td><td>${esc(it.pack ?? '')}</td><td class="n">${f2(it.mrp)}</td><td class="n">${qty(stockOf(it))}</td><td>${esc(it.unit ?? '')}</td></tr>`).join('')}
       <tr class="total"><td colspan="3"><b>Total (${view.length} items)</b></td><td class="n"><b>${qty(view.reduce((s, it) => s + stockOf(it), 0))}</b></td><td></td></tr></table>`;
@@ -263,7 +410,19 @@ export async function closingStock(initialStores: string[] = ['MAIN STORE']) {
     }
     if (k === 'F6') { totals(); return true; }
     if (k === 'F9') { selectStore().then((s) => { if (s) { stores = s; applyFilter(); } }); return true; }
-    if (k === 'F10') { inStock = !inStock; applyFilter(); return true; }
+    if (k === 'F10') {
+      if (inStock || stockStatus === 'available') {
+        stockStatus = 'all';
+        inStock = false;
+        toast('Filter: WHOLE STOCK (All items including zero stock)');
+      } else {
+        stockStatus = 'available';
+        inStock = true;
+        toast('Filter: AVAILABLE STOCK ONLY (Stock > 0)');
+      }
+      applyFilter();
+      return true;
+    }
     if (k === '*') { shortage = !shortage; applyFilter(); return true; }
     if (k === 'Alt+X') { exportExcel(); return true; }
     if (k === 'Alt+P' || k === 'Ctrl+P') { printList(); return true; }

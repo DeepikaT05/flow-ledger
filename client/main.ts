@@ -6,7 +6,7 @@ import { saleEntry } from './sale.ts';
 import { voucherEntry, voucherList, voucherMenu } from './vouchers.ts';
 import { receiptEntry, type VType } from './receipt.ts';
 import { bookScreen } from './daybook.ts';
-import { currentStock, closingStock } from './stock.ts';
+import { currentStock, closingStock, filteredStock } from './stock.ts';
 import * as R from './reports.ts';
 import { boot, login, changeCompany, isBooting } from './startup.ts';
 import { usersWindow, rolesWindow } from './admin.ts';
@@ -45,7 +45,8 @@ const ACTIONS: Record<string, (arg?: string) => unknown> = {
   'report.pl': () => R.profitLoss(),
   'report.bs': () => R.balanceSheet(),
   'report.outstanding': (k) => R.outstanding(k!),
-  'report.stock': () => currentStock(),
+  'report.stock': (arg) => (arg === 'filtered' ? filteredStock() : currentStock()),
+  'report.filtered_stock': () => filteredStock(),
   'report.reorder': () => R.reorder(),
   'report.gp': () => R.grossProfit(),
   'report.mis': () => R.mis(),
