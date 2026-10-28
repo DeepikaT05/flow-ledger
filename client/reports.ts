@@ -584,14 +584,121 @@ const valueFooter = (span: number) => (rows: BatchRow[]) =>
 
 export { batchStock } from './stock.ts';
 
+export function parseExpiryDate(raw: string | undefined | null): Date | null {
+  if (!raw) return null;
+  const s = String(raw).trim();
+  if (!s) return null;
+
+  // Format: YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const d = new Date(s);
+    if (!isNaN(d.getTime())) return d;
+  }
+
+  // Format: YYYY-MM
+  if (/^\d{4}-\d{2}$/.test(s)) {
+    const [y, m] = s.split('-').map(Number);
+    return new Date(y, m, 0, 23, 59, 59);
+  }
+
+  // Format: MM/YY or MM/YYYY or MM-YY or MM-YYYY
+  const m = s.match(/^(\d{1,2})[/-](\d{2}|\d{4})$/);
+  if (m) {
+    const mm = Number(m[1]);
+    const yy = m[2].length === 2 ? 2000 + Number(m[2]) : Number(m[2]);
+    if (mm >= 1 && mm <= 12) {
+      return new Date(yy, mm, 0, 23, 59, 59);
+    }
+  }
+
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+export function isBatchExpired(rawExp: string | undefined | null, asOf: Date = new Date()): boolean {
+  const d = parseExpiryDate(rawExp);
+  if (!d) return false;
+  const expEnd = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59).getTime();
+  return expEnd < asOf.getTime();
+}
+
+export function isBatchNearExpiry(rawExp: string | undefined | null, days = 90, asOf: Date = new Date()): boolean {
+  const d = parseExpiryDate(rawExp);
+  if (!d) return false;
+  if (isBatchExpired(rawExp, asOf)) return false; // Already expired batches belong in Expiry Stock
+  const expEnd = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59).getTime();
+  const limit = asOf.getTime() + days * 864e5;
+  return expEnd <= limit;
+}
+
+/** Stocks → Expiry Stock: ONLY products that are ALREADY EXPIRED (expiry < today). Near expiry products are excluded. */
 export function expiryStock() {
-  const days = 90;
-  const limit = new Date(Date.now() + days * 864e5).toISOString().slice(0, 10);
   return reportWin<BatchRow>({
-    title: `Expiry Stock (expired or expiring within ${days} days)`, cols: batchCols, search: (r) => `${r.item_name} ${r.batch}`,
-    load: async () => (await api<BatchRow[]>('/reports/batch-stock')).filter((b) => b.stock > 0 && b.expiry && b.expiry <= limit)
-      .sort((a, b) => a.expiry.localeCompare(b.expiry)),
+    title: 'Expiry Stock (Already Expired Products Only)',
+    cols: batchCols,
+    search: (r) => `${r.item_name} ${r.batch}`,
+    load: async () => {
+      const now = new Date();
+      const all = await api<BatchRow[]>('/reports/batch-stock');
+      return all
+        .filter((b) => b.stock > 0 && isBatchExpired(b.expiry, now))
+        .sort((a, b) => (a.expiry || '').localeCompare(b.expiry || ''));
+    },
     footer: valueFooter(7),
+  });
+}
+
+const nearBatchCols: Col<BatchRow>[] = [
+  { title: 'Item', get: (r) => r.item_name },
+  { title: 'Pack', get: (r) => r.pack },
+  { title: 'Batch', get: (r) => r.batch },
+  { title: 'Expiry', get: (r) => expMY(r.expiry) },
+  {
+    title: 'Days Left',
+    get: (r) => {
+      const d = parseExpiryDate(r.expiry);
+      if (!d) return '';
+      const days = Math.ceil((d.getTime() - Date.now()) / 864e5);
+      return days > 0 ? `${days} days` : 'Expiring';
+    },
+  },
+  { title: 'Stock', get: (r) => r.stock, num: true },
+  { title: 'MRP', get: (r) => r.mrp, money: true },
+  { title: 'Rate', get: (r) => r.rate, money: true },
+  { title: 'Value', get: (r) => cm(r.purchase_rate == null ? null : r.stock * r.purchase_rate), num: true },
+  { title: 'Supplier', get: (r) => r.supplier },
+];
+
+/** Stocks → Near Expiry Stock: Products that are NOT YET EXPIRED but expiring within specified days (default 90 days). */
+export function nearExpiryStock(initialDays = 90) {
+  let days = initialDays;
+  return reportWin<BatchRow>({
+    title: `Near Expiry Stock (Expiring within next ${days} days)`,
+    cols: nearBatchCols,
+    search: (r) => `${r.item_name} ${r.batch}`,
+    extraFoot: '<span><b>F2</b> Change Days</span>',
+    extraKeys: {
+      F2: () => {
+        import('./margui.ts').then(async (m) => {
+          const ans = await m.margAsk('Near Expiry Window (Days)', String(days));
+          if (ans && Number(ans) > 0) {
+            days = Number(ans);
+            nearExpiryStock(days);
+          }
+        });
+      },
+    },
+    load: async () => {
+      const now = new Date();
+      const all = await api<BatchRow[]>('/reports/batch-stock');
+      return all
+        .filter((b) => b.stock > 0 && isBatchNearExpiry(b.expiry, days, now))
+        .sort((a, b) => (a.expiry || '').localeCompare(b.expiry || ''));
+    },
+    footer: (rows) =>
+      `<tr class="total"><td colspan="8">Total (${rows.length} near-expiry batches)</td><td class="n">${cmTotal(
+        rows.reduce((s, r) => s + r.stock * (r.purchase_rate ?? 0), 0)
+      )}</td><td></td></tr>`,
   });
 }
 

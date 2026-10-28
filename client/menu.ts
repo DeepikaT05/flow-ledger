@@ -1225,7 +1225,7 @@ export const MENU: MenuItem[] = [
       { label: 'Minimum Level Stock', hot: 'M', action: 'report.reorder' },
       { label: 'Maximum Level Stock', hot: 'x' },
       { label: 'Expiry Stock', hot: 'E', action: 'report.expiry' },
-      { label: 'Near Expiry Stock', hot: 'N', action: 'report.expiry' },
+      { label: 'Near Expiry Stock', hot: 'N', action: 'report.near_expiry' },
       { label: 'Stock Life Statement', hot: 'L', action: 'item.register' },
       { label: 'Batch Purchase Type', hot: 'P' },
       '-',

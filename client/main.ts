@@ -52,6 +52,7 @@ const ACTIONS: Record<string, (arg?: string) => unknown> = {
   'report.mis': () => R.mis(),
   'report.batch': () => batchStock(),
   'report.expiry': () => R.expiryStock(),
+  'report.near_expiry': () => R.nearExpiryStock(),
   'report.mop': () => R.modeOfPayment(),
   'report.group': () => R.groupSummary(),
   'report.itemsale': () => R.productSummary('SALE'),
