@@ -16,7 +16,9 @@ interface Adj { bill: Pending | null; amount: number; remark: string }
 export interface Status {
   name: string; phone: string; balance: number; bills: number; days: number;
   mobile?: string; payid?: string; type_desc?: string;
+  is_supplier?: boolean;
   credit_limit?: number; credit_limit_bills?: number; credit_days?: number;
+  turnover_ratio?: string; avg_pm?: number; avg_pw?: number; avg_pd?: number; avg_coll_days?: number;
   last_sale: { net: number; date: string; days: number } | null;
   last_receipt: { amount: number; date: string; days: number } | null;
   receipts: { date: string; amount: number; mode: string; days: number }[];
@@ -229,8 +231,11 @@ function billAdjustment(party: Ledger, amount: number, bills: Pending[], start: 
 
 /** The CUSTOMER STATUS panel (receipt entry, sale alteration) — SUPPLIER STATUS for payment / debit note. */
 export function statusHtml(s: Status, supplier = false) {
+  const isSupp = supplier || s.is_supplier;
   const balAmt = s.balance ? Math.abs(s.balance) : 0;
-  return `<div class="bar">&#10004; ${supplier ? 'SUPPLIER' : 'CUSTOMER'} STATUS</div>
+  const billsCount = s.os_bills ? s.os_bills.length : (s.bills || 0);
+  const maxDays = s.os_bills && s.os_bills.length ? Math.max(...s.os_bills.map((b) => b.days)) : (s.days || 0);
+  return `<div class="bar">&#10004; ${isSupp ? 'SUPPLIER' : 'CUSTOMER'} STATUS</div>
       <div class="nm">${esc(s.name.toUpperCase())}</div>
       <div>Phone &nbsp;: ${esc(s.phone)}</div>
       ${s.mobile ? `<div>Mobile : ${esc(s.mobile)}</div>` : ''}
@@ -238,20 +243,20 @@ export function statusHtml(s: Status, supplier = false) {
       <div class="cs-table">
         <div class="cs-tr cs-th"><span>DESC.</span><span class="n">LIMIT</span><span class="n">PRIMARY</span><span class="n">BALANCE</span></div>
         <div class="cs-tr"><span>Amount :</span><span class="n" style="${s.credit_limit && balAmt > s.credit_limit ? 'color:#a5121a;font-weight:bold;' : ''}">${s.credit_limit ? Math.round(s.credit_limit) : 0}</span><span class="n">0</span><span class="n">${balAmt ? Math.round(balAmt) : 0}</span></div>
-        <div class="cs-tr"><span>Bills &nbsp;:</span><span class="n" style="${s.credit_limit_bills && (s.bills || 0) > s.credit_limit_bills ? 'color:#a5121a;font-weight:bold;' : ''}">${s.credit_limit_bills || 0}</span><span class="n">0</span><span class="n">${s.bills || 0}</span></div>
-        <div class="cs-tr"><span>Days &nbsp;&nbsp;:</span><span class="n" style="${s.credit_days && (s.days || 0) > s.credit_days ? 'color:#a5121a;font-weight:bold;' : ''}">${s.credit_days || 0}</span><span class="n">0</span><span class="n">${s.days || 0}</span></div>
+        <div class="cs-tr"><span>Bills &nbsp;:</span><span class="n" style="${s.credit_limit_bills && billsCount > s.credit_limit_bills ? 'color:#a5121a;font-weight:bold;' : ''}">${s.credit_limit_bills || 0}</span><span class="n">0</span><span class="n">${billsCount}</span></div>
+        <div class="cs-tr"><span>Days &nbsp;&nbsp;:</span><span class="n" style="${s.credit_days && maxDays > s.credit_days ? 'color:#a5121a;font-weight:bold;' : ''}">${s.credit_days || 0}</span><span class="n">0</span><span class="n">${maxDays}</span></div>
       </div>
       <div class="cs-ratio">
-        <div>Turnover Ratio :</div>
-        <div>Avg.Sale PM : &nbsp;&nbsp; PW: &nbsp;&nbsp; PD:</div>
-        <div>Avg.Coll.Day:</div>
-        <div>${supplier ? 'Last Purc.' : 'Last Sale'} &nbsp;: ${s.last_sale ? `${f2(s.last_sale.net)} Dt:${dmy(s.last_sale.date)} Days:${s.last_sale.days}` : '0 Dt:               Days:0'}</div>
-        <div>${supplier ? 'Last Paymnt' : 'Last Receipt'}: ${s.last_receipt ? `${f2(s.last_receipt.amount)} Dt:${dmy(s.last_receipt.date)} Days:${s.last_receipt.days}` : '0 Dt:             Days:0'}</div>
+        <div>Turnover Ratio : <b>${s.turnover_ratio ?? '0.00'}</b></div>
+        <div>${isSupp ? 'Avg.Purc' : 'Avg.Sale'} PM : <b>${s.avg_pm ? Math.round(s.avg_pm) : 0}</b> &nbsp;&nbsp; PW: <b>${s.avg_pw ? Math.round(s.avg_pw) : 0}</b> &nbsp;&nbsp; PD: <b>${s.avg_pd ? Math.round(s.avg_pd) : 0}</b></div>
+        <div>Avg.Coll.Day: <b>${s.avg_coll_days ?? 0}</b></div>
+        <div>${isSupp ? 'Last Purc.' : 'Last Sale'} &nbsp;: ${s.last_sale ? `${f2(s.last_sale.net)} Dt:${dmy(s.last_sale.date)} Days:${s.last_sale.days}` : '0 Dt:               Days:0'}</div>
+        <div>${isSupp ? 'Last Paymnt' : 'Last Receipt'}: ${s.last_receipt ? `${f2(s.last_receipt.amount)} Dt:${dmy(s.last_receipt.date)} Days:${s.last_receipt.days}` : '0 Dt:             Days:0'}</div>
       </div>
-      <div class="bar sub"><span>${supplier ? 'CR.NOTE' : 'CHQ/CASH'}</span><span>DATE</span><span>AMOUNT</span><span>DAYS</span></div>
-      ${s.receipts.map((r) => `<div class="g"><span>${esc((r.mode ?? '').toUpperCase())}</span><span>${dmy(r.date)}</span><span>${f2(r.amount)}</span><span>${r.days}</span></div>`).join('')}
+      <div class="bar sub"><span>${isSupp ? 'PAYMENT' : 'CHQ/CASH'}</span><span>DATE</span><span>AMOUNT</span><span>DAYS</span></div>
+      ${s.receipts.length ? s.receipts.map((r) => `<div class="g"><span>${esc((r.mode ?? '').toUpperCase())}</span><span>${dmy(r.date)}</span><span>${f2(r.amount)}</span><span>${r.days}</span></div>`).join('') : '<div style="padding:2px 8px;color:#888;font-size:11px">No entries</div>'}
       <div class="bar sub"><span>O/S BILL</span><span>DATE</span><span>AMOUNT</span><span>DAYS</span></div>
-      ${s.os_bills.map((b) => `<div class="g ${b.days > 30 ? 'old' : ''}"><span>${esc(b.ref)}</span><span>${dmy(b.date)}</span><span>${f2(b.balance)}</span><span>${b.days}</span></div>`).join('')}`;
+      ${s.os_bills.length ? s.os_bills.map((b) => `<div class="g ${b.days > 30 ? 'old' : ''}"><span>${esc(b.ref)}</span><span>${dmy(b.date)}</span><span>${f2(b.balance)}</span><span>${b.days}</span></div>`).join('') : '<div style="padding:2px 8px;color:#888;font-size:11px">No pending bills</div>'}`;
 }
 
 // ------------------------------------------------------------------ small boxes

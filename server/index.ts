@@ -746,11 +746,12 @@ app.get('/api/ledgers/:id/pending-bills', h((req) => pendingBills(Number(req.par
 // CUSTOMER STATUS (kind SALE: last sale / receipts) or SUPPLIER STATUS (kind PURCHASE: last purchase / payments).
 app.get('/api/ledgers/:id/status', h((req) => {
   const id = Number(req.params.id);
-  const kind = billKind(req.query.kind);
-  const l = db.prepare(`${LEDGER_BAL} WHERE l.id=?`).get(id) as Row & { balance: number };
+  const l = db.prepare(`${LEDGER_BAL} WHERE l.id=?`).get(id) as Row & { balance: number; group_name: string };
   if (!l) throw new Error('Ledger not found');
+  const isSupplier = req.query.kind ? req.query.kind === 'PURCHASE' : (l.group_name === 'Sundry Creditors');
+  const kind = isSupplier ? 'PURCHASE' : 'SALE';
   const bills = pendingBills(id, 0, kind);
-  const pur = kind === 'PURCHASE';
+  const pur = isSupplier;
   const lastSale = db.prepare(`SELECT net, date FROM bills WHERE party_id=? AND type IN (${pur ? `'PURCHASE'` : `'SALE','COUNTER_SALE'`}) ORDER BY date DESC, id DESC LIMIT 1`).get(id) as { net: number; date: string } | undefined;
   const [own, other] = pur ? ['debit', 'credit'] : ['credit', 'debit'];
   const receipts = db.prepare(`SELECT v.date, vl.${own} AS amount,
@@ -764,14 +765,31 @@ app.get('/api/ledgers/:id/status', h((req) => {
   const crLimit = Number(l.credit_limit || 0);
   const crBills = Number(det.credit_limit_bills || 0);
   const crDays = Number(det.due_days || det.credit_days || 0);
+
+  const stats = db.prepare(`SELECT COALESCE(SUM(net), 0) AS total_val, COUNT(*) AS cnt
+    FROM bills WHERE party_id=? AND type IN (${pur ? `'PURCHASE'` : `'SALE','COUNTER_SALE'`})`).get(id) as { total_val: number; cnt: number };
+  const totalVal = Number(stats.total_val || 0);
+  const avgPM = Math.round(totalVal / 12);
+  const avgPW = Math.round(totalVal / 52);
+  const avgPD = Math.round(totalVal / 365);
+  const turnoverRatio = l.balance ? (totalVal / Math.max(1, Math.abs(l.balance))).toFixed(2) : (totalVal > 0 ? '1.00' : '0.00');
+  const avgCollDays = bills.length ? Math.round(bills.reduce((s, b) => s + b.days, 0) / bills.length) : 0;
+  const maxDays = bills.length ? Math.max(...bills.map((b) => b.days)) : 0;
+
   return {
     name: l.name, phone: l.phone ?? '', balance: r2(l.balance),
     mobile: mob, payid: mob ? `${mob},` : '',
     type_desc: det.ledger_category ? `${det.ledger_category} - Indicate` : 'Manual-Only Indicate',
+    is_supplier: isSupplier,
     credit_limit: crLimit,
     credit_limit_bills: crBills,
     credit_days: crDays,
-    bills: bills.length, days: bills.length ? bills[0].days : 0,
+    turnover_ratio: turnoverRatio,
+    avg_pm: avgPM,
+    avg_pw: avgPW,
+    avg_pd: avgPD,
+    avg_coll_days: avgCollDays,
+    bills: bills.length, days: maxDays,
     last_sale: lastSale ? { ...lastSale, days: daysSince(lastSale.date) } : null,
     last_receipt: receipts[0] ? { ...receipts[0], days: daysSince(receipts[0].date) } : null,
     receipts: receipts.map((r) => ({ ...r, days: daysSince(r.date) })),

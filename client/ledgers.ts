@@ -307,7 +307,8 @@ export async function allLedgers() {
     if (!a) { panel.innerHTML = ''; return; }
     setTimeout(() => {   // only fetch for the line the cursor stops on
       if (seq !== statusSeq) return;
-      api<Status>(`/ledgers/${a.id}/status`).then((s) => { if (seq === statusSeq) panel.innerHTML = statusHtml(s); }).catch(() => {});
+      const isSupp = a.group_name === 'Sundry Creditors';
+      api<Status>(`/ledgers/${a.id}/status?kind=${isSupp ? 'PURCHASE' : 'SALE'}`).then((s) => { if (seq === statusSeq) panel.innerHTML = statusHtml(s, isSupp); }).catch(() => {});
     }, 150);
   }
 
@@ -547,7 +548,8 @@ export async function ledgerAlteration(group?: string, mode: 'modify' | 'delete'
     if (!a) { panel.innerHTML = ''; return; }
     setTimeout(() => {
       if (seq !== statusSeq) return;
-      api<Status>(`/ledgers/${a.id}/status`).then((s) => { if (seq === statusSeq) panel.innerHTML = statusHtml(s); }).catch(() => {});
+      const isSupp = a.group_name === 'Sundry Creditors';
+      api<Status>(`/ledgers/${a.id}/status?kind=${isSupp ? 'PURCHASE' : 'SALE'}`).then((s) => { if (seq === statusSeq) panel.innerHTML = statusHtml(s, isSupp); }).catch(() => {});
     }, 150);
   }
 
