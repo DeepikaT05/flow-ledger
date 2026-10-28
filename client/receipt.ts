@@ -370,10 +370,12 @@ interface Line { side: Side; ledger: Ledger | null; amount: number; adj: Adj[]; 
 // ------------------------------------------------------------------ printed voucher
 interface Saved { type: VType; no: string; date: string; lines: Line[]; amount: number; narration: string }
 function voucherHtml(c: any, v: Saved, o: PrintOpts) {
-  const party = v.lines[0].ledger!, other = v.lines[1]?.ledger;
+  const party = v.lines[0].ledger!;
+  const otherLines = v.lines.slice(1).filter((l) => l.ledger && l.amount > 0);
+  const otherDesc = otherLines.map((l) => `${l.ledger!.name} (${money(l.amount)})`).join(', ') || (v.lines[1]?.ledger?.name ?? 'Cash');
   const P = `<b>${esc(party.name.toUpperCase())}</b>${party.city ? `, ${esc(party.city)}` : ''}`;
   const words = `<b>${esc(inWords(v.amount))}</b>`;
-  const O = `<b>${esc((other?.name ?? '').toUpperCase())}</b>`;
+  const O = `<b>${esc(otherDesc.toUpperCase())}</b>`;
   const body = {
     RECEIPT: `Received with thanks from ${P} the sum of Rupees ${words} by ${O}.`,
     PAYMENT: `Paid to ${P} the sum of Rupees ${words} by ${O}.`,
@@ -387,7 +389,7 @@ function voucherHtml(c: any, v: Saved, o: PrintOpts) {
     <hr><h3 style="text-align:center;margin:4px 0;letter-spacing:3px">${CFG[v.type].title.replace(' VOUCHER', '')}</h3>
     <div style="display:flex;justify-content:space-between"><div>No. : <b>${esc(v.no)}</b></div><div>Date : <b>${dmy(v.date)}</b></div></div>
     <p style="line-height:1.8">${body}</p>
-    ${o.heads || v.type === 'JOURNAL' ? `<table class="grid"><tr><th></th><th>Account</th><th class="n">Debit</th><th class="n">Credit</th></tr>
+    ${o.heads || v.type === 'JOURNAL' || v.lines.length > 2 ? `<table class="grid"><tr><th></th><th>Account</th><th class="n">Debit</th><th class="n">Credit</th></tr>
       ${v.lines.map((l) => `<tr><td>${l.side}</td><td>${esc(l.ledger!.name)}</td><td class="n">${l.side === 'Dr' ? money(l.amount) : ''}</td>
         <td class="n">${l.side === 'Cr' ? money(l.amount) : ''}</td></tr>`).join('')}</table>` : ''}
     ${o.bills && billRows.length ? `<div style="margin-top:8px"><b>Bill Details</b></div><table class="grid">
@@ -458,14 +460,11 @@ export async function receiptEntry(type: VType = 'RECEIPT') {
     : lines[0].ledger ? lines[0] : undefined);
 
   function renderLines() {
-    if (!journal) lines[1].amount = lines[0].amount;   // the other side always carries the party's amount
     const box = screen.querySelector('.rv-lines')!;
     box.innerHTML = lines.map((l, i) => {
-      // Single-entry vouchers show the second line only once the amount is in, as in MARG.
+      // Single-entry vouchers show subsequent lines only once the party amount is in, as in MARG.
       if (!journal && (i === 0 ? !l.ledger : !lines[0].amount)) return '';
-      const amtIn = journal || i === 0;
-      const amt = amtIn ? (l.ledger ? `<span><input class="amt" data-l="a${i}" value="${l.amount ? f2(l.amount) : ''}" autocomplete="off"></span>` : '<span></span>')
-        : `<span class="n">${l.amount ? f2(l.amount) : ''}</span>`;
+      const amt = l.ledger ? `<span><input class="amt" data-l="a${i}" value="${l.amount ? f2(l.amount) : ''}" autocomplete="off"></span>` : '<span></span>';
       const nm = `<input data-l="n${i}" value="${esc(l.ledger?.name.toUpperCase() ?? '')}" readonly>`;
       const side = journal ? `<input class="side" data-l="s${i}" value="${l.side}" readonly>` : l.side;
       return `<div class="ln"><span>${side}</span><span class="nm">${nm}</span><span class="bal">${l.ledger ? drcr(l.ledger.balance) : ''}</span>
@@ -507,9 +506,9 @@ export async function receiptEntry(type: VType = 'RECEIPT') {
         else focusL(journal && !ln.ledger ? `s${i}` : `n${i}`);
         return;
       }
-      if (!journal && i === 1 && lines[0].ledger?.id === l.id) {
+      if (!journal && i >= 1 && lines[0].ledger?.id === l.id) {
         toast(`Debit and Credit cannot be the same ledger (${l.name}). Choose a different account.`, true);
-        focusL('n1');
+        focusL(`n${i}`);
         return;
       }
       if ((type === 'RECEIPT' || type === 'PAYMENT') && i === 0 && modes.some((m) => m.id === l.id)) {
@@ -520,6 +519,12 @@ export async function receiptEntry(type: VType = 'RECEIPT') {
       ln.ledger = l;
       ln.adj = [];
       if (!journal && i === 0 && !ln.amount) ln.amount = 0;
+      if (!journal && i >= 1 && !ln.amount) {
+        const partyTotal = total(cfg.first);
+        const balTotalSoFar = real().filter((x, idx) => idx !== i && x.side === flip(cfg.first)).reduce((s, x) => s + x.amount, 0);
+        const rem = r2(partyTotal - balTotalSoFar);
+        if (rem > 0) ln.amount = rem;
+      }
       dirty = true;
       await loadPending(ln);
       // If line 0 is selected and matches line 1, switch line 1 to another mode or clear it
@@ -528,7 +533,7 @@ export async function receiptEntry(type: VType = 'RECEIPT') {
       }
       renderLines();
       renderStatus().catch(() => {});
-      focusL(journal || i === 0 ? `a${i}` : `n${i}`);
+      focusL(`a${i}`);
     } finally { busy = false; }
   }
 
@@ -546,15 +551,54 @@ export async function receiptEntry(type: VType = 'RECEIPT') {
     } finally { busy = false; }
     autoNarr();
     if (!journal) {
-      if (lines[1]?.ledger?.id === lines[0]?.ledger?.id) {
-        lines[1].ledger = modes.find((m) => m.id !== lines[0].ledger!.id) ?? null;
+      if (i === 0) {
+        if (lines.length < 2) {
+          lines.push({ ...blank(flip(cfg.first)), ledger: defOther(), amount: v });
+        } else if (lines.length === 2 && (!lines[1].amount || lines[1].amount === ln.amount)) {
+          lines[1].amount = v;
+        }
+        if (lines[1]?.ledger?.id === lines[0]?.ledger?.id) {
+          lines[1].ledger = modes.find((m) => m.id !== lines[0].ledger!.id) ?? null;
+        }
+        renderLines();
+        if (!lines[1].ledger) ledgerStep(1);
+        else focusL('n1');
+        return;
+      }
+      // i >= 1: user entered amount on a debit / balancing line
+      const partySide = cfg.first;
+      const balSide = flip(cfg.first);
+      const partyAmt = total(partySide);
+      const balAmt = total(balSide);
+      const remaining = r2(partyAmt - balAmt);
+
+      if (remaining > 0.004) {
+        // Difference still remains! Create next line for multiple ledgers (e.g. Cash Discount)
+        if (lines.length <= i + 1) {
+          lines.push(blank(balSide, remaining));
+        } else {
+          lines[i + 1].side = balSide;
+          if (!lines[i + 1].amount) lines[i + 1].amount = remaining;
+        }
+        renderLines();
+        if (!lines[i + 1].ledger) {
+          ledgerStep(i + 1);
+        } else {
+          focusL(`n${i + 1}`);
+        }
+        return;
+      }
+      if (remaining < -0.004) {
+        toast(`Total ${balSide} (${f2(balAmt)}) exceeds ${partySide} (${f2(partyAmt)}) by ${f2(-remaining)}`, true);
+        focusL(`a${i}`);
+        return;
+      }
+      // exactly balanced (remaining == 0)
+      while (lines.length > i + 1 && !lines[lines.length - 1].ledger) {
+        lines.pop();
       }
       renderLines();
-      if (!lines[1].ledger) {
-        ledgerStep(1);
-      } else {
-        focusL('n1');
-      }
+      narrI.focus();
       return;
     }
     // Journal: the next line takes the opposite side and the difference.
@@ -586,15 +630,15 @@ export async function receiptEntry(type: VType = 'RECEIPT') {
       if (real().length < 2 || !dr) { toast('Enter at least one debit and one credit', true); return; }
       if (dr !== cr) { toast(`Debit (${f2(dr)}) and Credit (${f2(cr)}) do not match`, true); return; }
     } else {
-      if (!lines[0].ledger || !lines[0].amount || !lines[1].ledger) {
-        if (!lines[0].ledger) { toast('Select the party (Credit) first', true); focusL('n0'); return; }
+      if (!lines[0].ledger || !lines[0].amount) {
+        if (!lines[0].ledger) { toast('Select the party first', true); focusL('n0'); return; }
         if (!lines[0].amount) { toast('Enter the amount', true); focusL('a0'); return; }
-        if (!lines[1].ledger) { toast('Select the debit ledger (Cash / Bank)', true); ledgerStep(1); return; }
         return;
       }
-      if (lines[0].ledger.id === lines[1].ledger.id) {
-        toast(`Debit and Credit cannot both be ${lines[0].ledger.name}. In ${cfg.label}, Line 1 is the Party (e.g. RAM) and Line 2 is Cash/Bank.`, true);
-        ledgerStep(0);
+      const dr = total('Dr'), cr = total('Cr');
+      if (dr !== cr) {
+        toast(`Debit (${f2(dr)}) and Credit (${f2(cr)}) do not match. Difference: ${f2(Math.abs(dr - cr))}`, true);
+        focusL(`a${lines.length - 1}`);
         return;
       }
     }
@@ -706,29 +750,21 @@ export async function receiptEntry(type: VType = 'RECEIPT') {
       }
       if (f === 'n') {
         if (k === 'Enter') {
-          if (!ln.ledger || (!journal && i === 1 && lines[0].ledger?.id === ln.ledger.id)) {
+          if (!ln.ledger || (!journal && i >= 1 && lines[0].ledger?.id === ln.ledger.id)) {
             ledgerStep(i);
             return true;
           }
-          if (journal) {
-            focusL(`a${i}`);
-          } else if (i === 0) {
-            focusL('a0');
-          } else {
-            narrI.focus();
-          }
+          focusL(`a${i}`);
           return true;
         }
         if (k === 'ArrowUp') {
           if (journal) focusL(`s${i}`);
-          else if (i === 1) focusL('a0');
+          else if (i > 0) focusL(`a${i - 1}`);
           else { dateI.focus(); dateI.select(); }
           return true;
         }
         if (k === 'ArrowDown') {
-          if (journal) focusL(`a${i}`);
-          else if (i === 0) focusL('a0');
-          else narrI.focus();
+          focusL(`a${i}`);
           return true;
         }
         if (k === 'F3' || k === 'Space') { ledgerStep(i); return true; }
@@ -739,19 +775,20 @@ export async function receiptEntry(type: VType = 'RECEIPT') {
         if (k === 'ArrowUp' || k === 'Shift+Tab') { focusL(`n${i}`); return true; }
         if (k === 'ArrowDown') {
           if (journal) focusL(`s${i + 1}`);
-          else if (lines[1]?.ledger) focusL('n1');
-          else ledgerStep(1);
+          else if (i < lines.length - 1 && lines[i + 1]?.ledger) focusL(`n${i + 1}`);
+          else if (total('Dr') === total('Cr')) narrI.focus();
+          else if (i < lines.length - 1) focusL(`n${i + 1}`);
           return true;
         }
       }
-      if (journal && (k === 'Ctrl+Delete' || k === 'Shift+Delete') && lines.length > 1) {
+      if ((k === 'Ctrl+Delete' || k === 'Shift+Delete') && lines.length > (journal ? 1 : 2) && i > 0) {
         lines.splice(i, 1); dirty = true; renderLines(); renderStatus().catch(() => {});
-        focusL(`s${Math.min(i, lines.length - 1)}`); return true;
+        focusL(journal ? `s${Math.min(i, lines.length - 1)}` : `n${Math.min(i, lines.length - 1)}`); return true;
       }
     }
     if (t === narrI) {
       if (k === 'Enter') { finishStep(); return true; }
-      if (k === 'ArrowUp') { focusL(journal ? `a${lines.length - 1}` : 'n1'); return true; }
+      if (k === 'ArrowUp') { focusL(`a${lines.length - 1}`); return true; }
     }
     return false;
   };
