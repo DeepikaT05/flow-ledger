@@ -227,40 +227,123 @@ async function pickProduct(initial: string): Promise<Item | null> {
 }
 
 /** Returned by pickBatch when the user asks for a new batch (F2), or the item has none yet on a purchase. */
-const NEW_BATCH = { id: -1 } as Batch;
+const NEW_BATCH = { id: -1, batch: '< NEW BATCH >' } as Batch;
+
+async function promptNewBatch(it: Item, defaultBatch = '', isPur = true): Promise<{ batch: string; expiry: string; mrp: number; rate: number } | null> {
+  const cleanDefault = defaultBatch.includes('< NEW BATCH >') ? '' : defaultBatch;
+  const batch = await margAsk('Batch', cleanDefault);
+  if (batch == null || !batch.trim()) return null;
+  let expiry = '';
+  for (;;) {
+    const e = await margAsk('Expiry (MM/YY)', '');
+    if (e == null) return null;
+    if (!e) break;
+    const parsed = parseExpiry(e);
+    if (parsed) { expiry = parsed; break; }
+    toast('Enter the expiry as MM/YY or MMYY, e.g. 03/27 or 0327', true);
+  }
+  const mrpS = await margAsk(isPur ? 'M.R.P.' : 'MRP for Search', f2(it.mrp));
+  if (mrpS == null) return null;
+  const pRateS = isPur ? await margAsk('Purchase Rate', f2(it.purchase_rate ?? 0)) : null;
+  const pRate = pRateS != null ? (Number(pRateS) || it.purchase_rate || 0) : (it.purchase_rate ?? 0);
+  return {
+    batch: batch.trim().toUpperCase(),
+    expiry,
+    mrp: Number(mrpS) || it.mrp,
+    rate: pRate,
+  };
+}
+
 /** BATCH window for the chosen item. `allowNew`: purchase-side entries, where new batches come in (F2-New Batch). */
 async function pickBatch(item: Item, allowNew = false): Promise<Batch | null> {
   const rows = await api<Batch[]>(`/items/${item.id}/batches`);
   const total = rows.reduce((s, b) => s + b.stock, 0);
-  if (!rows.length) {
-    if (allowNew) return NEW_BATCH;
+  if (!rows.length && !allowNew) {
     toast('No batch found — purchase this item first (Purchase → Batch)', true);
     return null;
   }
+  if (!rows.length && allowNew) {
+    return NEW_BATCH;
+  }
+  const newRow: Batch = {
+    id: -1,
+    item_id: item.id,
+    item_name: item.name,
+    batch: '< NEW BATCH >',
+    stock: 0,
+    unit: item.unit ?? '',
+    rate: item.sale_rate ?? 0,
+    f_rate: item.sale_rate ?? 0,
+    mrp: item.mrp ?? 0,
+    expiry: '',
+    purchase_rate: item.purchase_rate ?? 0,
+    supplier: '',
+    invoice_no: '',
+    invoice_date: '',
+    pack: item.pack ?? '',
+    gst_rate: item.gst_rate ?? 0,
+    company: item.company ?? '',
+    hsn: item.hsn ?? '',
+  };
+  const listRows: Batch[] = allowNew ? [newRow, ...rows] : rows;
   return popList<Batch>({
-    onKey: (k, _cur, pop) => { if (allowNew && (k === 'F2' || k === 'Insert')) { pop.close(NEW_BATCH); return true; } },
-    title: `${item.name.toUpperCase()} ${item.pack ?? ''}`, rows, search: (r) => r.batch, width: '1020px',
-    findLabel: 'Find ? >>', extra: `Total : ${total}`, detailCols: 3,
+    onKey: (k, _cur, pop) => {
+      if (allowNew && (k === 'F2' || k === 'Insert')) {
+        pop.close(NEW_BATCH);
+        return true;
+      }
+    },
+    onEnterNotFound: (typed, pop) => {
+      if (allowNew && typed) {
+        pop.close({ id: -1, batch: typed.toUpperCase() } as Batch);
+        return true;
+      }
+    },
+    title: `${item.name.toUpperCase()} ${item.pack ?? ''}`,
+    rows: listRows,
+    search: (r) => (r.id === -1 ? '' : r.batch),
+    width: '1020px',
+    findLabel: allowNew ? 'Batch ? >>' : 'Find ? >>',
+    extra: `Total : ${total}`,
+    extraHtml: allowNew
+      ? `Total : ${total} &nbsp; <button type="button" data-pop-action="new" style="background:#006633;color:#fff;border:1px solid #fff;padding:2px 10px;font-weight:bold;cursor:pointer;border-radius:2px;font-size:11px;">+ NEW BATCH (F2)</button>`
+      : undefined,
+    detailCols: 3,
+    rowCls: (r) => (r.id === -1 ? 'row-new-batch' : ''),
     cols: [
-      { title: 'BATCH', get: (r) => r.batch, width: '22%' },
-      { title: 'STOCK', get: (r) => r.stock, num: true, width: '10%' },
+      {
+        title: 'BATCH',
+        get: (r) => (r.id === -1 ? '✦ < NEW BATCH >' : r.batch),
+        cls: (r) => (r.id === -1 ? 'batch-new-cell' : ''),
+        width: '22%',
+      },
+      { title: 'STOCK', get: (r) => (r.id === -1 ? '-' : r.stock), num: true, width: '10%' },
       { title: 'UNIT', get: (r) => r.unit, width: '10%' },
-      { title: 'RATE-A', get: (r) => f2(r.rate), num: true, width: '14%' },
-      { title: 'F.RATE', get: (r) => f2(r.f_rate), num: true, width: '14%' },
-      { title: 'M.R.P.', get: (r) => f2(r.mrp), num: true, width: '14%' },
-      { title: 'EXP.', get: (r) => expShort(r.expiry), width: '10%' },
+      { title: 'RATE-A', get: (r) => (r.id === -1 ? '-' : f2(r.rate)), num: true, width: '14%' },
+      { title: 'F.RATE', get: (r) => (r.id === -1 ? '-' : f2(r.f_rate)), num: true, width: '14%' },
+      { title: 'M.R.P.', get: (r) => (r.id === -1 ? '-' : f2(r.mrp)), num: true, width: '14%' },
+      { title: 'EXP.', get: (r) => (r.id === -1 ? '-' : expShort(r.expiry)), width: '10%' },
     ],
-    detail: (r) => !r ? '' : `
-      <div>PurRate: <b>${c2(r.purchase_rate)}</b></div><div>M.R.P. &nbsp;: <b>${f2(r.mrp)}</b></div><div>Supp. &nbsp;: <b>${esc(r.supplier ?? '')}</b></div>
-      <div>Cost &nbsp;&nbsp;: <b>${c2(r.purchase_rate)}</b></div><div>Rate &nbsp;&nbsp;: <b>${f2(r.rate)}</b></div>
-      <div>Invoice: <b>${esc(r.invoice_no ?? '')}</b> &nbsp; Hold: 0</div>
-      <div>Margin%: <b>${margin(r.rate, r.purchase_rate)}</b></div>
-      <div>Tax-T-I: <b>${f2(r.gst_rate)}</b></div>
-      <div>Date &nbsp;&nbsp;: <b>${dmy(r.invoice_date ?? '')}</b> &nbsp; Days: ${r.invoice_date ? Math.max(0, Math.round((Date.now() - new Date(r.invoice_date).getTime()) / 864e5)) : 0}</div>
-      <div>W/oDeal: <b>${c2(r.purchase_rate)}</b></div><div>F.Rate&nbsp;: <b>${f2(r.f_rate)}</b></div><div>Packin&nbsp;: <b>${esc(r.pack ?? '')}</b></div>
-      <div>PurDeal:</div><div>Deal[F]:</div><div>Conv. &nbsp;: 0</div>
-      <div>PurDisc:</div><div>Scheme&nbsp;: 0</div><div>Barcode:</div>`,
-    foot: (allowNew ? '<span><b>F2</b>-New Batch</span>' : '') + '<span><b>F3</b>-Edit</span><span><b>F5</b>-Register</span><span><b>Ins</b>-Balance</span><span><b>F10</b>-All</span><span><b>Alt+~</b>-Rates</span>',
+    detail: (r) => {
+      if (!r) return '';
+      if (r.id === -1) {
+        return `<div style="grid-column:1/-1;padding:8px 12px;color:#007a3d;font-size:13px;font-weight:bold;background:#eefbf2;border:1px dashed #007a3d;">
+          ✦ Press Enter or F2 to create a brand new batch for ${esc(item.name.toUpperCase())}. You will be prompted for Batch No., Expiry (MM/YY), M.R.P., and Purchase Rate.
+        </div>`;
+      }
+      return `
+        <div>PurRate: <b>${c2(r.purchase_rate)}</b></div><div>M.R.P. &nbsp;: <b>${f2(r.mrp)}</b></div><div>Supp. &nbsp;: <b>${esc(r.supplier ?? '')}</b></div>
+        <div>Cost &nbsp;&nbsp;: <b>${c2(r.purchase_rate)}</b></div><div>Rate &nbsp;&nbsp;: <b>${f2(r.rate)}</b></div>
+        <div>Invoice: <b>${esc(r.invoice_no ?? '')}</b> &nbsp; Hold: 0</div>
+        <div>Margin%: <b>${margin(r.rate, r.purchase_rate)}</b></div>
+        <div>Tax-T-I: <b>${f2(r.gst_rate)}</b></div>
+        <div>Date &nbsp;&nbsp;: <b>${dmy(r.invoice_date ?? '')}</b> &nbsp; Days: ${r.invoice_date ? Math.max(0, Math.round((Date.now() - new Date(r.invoice_date).getTime()) / 864e5)) : 0}</div>
+        <div>W/oDeal: <b>${c2(r.purchase_rate)}</b></div><div>F.Rate&nbsp;: <b>${f2(r.f_rate)}</b></div><div>Packin&nbsp;: <b>${esc(r.pack ?? '')}</b></div>
+        <div>PurDeal:</div><div>Deal[F]:</div><div>Conv. &nbsp;: 0</div>
+        <div>PurDisc:</div><div>Scheme&nbsp;: 0</div><div>Barcode:</div>`;
+    },
+    foot: (allowNew ? '<span data-pop-action="new" style="background:#006633;color:#fff;padding:1px 6px;cursor:pointer;border-radius:2px;"><b>F2</b>-New Batch</span>' : '') +
+      '<span><b>F3</b>-Edit</span><span><b>F5</b>-Register</span><span><b>Ins</b>-Balance</span><span><b>F10</b>-All</span><span><b>Alt+~</b>-Rates</span>',
   });
 }
 
@@ -544,27 +627,17 @@ export async function saleEntry(type = 'SALE', billId?: number) {
         return;
       }
       const b = inward ? await pickBatch(it, true) : await chooseBatch(it, style);
-      if (b === NEW_BATCH) {
-        // New batch (as in MARG): Batch, Expiry (MM/YY), then M.R.P.
-        const batch = await margAsk('Batch', '');
-        if (batch == null || !batch) { focusCell(rowIdx, 'name'); return; }
-        let expiry = '';
-        for (;;) {
-          const e = await margAsk('Expiry (MM/YY)', '');
-          if (e == null) { focusCell(rowIdx, 'name'); return; }
-          if (!e) break;
-          const parsed = parseExpiry(e);
-          if (parsed) { expiry = parsed; break; }
-          toast('Enter the expiry as MM/YY or MMYY, e.g. 03/27 or 0327', true);
-        }
-        const mrpS = await margAsk(isPurchase(type) ? 'M.R.P.' : 'MRP for Search', f2(it.mrp));
-        if (mrpS == null) { focusCell(rowIdx, 'name'); return; }
+      if (b === NEW_BATCH || b?.id === -1) {
+        const nb = await promptNewBatch(it, b?.batch || '', isPurchase(type));
+        if (!nb) { focusCell(rowIdx, 'name'); return; }
         rows[rowIdx] = {
-          item_id: it.id, name: it.name.toUpperCase(), pack: (it.pack ?? '').toUpperCase(), batch: batch.toUpperCase(), expiry,
-          qty: 1, free: 0, rate: isPurchase(type) ? (it.purchase_rate ?? 0) : netRate(it.sale_rate, it.gst_rate), disc: 0, gst: it.gst_rate, mrp: Number(mrpS) || it.mrp, unit: it.unit,
+          item_id: it.id, name: it.name.toUpperCase(), pack: (it.pack ?? '').toUpperCase(), batch: nb.batch, expiry: nb.expiry,
+          qty: 1, free: 0, rate: isPurchase(type) ? nb.rate : netRate(it.sale_rate, it.gst_rate), disc: 0, gst: it.gst_rate, mrp: nb.mrp, unit: it.unit,
+          cost: nb.rate,
         };
+        delete rows[rowIdx].batch_id;
         dirty = true; renderRows();
-        if (isPurchase(type) && !expiry) focusCell(rowIdx, 'expiry');
+        if (isPurchase(type) && !nb.expiry) focusCell(rowIdx, 'expiry');
         else focusCell(rowIdx, 'qty');
         return;
       }
@@ -938,8 +1011,12 @@ export async function saleEntry(type = 'SALE', billId?: number) {
       return;
     }
     if (c === 'batch') {
-      r.batch = t.value.trim().toUpperCase();
-      dirty = true;
+      const val = t.value.trim().toUpperCase();
+      if (r.batch !== val) {
+        r.batch = val;
+        delete r.batch_id;
+        dirty = true;
+      }
       return;
     }
     (r as any)[c] = Number(t.value || 0);
@@ -984,13 +1061,42 @@ export async function saleEntry(type = 'SALE', billId?: number) {
 
   w.onKey = (e, k) => {
     const t = e.target as HTMLInputElement;
+    const ri = Number(t.dataset?.r ?? -1);
+    const c = t.dataset?.c;
+
     if (k === 'F8') { billAdjustmentsWindow('cd'); return true; }
     if (k === 'F9') { billAdjustmentsWindow('freight'); return true; }
     if (k === 'Ctrl+D' || k === 'Alt+D') { billAdjustmentsWindow('cd'); return true; }
     if (k === 'Ctrl+R') { billAdjustmentsWindow('round'); return true; }
     // End from the product grid too: "all items done → End → MODE OF PAYMENT".
     if (k === 'Ctrl+W' || (k === 'F10' && !(refEntry && t === pnoI)) || k === 'End') { finishBill(); return true; }
-    if (k === 'F2') { saleEntry(type); return true; }
+
+    // F2 or Insert: in purchase grid on a product row -> Create / Enter New Batch!
+    if (k === 'F2' || k === 'Insert') {
+      if (isPurchase(type) && ri >= 0 && rows[ri]?.item_id) {
+        api<Item>(`/items/${rows[ri].item_id}`).then(async (it) => {
+          if (!it) return;
+          const nb = await promptNewBatch(it, rows[ri].batch || '', true);
+          if (nb) {
+            rows[ri].batch = nb.batch;
+            rows[ri].expiry = nb.expiry;
+            rows[ri].mrp = nb.mrp;
+            rows[ri].rate = nb.rate;
+            rows[ri].cost = nb.rate;
+            delete rows[ri].batch_id;
+            dirty = true;
+            renderRows();
+            focusCell(ri, 'qty');
+          }
+        });
+        return true;
+      }
+      if (ri < 0 || !rows[ri]?.item_id) {
+        saleEntry(type);
+        return true;
+      }
+    }
+
     if (k === 'Alt+F10' && !seeCost()) { toast(`Access denied — role ${session()?.role ?? ''} cannot see profit`, true); return true; }
     if (k === 'Alt+F10') {
       const p = totals().live.reduce((s, r) => s + calc(r).taxable - r.qty * (r.cost ?? 0), 0);
@@ -1017,8 +1123,6 @@ export async function saleEntry(type = 'SALE', billId?: number) {
     if (t === mrI && k === 'Enter') { pickMR().then((m) => { if (m) { mr = m; mrI.value = m.name; } focusCell(0, 'name'); }); return true; }
 
     // grid
-    const ri = Number(t.dataset?.r ?? -1);
-    const c = t.dataset?.c;
     if (c) {
       const ci = GRID_COLS.findIndex((x) => x.key === c);
       if (c === 'name') {
@@ -1040,6 +1144,18 @@ export async function saleEntry(type = 'SALE', billId?: number) {
         if (k.length === 1 && !e.ctrlKey && !e.altKey) { productStep(ri, k); return true; }
       }
       if (k === 'Enter' || k === 'Tab') {
+        if (c === 'batch') {
+          const val = t.value.trim().toUpperCase();
+          if (rows[ri].batch !== val) {
+            rows[ri].batch = val;
+            delete rows[ri].batch_id;
+            dirty = true;
+          }
+          if (!rows[ri].expiry) {
+            focusCell(ri, 'expiry');
+            return true;
+          }
+        }
         if (c === 'expiry') {
           const parsed = parseExpiry(t.value);
           if (parsed) {

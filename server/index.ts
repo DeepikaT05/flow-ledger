@@ -600,28 +600,44 @@ function saveBill(body: BillIn, id?: number) {
     if (IN_TYPES.includes(`'${body.type}'`)) {
       const supplier = (db.prepare('SELECT name FROM ledgers WHERE id=?').get(body.party_id) as { name: string } | undefined)?.name ?? '';
       const findB = db.prepare('SELECT id FROM batches WHERE item_id=? AND batch=? COLLATE NOCASE AND ABS(mrp-?)<0.005');
+      const findBByName = db.prepare('SELECT id FROM batches WHERE item_id=? AND batch=? COLLATE NOCASE');
       const insB = db.prepare(`INSERT INTO batches (item_id,batch,expiry,mrp,rate,f_rate,purchase_rate,opening_qty,supplier,invoice_no,invoice_date)
         VALUES (?,?,?,?,?,?,?,0,?,?,?)`);
       for (const l of c.lines) {
         const batch = String(l.batch ?? '').trim().toUpperCase();
-        if (l.batch_id || !batch) {
-          if (l.batch_id && l.expiry) {
+        if (!batch) continue;
+
+        // Verify if provided batch_id actually matches the line's batch name
+        if (l.batch_id) {
+          const ex = db.prepare('SELECT id, batch FROM batches WHERE id=?').get(l.batch_id) as { id: number; batch: string } | undefined;
+          if (!ex || ex.batch.trim().toUpperCase() !== batch) {
+            // User modified or entered a new batch name! Clear batch_id so it doesn't get assigned to old batch
+            l.batch_id = undefined;
+          }
+        }
+
+        if (!l.batch_id) {
+          const found = (num(l.mrp) > 0 ? findB.get(l.item_id, batch, num(l.mrp)) : findBByName.get(l.item_id, batch)) as { id: number } | undefined;
+          if (found) {
+            l.batch_id = found.id;
+          } else {
+            const it = db.prepare('SELECT sale_rate, purchase_rate FROM items WHERE id=?').get(l.item_id) as { sale_rate: number; purchase_rate: number } | undefined;
+            const sale = num(it?.sale_rate);
+            const pRate = body.type === 'SALE_RETURN' ? 0 : (l.rate || num(it?.purchase_rate));
+            l.batch_id = Number(insB.run(l.item_id, batch, l.expiry ?? '', num(l.mrp), sale, sale, pRate,
+              supplier, body.type === 'SALE_RETURN' ? '' : (body.ref_no || no), body.date).lastInsertRowid);
+          }
+        }
+
+        // Update expiry and latest purchase details
+        if (l.batch_id) {
+          if (l.expiry) {
             db.prepare("UPDATE batches SET expiry=? WHERE id=? AND (expiry IS NULL OR expiry='' OR expiry!=?)").run(l.expiry, l.batch_id, l.expiry);
           }
-          continue;
-        }
-        const found = findB.get(l.item_id, batch, num(l.mrp)) as { id: number } | undefined;
-        if (found) {
-          l.batch_id = found.id;
-          if (l.expiry) {
-            db.prepare("UPDATE batches SET expiry=? WHERE id=? AND (expiry IS NULL OR expiry='' OR expiry!=?)").run(l.expiry, found.id, l.expiry);
+          if (body.type === 'PURCHASE') {
+            db.prepare("UPDATE batches SET purchase_rate=?, invoice_no=?, invoice_date=?, supplier=? WHERE id=?").run(l.rate, body.ref_no || no, body.date, supplier, l.batch_id);
           }
-          continue;
         }
-        const it = db.prepare('SELECT sale_rate FROM items WHERE id=?').get(l.item_id) as { sale_rate: number } | undefined;
-        const sale = num(it?.sale_rate);
-        l.batch_id = Number(insB.run(l.item_id, batch, l.expiry ?? '', num(l.mrp), sale, sale, body.type === 'SALE_RETURN' ? 0 : l.rate,
-          supplier, body.type === 'SALE_RETURN' ? '' : (body.ref_no || no), body.date).lastInsertRowid);
       }
     }
     for (const l of c.lines) {

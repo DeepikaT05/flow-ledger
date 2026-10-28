@@ -62,9 +62,12 @@ export interface PopOpts<T> {
   height?: string;
   rowCls?: (r: T) => string;
   extra?: string;              // text shown next to the find box, e.g. "Total : 21"
+  extraHtml?: string;          // custom HTML next to find box (buttons, etc)
   initial?: string;            // text already typed by the user
   /** Extra keys. Return true when handled; return a row to select it. */
   onKey?: (k: string, cur: T | undefined, api: PopApi<T>) => boolean | void;
+  /** When Enter is pressed but no items match the filter */
+  onEnterNotFound?: (typed: string, api: PopApi<T>) => boolean | void;
   showHeader?: boolean;
 }
 export interface PopApi<T> { close: (v: T | null) => void; setRows: (rows: T[]) => void; refresh: () => void; current: () => T | undefined }
@@ -87,7 +90,10 @@ export function popList<T extends Record<string, any>>(o: PopOpts<T>): Promise<T
     const find = h('div', { class: 'marg-find' },
       `<span>${esc(o.findLabel ?? 'Find ? >>')}</span><span class="brk">[</span>`);
     const input = h('input', { autocomplete: 'off' });
-    find.append(input, h('span', { class: 'brk' }, ']'), h('span', { class: 'extra' }, o.extra ? esc(o.extra) : ''));
+    const extraEl = h('span', { class: 'extra' });
+    if (o.extraHtml) extraEl.innerHTML = o.extraHtml;
+    else if (o.extra) extraEl.textContent = o.extra;
+    find.append(input, h('span', { class: 'brk' }, ']'), extraEl);
     const detail = h('div', { class: `marg-detail cols${o.detailCols ?? 2}` });
     wrap.append(rowsBox, find, detail);
     if (!o.detail) detail.style.display = 'none';
@@ -130,18 +136,38 @@ export function popList<T extends Record<string, any>>(o: PopOpts<T>): Promise<T
       if (tr) { sel = Number(tr.dataset.i); render(); input.focus(); }
     });
     table.addEventListener('dblclick', () => current() && finish(current()));
+
+    // Support clicking on [data-pop-action] buttons in extraHtml or footer
+    const handleActionClick = (e: Event) => {
+      const btn = (e.target as HTMLElement).closest('[data-pop-action]') as HTMLElement | null;
+      if (btn) {
+        e.preventDefault();
+        e.stopPropagation();
+        const act = btn.dataset.popAction;
+        if (act === 'new') o.onKey?.('F2', current(), api);
+      }
+    };
+    wrap.addEventListener('click', handleActionClick);
+    w.el.querySelector('.win-foot')?.addEventListener('click', handleActionClick);
+
     if (o.initial) { input.value = o.initial; filter(); } else render();
     setTimeout(() => { input.focus(); input.select(); }, 0);
 
     w.onKey = (_e, k) => {
+      if (o.onKey?.(k, current(), api)) return true;
       const page = Math.max(1, Math.floor(rowsBox.clientHeight / 24) - 1);
       const step: Record<string, number> = { ArrowDown: 1, ArrowUp: -1, PageDown: page, PageUp: -page };
       if (k in step && view.length) { sel = Math.min(view.length - 1, Math.max(0, sel + step[k])); render(); return true; }
       if (k === 'Ctrl+Home') { sel = 0; render(); return true; }
       if (k === 'Ctrl+End') { sel = view.length - 1; render(); return true; }
-      if (k === 'Enter') { if (current()) finish(current()); return true; }
+      if (k === 'Enter') {
+        if (!view.length && input.value.trim() && o.onEnterNotFound) {
+          if (o.onEnterNotFound(input.value.trim(), api)) return true;
+        }
+        if (current()) finish(current());
+        return true;
+      }
       if (k === 'Escape') { finish(null); return true; }
-      if (o.onKey?.(k, current(), api)) return true;
       return false;
     };
   });

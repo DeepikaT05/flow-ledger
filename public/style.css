@@ -1777,6 +1777,8 @@ table.marg-grid tr.sel td input::placeholder { color: rgba(255, 255, 255, .78); 
 .marg-foot .info3 .kv.clickable { cursor: pointer; transition: background 0.15s; padding: 1px 3px; border-radius: 2px; }
 .marg-foot .info3 .kv.clickable:hover { background: #ffe082; color: #000; }
 
-
-
-
+/* New Batch indicator in Batch Selection list */
+.batch-new-cell { color: #007a3d !important; font-weight: bold !important; letter-spacing: 0.5px; }
+tr.sel .batch-new-cell { color: #ffff00 !important; }
+tr.row-new-batch { background: #eefbf2 !important; border-bottom: 1px dashed #7bc299 !important; }
+tr.row-new-batch.sel { background: #005a2e !important; color: #ffffff !important; }
