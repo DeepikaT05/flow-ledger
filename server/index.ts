@@ -670,14 +670,28 @@ app.post('/api/salesmen', h((req) => {
 }));
 
 const BATCH_STOCK = `
-  SELECT b.*, i.name AS item_name, i.unit, i.pack, i.gst_rate, i.company, i.hsn,
+  SELECT b.id, b.item_id, b.batch, b.expiry, b.mrp, b.rate, b.f_rate, b.purchase_rate,
+    b.opening_qty, b.supplier, b.invoice_no, b.invoice_date,
+    i.name AS item_name, i.unit, i.pack, i.gst_rate, i.company, i.hsn,
     b.opening_qty
     + COALESCE((SELECT SUM(bi.qty+bi.free) FROM bill_items bi JOIN bills bl ON bl.id=bi.bill_id
                 WHERE bi.batch_id=b.id AND bl.type IN (${IN_TYPES})),0)
     - COALESCE((SELECT SUM(bi.qty+bi.free) FROM bill_items bi JOIN bills bl ON bl.id=bi.bill_id
                 WHERE bi.batch_id=b.id AND bl.type IN (${OUT_TYPES})),0) AS stock
-  FROM batches b JOIN items i ON i.id=b.item_id`;
-app.get('/api/items/:id/batches', h((req) => db.prepare(`${BATCH_STOCK} WHERE b.item_id=? ORDER BY b.expiry, b.batch`).all(req.params.id)));
+  FROM batches b JOIN items i ON i.id=b.item_id
+  UNION ALL
+  SELECT 0 AS id, i.id AS item_id, COALESCE(NULLIF(i.batch,''), 'OPENING') AS batch,
+    i.expiry, i.mrp, i.sale_rate AS rate, i.sale_rate AS f_rate, i.purchase_rate,
+    i.opening_stock AS opening_qty, 'OPENING BALANCE' AS supplier, '' AS invoice_no, '' AS invoice_date,
+    i.name AS item_name, i.unit, i.pack, i.gst_rate, i.company, i.hsn,
+    i.opening_stock
+    + COALESCE((SELECT SUM(bi.qty+bi.free) FROM bill_items bi JOIN bills bl ON bl.id=bi.bill_id
+                WHERE bi.item_id=i.id AND (bi.batch_id IS NULL OR bi.batch_id=0) AND bl.type IN (${IN_TYPES})),0)
+    - COALESCE((SELECT SUM(bi.qty+bi.free) FROM bill_items bi JOIN bills bl ON bl.id=bi.bill_id
+                WHERE bi.item_id=i.id AND (bi.batch_id IS NULL OR bi.batch_id=0) AND bl.type IN (${OUT_TYPES})),0) AS stock
+  FROM items i
+  WHERE NOT EXISTS (SELECT 1 FROM batches b WHERE b.item_id=i.id)`;
+app.get('/api/items/:id/batches', h((req) => db.prepare(`SELECT * FROM (${BATCH_STOCK}) bs WHERE bs.item_id=? ORDER BY bs.expiry, bs.batch`).all(req.params.id)));
 app.post('/api/items/:id/batches', h((req) => {
   const b = req.body;
   const r = db.prepare(`INSERT INTO batches (item_id,batch,expiry,mrp,rate,f_rate,purchase_rate,opening_qty,supplier,invoice_no,invoice_date)
@@ -984,7 +998,7 @@ app.get('/api/reports/stock-value', h(() => {
   const closing = db.prepare(`SELECT COALESCE(SUM(MAX(stock,0)*purchase_rate),0) AS v FROM (${STOCK_SQL})`).get() as { v: number };
   return { opening: r2(opening.v), closing: r2(closing.v) };
 }));
-app.get('/api/reports/batch-stock', h(() => db.prepare(`SELECT * FROM (${BATCH_STOCK}) ORDER BY item_name, expiry`).all()));
+app.get('/api/reports/batch-stock', h(() => db.prepare(`SELECT * FROM (${BATCH_STOCK}) bs ORDER BY bs.item_name COLLATE NOCASE, bs.expiry, bs.batch`).all()));
 
 app.get('/api/reports/mode-of-payment', h((req) => {
   const { from, to } = req.query as Record<string, string>;

@@ -1171,3 +1171,450 @@ function periodBox(from: string, to: string): Promise<{ from: string; to: string
     };
   });
 }
+
+// ------------------------------------------------------------------ BATCH STOCK (Stocks → Batch Stock)
+export interface BatchStockRow {
+  id: number;
+  item_id: number;
+  batch: string;
+  expiry?: string;
+  mrp: number;
+  rate: number;
+  f_rate?: number;
+  purchase_rate: number;
+  opening_qty?: number;
+  stock: number;
+  supplier?: string;
+  item_name: string;
+  unit?: string;
+  pack?: string;
+  gst_rate?: number;
+  company?: string;
+  hsn?: string;
+}
+
+interface ProductBatchGroup {
+  item_id: number;
+  name: string;
+  pack?: string;
+  unit?: string;
+  company?: string;
+  hsn?: string;
+  gst_rate?: number;
+  purchase_rate?: number;
+  sale_rate?: number;
+  mrp?: number;
+  total_stock: number;
+  batches: BatchStockRow[];
+}
+
+type BatchDisplayRow =
+  | { type: 'product'; product: ProductBatchGroup }
+  | { type: 'batch'; product: ProductBatchGroup; batch: BatchStockRow; batchIndex: number };
+
+export async function batchStock(initialStores: string[] = ['MAIN STORE']) {
+  let stores = initialStores;
+  const w = openWin('BATCH STOCK', 'full', '');
+  w.el.classList.add('marg');
+  w.setFoot(
+    '<span><b>F2</b>-New</span><span><b>F3</b>-Edit</span><span><b>Enter</b>-Register</span><span><b>F6</b>-Total</span>' +
+    '<span><b>F9</b>-Store</span><span><b>F10</b>-Filter</span><span><b>Alt+X</b>-Excel</span><span><b>Alt+P</b>-PDF</span><span><b>Esc</b>-Close</span>'
+  );
+
+  const screen = h('div', { class: 'cs-screen bs-screen', style: 'grid-template-columns: 1fr;' });
+  screen.innerHTML = `
+    <div class="cs-main" style="border-right:none;">
+      <div class="cs-cols bs-cols" style="grid-template-columns: minmax(0, 2fr) 140px 110px 110px 110px 120px 80px;">
+        <span>DESCRIPTION / BATCH NO.</span>
+        <span>PACKING</span>
+        <span>EXPIRY</span>
+        <span class="n">M.R.P.</span>
+        <span class="n">RATE</span>
+        <span class="n">STOCK</span>
+        <span>UNIT</span>
+      </div>
+      <div class="cs-rows bs-rows"></div>
+      <div class="cs-detail bs-detail"></div>
+    </div>`;
+
+  const bar = margBar('');
+  addExportToMargBar(bar, { onExcel: () => exportExcel(), onPdf: () => printList() });
+  screen.prepend(bar);
+  w.body.append(screen);
+
+  const rowsBox = screen.querySelector('.cs-rows') as HTMLElement;
+  const detailBox = screen.querySelector('.cs-detail') as HTMLElement;
+
+  let allBatches: BatchStockRow[] = [];
+  let displayRows: BatchDisplayRow[] = [];
+  let visibleProducts: ProductBatchGroup[] = [];
+  let sel = 0;
+  let inStockOnly = true; // Marg default: Available batches only (Stock > 0)
+  let typed = '';
+  let typedAt = 0;
+
+  const setTitle = () => {
+    const filterTag = inStockOnly ? ' : [Available Batches Only]' : ' : [Whole Batch Stock]';
+    (bar.firstElementChild as HTMLElement).textContent = `${stores.join(', ')} : BATCH STOCK : ${dmy(today())}${filterTag}`;
+  };
+
+  async function load() {
+    allBatches = await api<BatchStockRow[]>('/reports/batch-stock');
+    applyFilter();
+  }
+
+  function applyFilter() {
+    // 1. Group all batches by product
+    const map = new Map<number, ProductBatchGroup>();
+    for (const b of allBatches) {
+      let g = map.get(b.item_id);
+      if (!g) {
+        g = {
+          item_id: b.item_id,
+          name: b.item_name,
+          pack: b.pack,
+          unit: b.unit,
+          company: b.company,
+          hsn: b.hsn,
+          gst_rate: b.gst_rate,
+          purchase_rate: b.purchase_rate,
+          sale_rate: b.rate,
+          mrp: b.mrp,
+          total_stock: 0,
+          batches: [],
+        };
+        map.set(b.item_id, g);
+      }
+      if (!inStockOnly || (b.stock ?? 0) > 0) {
+        g.batches.push(b);
+        g.total_stock += Number(b.stock) || 0;
+      }
+    }
+
+    // 2. Filter products and sort alphabetically
+    visibleProducts = [...map.values()]
+      .filter((p) => !inStockOnly || p.batches.length > 0)
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    // 3. Build hierarchical rows: First Product Name, then First Batch, Second Batch...
+    displayRows = [];
+    for (const p of visibleProducts) {
+      displayRows.push({ type: 'product', product: p });
+      p.batches.forEach((b, idx) => {
+        displayRows.push({ type: 'batch', product: p, batch: b, batchIndex: idx + 1 });
+      });
+    }
+
+    sel = Math.min(sel, Math.max(0, displayRows.length - 1));
+    draw();
+  }
+
+  function draw() {
+    setTitle();
+    rowsBox.innerHTML = displayRows.map((r, i) => {
+      const isSel = i === sel;
+      if (r.type === 'product') {
+        const p = r.product;
+        return `<div class="r r-prod${isSel ? ' sel' : ''}" data-i="${i}" style="grid-template-columns: minmax(0, 2fr) 140px 110px 110px 110px 120px 80px;background:${isSel ? 'var(--marg-sel,#0000aa)' : '#000080'};color:#ffff00;border-top:1px solid #334;border-bottom:1px solid #112;font-weight:bold;cursor:pointer;">
+          <span style="overflow:hidden;text-overflow:ellipsis;"><b style="color:${isSel ? '#ffffff' : '#ffff00'};font-size:1.02em;">▼ ${esc(p.name.toUpperCase())}</b> <small style="color:${isSel ? '#ffffaa' : '#b0c4de'};font-weight:normal;">[${esc(p.company || 'OTHERS')}]</small></span>
+          <span>${esc((p.pack ?? '').toUpperCase())}</span>
+          <span></span>
+          <span></span>
+          <span></span>
+          <span class="n" style="color:${isSel ? '#ffffff' : '#00ff00'};font-weight:bold;">${qty(p.total_stock)}</span>
+          <span>${esc(p.unit ?? '')}</span>
+        </div>`;
+      } else {
+        const p = r.product;
+        const b = r.batch;
+        const isEven = r.batchIndex % 2 === 0;
+        const rowBg = isSel ? 'var(--marg-sel,#0000aa)' : (isEven ? '#f4f8fb' : '#ffffff');
+        const rowColor = isSel ? '#ffffff' : '#111111';
+        return `<div class="r r-batch${isSel ? ' sel' : ''}" data-i="${i}" style="grid-template-columns: minmax(0, 2fr) 140px 110px 110px 110px 120px 80px;background:${rowBg};color:${rowColor};cursor:pointer;">
+          <span style="padding-left:18px;overflow:hidden;text-overflow:ellipsis;">&nbsp;&nbsp;&nbsp;&nbsp;↳ <b style="color:${isSel ? '#00ffff' : '#0000aa'};">BATCH: ${esc(b.batch || '-')}</b></span>
+          <span style="color:${isSel ? '#ffffff' : '#666'};">${esc((p.pack ?? '').toUpperCase())}</span>
+          <span style="color:${isSel ? '#ffff00' : '#8b0000'};font-weight:bold;">${expShort(b.expiry)}</span>
+          <span class="n">${f2(b.mrp)}</span>
+          <span class="n">${f2(b.rate)}</span>
+          <span class="n" style="color:${isSel ? '#ffffff' : '#006600'};font-weight:bold;">${qty(b.stock)}</span>
+          <span>${esc(p.unit ?? '')}</span>
+        </div>`;
+      }
+    }).join('') || '<div class="empty">No batch records found</div>';
+
+    rowsBox.querySelector('.sel')?.scrollIntoView({ block: 'nearest' });
+
+    // Render Detail Panel
+    const cur = displayRows[sel];
+    if (!cur) {
+      detailBox.innerHTML = '';
+      return;
+    }
+
+    if (cur.type === 'batch') {
+      const p = cur.product;
+      const b = cur.batch;
+      const bValCost = (b.stock ?? 0) * (b.purchase_rate ?? 0);
+      const bValMrp = (b.stock ?? 0) * (b.mrp ?? 0);
+      detailBox.innerHTML = `
+        <div><span>Product :</span><b>${esc(p.name.toUpperCase())}</b></div>
+        <div><span>M.R.P. :</span><b>${f2(b.mrp)}</b></div>
+        <div><span>Company :</span><b>${esc((p.company || 'OTHERS').toUpperCase())}</b></div>
+
+        <div><span>Batch No:</span><b style="color:#0000aa;">${esc(b.batch || '-')}</b></div>
+        <div><span>SaleRate:</span><b>${f2(b.rate)}</b></div>
+        <div><span>HSN/SAC :</span><b>${esc(p.hsn ?? '')}</b></div>
+
+        <div><span>Expiry &nbsp;:</span><b style="color:#800000;">${expShort(b.expiry)}</b></div>
+        <div><span>PurRate :</span><b>${c2(b.purchase_rate)}</b></div>
+        <div><span>Margin% :</span><b>${margin(b.rate, b.purchase_rate)}</b></div>
+
+        <div><span>BatchStk:</span><b style="color:#006600;">${qty(b.stock)} ${esc(p.unit ?? '')}</b></div>
+        <div><span>TotalStk:</span><b>${qty(p.total_stock)} ${esc(p.unit ?? '')}</b></div>
+        <div><span>Supplier:</span><b>${esc(b.supplier || '-')}</b></div>
+
+        <div><span>Cost Val:</span><b>${seeCost() ? money(bValCost) : '****'}</b></div>
+        <div><span>MRP Val :</span><b>${money(bValMrp)}</b></div>
+        <div><b>${visibleProducts.length} Products, ${displayRows.filter((r) => r.type === 'batch').length} Batches</b>${typed ? ` &nbsp; <span class="typed">Find: ${esc(typed)}</span>` : ''}${inStockOnly ? ' &nbsp;[Available Batches Only]' : ''}</div>
+      `;
+    } else {
+      const p = cur.product;
+      const pCost = p.batches.reduce((s, b) => s + b.stock * (b.purchase_rate ?? 0), 0);
+      const pMrp = p.batches.reduce((s, b) => s + b.stock * (b.mrp ?? 0), 0);
+      detailBox.innerHTML = `
+        <div><span>Product :</span><b>${esc(p.name.toUpperCase())}</b></div>
+        <div><span>Packing :</span><b>${esc(p.pack ?? '')}</b></div>
+        <div><span>Company :</span><b>${esc((p.company || 'OTHERS').toUpperCase())}</b></div>
+
+        <div><span>TotalStk:</span><b style="color:#006600;">${qty(p.total_stock)} ${esc(p.unit ?? '')}</b></div>
+        <div><span>Batches :</span><b>${p.batches.length} Active Batch(es)</b></div>
+        <div><span>HSN/SAC :</span><b>${esc(p.hsn ?? '')}</b></div>
+
+        <div><span>GST Rate:</span><b>${p.gst_rate ? f2(p.gst_rate) + '%' : '0.00%'}</b></div>
+        <div><span>Unit &nbsp;&nbsp;&nbsp;:</span><b>${esc(p.unit ?? '')}</b></div>
+        <div><span>Status &nbsp;:</span><b>${p.total_stock > 0 ? 'AVAILABLE' : 'OUT OF STOCK'}</b></div>
+
+        <div><span>Cost Val:</span><b>${seeCost() ? money(pCost) : '****'}</b></div>
+        <div><span>MRP Val :</span><b>${money(pMrp)}</b></div>
+        <div><b>${visibleProducts.length} Products, ${displayRows.filter((r) => r.type === 'batch').length} Batches</b>${typed ? ` &nbsp; <span class="typed">Find: ${esc(typed)}</span>` : ''}${inStockOnly ? ' &nbsp;[Available Batches Only]' : ''}</div>
+      `;
+    }
+  }
+
+  function jump(ch: string) {
+    typed = Date.now() - typedAt > 1500 ? ch : typed + ch;
+    typedAt = Date.now();
+    const q = typed.toLowerCase();
+    const idx = displayRows.findIndex((r) => {
+      if (r.type === 'product') {
+        return r.product.name.toLowerCase().startsWith(q) || r.product.name.toLowerCase().includes(q);
+      } else {
+        return r.batch.batch.toLowerCase().startsWith(q) || r.product.name.toLowerCase().startsWith(q);
+      }
+    });
+    if (idx >= 0) sel = idx;
+    draw();
+  }
+
+  function totals() {
+    const batches = displayRows.filter((r): r is { type: 'batch'; product: ProductBatchGroup; batch: BatchStockRow; batchIndex: number } => r.type === 'batch');
+    const totQty = batches.reduce((s, r) => s + (r.batch.stock ?? 0), 0);
+    const totCost = batches.reduce((s, r) => s + (r.batch.stock ?? 0) * (r.batch.purchase_rate ?? 0), 0);
+    const totMrp = batches.reduce((s, r) => s + (r.batch.stock ?? 0) * (r.batch.mrp ?? 0), 0);
+
+    const p = margPop('BATCH STOCK TOTAL', '<span><b>Esc</b>-Close</span>', '450px');
+    p.body.append(
+      h(
+        'div',
+        { class: 'cs-total' },
+        `<div><span>Total Products</span><b>${visibleProducts.length}</b></div>
+         <div><span>Total Batches</span><b>${batches.length}</b></div>
+         <div><span>Total Quantity</span><b>${qty(totQty)}</b></div>
+         <div><span>Stock value (Cost)</span><b>${seeCost() ? money(totCost) : '****'}</b></div>
+         <div><span>Stock value (MRP)</span><b>${money(totMrp)}</b></div>`
+      )
+    );
+  }
+
+  function exportExcel() {
+    const headers = [
+      'Product Name',
+      'Batch No.',
+      'Packing',
+      'Unit',
+      'Expiry',
+      'M.R.P.',
+      'Sale Rate',
+      'Purchase Rate',
+      'Stock Qty',
+      'Cost Value',
+      'MRP Value',
+      'Company',
+      'Supplier',
+      'HSN Code',
+    ];
+    const rows: string[][] = [];
+    for (const p of visibleProducts) {
+      for (const b of p.batches) {
+        const q = b.stock ?? 0;
+        const pr = b.purchase_rate ?? 0;
+        const mrp = b.mrp ?? 0;
+        rows.push([
+          p.name,
+          b.batch || '-',
+          p.pack ?? '',
+          p.unit ?? '',
+          expShort(b.expiry),
+          f2(mrp),
+          f2(b.rate),
+          seeCost() ? f2(pr) : '****',
+          qty(q),
+          seeCost() ? f2(q * pr) : '****',
+          f2(q * mrp),
+          p.company ?? '',
+          b.supplier ?? '',
+          p.hsn ?? '',
+        ]);
+      }
+    }
+    const totQty = rows.reduce((s, r) => s + Number(r[8] || 0), 0);
+    const totCost = rows.reduce((s, r) => s + (r[9] === '****' ? 0 : Number(r[9] || 0)), 0);
+    const totMrp = rows.reduce((s, r) => s + Number(r[10] || 0), 0);
+    rows.push([
+      `Total (${visibleProducts.length} Products, ${rows.length} Batches)`,
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      qty(totQty),
+      seeCost() ? f2(totCost) : '****',
+      f2(totMrp),
+      '',
+      '',
+      '',
+    ]);
+    downloadCsv(`Batch_Stock_${stores.join('_')}_${today()}.csv`, headers, rows);
+  }
+
+  async function printList() {
+    let coName = '';
+    try {
+      const co = await api<any>('/company');
+      coName = co.name;
+    } catch {}
+    const batches = displayRows.filter((r): r is { type: 'batch'; product: ProductBatchGroup; batch: BatchStockRow; batchIndex: number } => r.type === 'batch');
+    const totQty = batches.reduce((s, r) => s + (r.batch.stock ?? 0), 0);
+
+    const html = `<h2>${esc(coName)}</h2>
+      <h3 style="text-align:center">${esc(stores.join(', '))} : BATCH WISE STOCK : ${dmy(today())}${inStockOnly ? ' [Available Batches Only]' : ''}</h3>
+      <table class="grid">
+        <tr>
+          <th>Description / Batch No.</th>
+          <th>Packing</th>
+          <th>Expiry</th>
+          <th class="n">M.R.P.</th>
+          <th class="n">Rate</th>
+          <th class="n">Stock</th>
+          <th>Unit</th>
+        </tr>
+        ${visibleProducts.map((p) => `
+          <tr style="background:#e8f0fe;font-weight:bold;">
+            <td colspan="5"><b>▼ ${esc(p.name)}</b> <span style="font-weight:normal;font-size:0.9em;color:#555;">[${esc(p.company || '')}]</span></td>
+            <td class="n"><b>${qty(p.total_stock)}</b></td>
+            <td><b>${esc(p.unit ?? '')}</b></td>
+          </tr>
+          ${p.batches.map((b) => `
+            <tr>
+              <td style="padding-left:24px;">&nbsp;&nbsp;&nbsp;&nbsp;↳ Batch: <b>${esc(b.batch || '-')}</b></td>
+              <td>${esc(p.pack ?? '')}</td>
+              <td>${expShort(b.expiry)}</td>
+              <td class="n">${f2(b.mrp)}</td>
+              <td class="n">${f2(b.rate)}</td>
+              <td class="n">${qty(b.stock)}</td>
+              <td>${esc(p.unit ?? '')}</td>
+            </tr>
+          `).join('')}
+        `).join('')}
+        <tr class="total">
+          <td colspan="5"><b>Total (${visibleProducts.length} Products, ${batches.length} Batches)</b></td>
+          <td class="n"><b>${qty(totQty)}</b></td>
+          <td></td>
+        </tr>
+      </table>`;
+    import('./billing.ts').then((m) => m.printHtml(html, 1));
+  }
+
+  rowsBox.addEventListener('click', (e) => {
+    const el = (e.target as HTMLElement).closest('[data-i]') as HTMLElement | null;
+    if (el) {
+      sel = Number(el.dataset.i);
+      draw();
+    }
+  });
+
+  const openCurrentRegister = () => {
+    const cur = displayRows[sel];
+    if (!cur) return;
+    const it: any = {
+      id: cur.product.item_id,
+      name: cur.product.name,
+      pack: cur.product.pack,
+      unit: cur.product.unit,
+      company: cur.product.company,
+      hsn: cur.product.hsn,
+      mrp: cur.product.mrp,
+      sale_rate: cur.product.sale_rate,
+      purchase_rate: cur.product.purchase_rate,
+      stock: cur.product.total_stock,
+    };
+    itemDisplay(it, stores);
+  };
+
+  rowsBox.addEventListener('dblclick', openCurrentRegister);
+
+  w.onKey = (e, k) => {
+    const page = Math.max(1, Math.floor(rowsBox.clientHeight / 24) - 1);
+    const step: Record<string, number> = { ArrowDown: 1, ArrowUp: -1, PageDown: page, PageUp: -page };
+    if (k in step && displayRows.length) {
+      sel = Math.min(displayRows.length - 1, Math.max(0, sel + step[k]));
+      typed = '';
+      draw();
+      return true;
+    }
+    if (k === 'Home' || k === 'Ctrl+Home') { sel = 0; draw(); return true; }
+    if (k === 'End' || k === 'Ctrl+End') { sel = Math.max(0, displayRows.length - 1); draw(); return true; }
+    if (k === 'Enter') { openCurrentRegister(); return true; }
+    if (k === 'F2') {
+      itemForm().then((r) => { if (r) load(); });
+      return true;
+    }
+    if (k === 'F3') {
+      const cur = displayRows[sel];
+      if (cur) {
+        if (!canAction('item.list')) { toast('Access denied — your role cannot edit items', true); return true; }
+        const it: any = { id: cur.product.item_id, name: cur.product.name };
+        itemForm(it).then((r) => { if (r) load(); });
+      }
+      return true;
+    }
+    if (k === 'F6') { totals(); return true; }
+    if (k === 'F9') { selectStore().then((s) => { if (s) { stores = s; applyFilter(); } }); return true; }
+    if (k === 'F10') {
+      inStockOnly = !inStockOnly;
+      toast(inStockOnly ? 'Filter: AVAILABLE BATCHES ONLY (Stock > 0)' : 'Filter: WHOLE BATCH STOCK (All Batches including 0 stock)');
+      applyFilter();
+      return true;
+    }
+    if (k === 'Alt+X') { exportExcel(); return true; }
+    if (k === 'Alt+P' || k === 'Ctrl+P') { printList(); return true; }
+    if (k === 'Backspace') { typed = typed.slice(0, -1); typedAt = Date.now(); draw(); return true; }
+    if (k.length === 1 && !e.ctrlKey && !e.altKey) { jump(k); return true; }
+    if (k === 'Space') { jump(' '); return true; }
+    return false;
+  };
+
+  await load();
+}

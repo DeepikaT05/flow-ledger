@@ -582,12 +582,7 @@ const batchCols: Col<BatchRow>[] = [
 const valueFooter = (span: number) => (rows: BatchRow[]) =>
   `<tr class="total"><td colspan="${span}">Total (${rows.length} batches)</td><td class="n">${cmTotal(rows.reduce((s, r) => s + r.stock * (r.purchase_rate ?? 0), 0))}</td><td></td></tr>`;
 
-export function batchStock() {
-  return reportWin<BatchRow>({
-    title: 'Batch wise Stock', cols: batchCols, search: (r) => `${r.item_name} ${r.batch}`,
-    load: () => api('/reports/batch-stock'), footer: valueFooter(7),
-  });
-}
+export { batchStock } from './stock.ts';
 
 export function expiryStock() {
   const days = 90;

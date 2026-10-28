@@ -6,7 +6,7 @@ import { saleEntry } from './sale.ts';
 import { voucherEntry, voucherList, voucherMenu } from './vouchers.ts';
 import { receiptEntry, type VType } from './receipt.ts';
 import { bookScreen } from './daybook.ts';
-import { currentStock, closingStock, filteredStock } from './stock.ts';
+import { currentStock, closingStock, filteredStock, batchStock } from './stock.ts';
 import * as R from './reports.ts';
 import { boot, login, changeCompany, isBooting } from './startup.ts';
 import { usersWindow, rolesWindow } from './admin.ts';
@@ -50,7 +50,7 @@ const ACTIONS: Record<string, (arg?: string) => unknown> = {
   'report.reorder': () => R.reorder(),
   'report.gp': () => R.grossProfit(),
   'report.mis': () => R.mis(),
-  'report.batch': () => R.batchStock(),
+  'report.batch': () => batchStock(),
   'report.expiry': () => R.expiryStock(),
   'report.mop': () => R.modeOfPayment(),
   'report.group': () => R.groupSummary(),
