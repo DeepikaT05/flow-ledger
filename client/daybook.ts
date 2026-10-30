@@ -15,6 +15,19 @@ interface Row {
 }
 type Kind = 'DAY' | 'SALE';
 
+interface TSideRow {
+  particulars: string;
+  type: string;
+  amount: number;
+}
+interface TFormatData {
+  credit: TSideRow[];
+  debit: TSideRow[];
+  totalCredit: number;
+  totalDebit: number;
+  total: number;
+}
+
 const f2 = (n: unknown) => Number(n ?? 0).toFixed(2);
 const dmy = (iso: string) => (iso ? `${iso.slice(8, 10)}-${iso.slice(5, 7)}-${iso.slice(0, 4)}` : '');
 const dm = (iso: string) => (iso ? `${iso.slice(8, 10)}-${iso.slice(5, 7)}` : '');
@@ -62,7 +75,7 @@ function periodBox(title: string, from: string, to: string, withLedger: boolean)
 // ------------------------------------------------------------------ 0994 PRINTING
 interface PrintOpts { fmt: 'D' | 'S' | 'T'; total: boolean; range: boolean; page: boolean; vno: boolean; narr: boolean }
 type PrintAct = 'view' | 'print' | 'excel' | 'cancel';
-let lastOpts: PrintOpts = { fmt: 'D', total: true, range: true, page: true, vno: false, narr: true };
+let lastOpts: PrintOpts = { fmt: 'T', total: true, range: true, page: true, vno: false, narr: true };
 
 function printingBox(): Promise<{ act: PrintAct; opts: PrintOpts }> {
   return new Promise((resolve) => {
@@ -116,21 +129,112 @@ function printingBox(): Promise<{ act: PrintAct; opts: PrintOpts }> {
   });
 }
 
-/** The printed / viewed book in the chosen format. */
+/** Authentic MARG ERP 9+ T-Format Day Book (CREDIT on left, DEBIT on right, CR = DR balanced). */
+function tformatHtml(title: string, company: any, from: string, to: string, data: TFormatData, _o: PrintOpts) {
+  const credits = data.credit ?? [];
+  const debits = data.debit ?? [];
+  const maxLen = Math.max(credits.length, debits.length);
+  const rowsHtml: string[] = [];
+  for (let i = 0; i < maxLen; i++) {
+    const c = credits[i];
+    const d = debits[i];
+    rowsHtml.push(`<tr>
+      <td style="padding:2px 4px; overflow:hidden; text-overflow:ellipsis;">${c ? esc(c.particulars) : ''}</td>
+      <td style="padding:2px 4px; text-align:center;">${c ? esc(c.type) : ''}</td>
+      <td style="padding:2px 4px; text-align:right;">${c ? f2(c.amount) : ''}</td>
+      <td style="border-left:1px dashed #666; padding:0 3px;"></td>
+      <td style="padding:2px 4px; overflow:hidden; text-overflow:ellipsis;">${d ? esc(d.particulars) : ''}</td>
+      <td style="padding:2px 4px; text-align:center;">${d ? esc(d.type) : ''}</td>
+      <td style="padding:2px 4px; text-align:right;">${d ? f2(d.amount) : ''}</td>
+    </tr>`);
+  }
+
+  const dateStr = from === to ? dmy(from) : `${dmy(from)} to ${dmy(to)}`;
+  const addr = [company.address1, company.address2].filter(Boolean).join(' ');
+
+  return `<div style="font-family:'Courier New', Consolas, monospace; font-size:12.5px; line-height:1.45; color:#000; background:#fff; padding:12px;">
+    <div style="text-align:center; font-weight:bold; font-size:16px;">${esc(company.name.toUpperCase())}</div>
+    ${addr ? `<div style="text-align:center; font-size:12px;">${esc(addr)}${company.phone ? ` ${esc(company.phone)}` : ''}</div>` : ''}
+    ${company.phone ? `<div style="text-align:center; font-size:12px;">Phone : ${esc(company.phone)}</div>` : ''}
+    ${company.gstin ? `<div style="text-align:center; font-size:12px;">GSTIN : ${esc(company.gstin)}</div>` : ''}
+    <div style="text-align:center; font-weight:bold; font-size:14px; margin-top:8px;">${esc(title)}</div>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin:4px 0 6px;">
+      <span style="visibility:hidden">Page No.....1</span>
+      <span style="font-weight:bold;">${dateStr}</span>
+      <span>Page No.....1</span>
+    </div>
+    <table style="width:100%; border-collapse:collapse; font-size:12px; table-layout:fixed;">
+      <colgroup>
+        <col style="width:31%;">
+        <col style="width:7%;">
+        <col style="width:11%;">
+        <col style="width:2%;">
+        <col style="width:31%;">
+        <col style="width:7%;">
+        <col style="width:11%;">
+      </colgroup>
+      <thead>
+        <tr style="border-top:1px dashed #333; border-bottom:1px dashed #333; font-weight:bold;">
+          <th style="text-align:left; padding:4px;">PARTICULARS</th>
+          <th style="text-align:center; padding:4px;">TYPE</th>
+          <th style="text-align:right; padding:4px;">CREDIT</th>
+          <th style="border-left:1px dashed #666; padding:0 3px;"></th>
+          <th style="text-align:left; padding:4px;">PARTICULARS</th>
+          <th style="text-align:center; padding:4px;">TYPE</th>
+          <th style="text-align:right; padding:4px;">DEBIT</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rowsHtml.join('')}
+        <tr style="border-top:1px dashed #333; border-bottom:1px dashed #333; font-weight:bold;">
+          <td colspan="2" style="text-align:right; padding:5px 4px;">Total</td>
+          <td style="text-align:right; padding:5px 4px;">${f2(data.totalCredit)}</td>
+          <td style="border-left:1px dashed #666; padding:0 3px;"></td>
+          <td colspan="2" style="text-align:right; padding:5px 4px;">Total</td>
+          <td style="text-align:right; padding:5px 4px;">${f2(data.totalDebit)}</td>
+        </tr>
+      </tbody>
+    </table>
+    <div style="text-align:center; margin-top:16px; font-weight:bold; font-size:12px;">*** End of Report ***</div>
+  </div>`;
+}
+
+function downloadTFormatCsv(name: string, data: TFormatData) {
+  const credits = data.credit ?? [];
+  const debits = data.debit ?? [];
+  const maxLen = Math.max(credits.length, debits.length);
+  const q = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const lines: string[][] = [
+    ['PARTICULARS', 'TYPE', 'CREDIT', 'PARTICULARS', 'TYPE', 'DEBIT'],
+  ];
+  for (let i = 0; i < maxLen; i++) {
+    const c = credits[i];
+    const d = debits[i];
+    lines.push([
+      c ? c.particulars : '',
+      c ? c.type : '',
+      c ? f2(c.amount) : '',
+      d ? d.particulars : '',
+      d ? d.type : '',
+      d ? f2(d.amount) : '',
+    ]);
+  }
+  lines.push(['Total', '', f2(data.totalCredit), 'Total', '', f2(data.totalDebit)]);
+  const csvContent = lines.map((r) => r.map(q).join(',')).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['\ufeff' + csvContent], { type: 'text/csv' }));
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+/** The printed / viewed book in Simple or Detail format. */
 function bookHtml(title: string, company: any, from: string, to: string, rows: Row[], o: PrintOpts) {
   const dr = r2(rows.reduce((s, r) => s + r.debit, 0)), cr = r2(rows.reduce((s, r) => s + r.credit, 0));
   const head = `<h2>${esc(company.name)}</h2><div style="text-align:center">${esc(`${company.address1 ?? ''} ${company.address2 ?? ''}`)}</div>
     <h3 style="text-align:center;margin:6px 0">${esc(title)}${o.range ? ` &nbsp; ${dmy(from)} to ${dmy(to)}` : ''}</h3>
     ${o.page ? '<style>@page { @bottom-right { content: "Page " counter(page); font: 11px monospace; } }</style>' : ''}`;
   const remark = (r: Row) => esc([o.vno ? r.no : '', o.narr ? (r.narration || (r.source === 'BILL' ? r.remark : '')) : (r.source === 'BILL' ? r.remark : '')].filter(Boolean).join(' '));
-  if (o.fmt === 'T') {
-    const side = (list: Row[], key: 'debit' | 'credit') => `<table class="grid"><tr><th>Date</th><th>Particulars</th><th>Type</th><th class="n">Amount</th></tr>
-      ${list.map((r) => `<tr><td>${dm(r.date)}</td><td>${esc(r.party)}${remark(r) ? `<br><small>${remark(r)}</small>` : ''}</td><td>${esc(r.type)}</td><td class="n">${money(r[key])}</td></tr>`).join('')}
-      <tr class="total"><td colspan="3"><b>Total</b></td><td class="n"><b>${money(key === 'debit' ? dr : cr)}</b></td></tr></table>`;
-    return `${head}<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div><b>DEBIT</b>${side(rows.filter((r) => r.debit), 'debit')}</div>
-      <div><b>CREDIT</b>${side(rows.filter((r) => r.credit), 'credit')}</div></div>
-      <div style="margin-top:10px;text-align:right;font-size:14px;padding:6px 12px;background:#f0f4f8;border:1px solid #ccc"><b>Net Closing Balance : ${drcr(dr - cr)}</b></div>`;
-  }
   const simple = o.fmt === 'S';
   return `${head}<table class="grid"><tr><th>Date</th><th>Party Name</th>${simple ? '' : '<th>Remark</th>'}<th class="n">Debit</th><th class="n">Credit</th><th>Type</th></tr>
     ${rows.map((r) => `<tr><td>${dm(r.date)}</td><td>${esc(r.party)}</td>${simple ? '' : `<td>${remark(r)}</td>`}
@@ -252,6 +356,19 @@ export async function bookScreen(kind: Kind) {
   async function printFlow() {
     const { act, opts } = await printingBox();
     if (act === 'cancel') return;
+    if (opts.fmt === 'T') {
+      const tdata = await api<TFormatData>(`/reports/day-book-tformat?from=${from}&to=${to}${ledger ? `&ledger=${ledger.id}` : ''}`);
+      if (act === 'excel') { downloadTFormatCsv(`${title.replace(' ', '_')}_TFormat_${from}_${to}.csv`, tdata); toast('Excel (CSV) file downloaded'); return; }
+      const html = tformatHtml(title, company, from, to, tdata, opts);
+      if (act === 'view') {
+        const pv = openWin(`View - ${title}`, 'wide', '<span><b>Ctrl+P</b> Print</span><span><b>Esc</b> Close</span>');
+        pv.body.append(h('div', { class: 'print-area' }, html));
+        pv.onKey = (_e, k) => { if (k === 'Ctrl+P') { import('./billing.ts').then((m) => m.printHtml(html, 1)); return true; } return false; };
+        return;
+      }
+      (await import('./billing.ts')).printHtml(html, 1);
+      return;
+    }
     if (act === 'excel') { downloadCsv(`${title.replace(' ', '_')}_${from}_${to}.csv`, rows); toast('Excel (CSV) file downloaded'); return; }
     const html = bookHtml(title, company, from, to, rows, opts);
     if (act === 'view') {
