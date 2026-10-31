@@ -1342,10 +1342,10 @@ export const MENU: MenuItem[] = [
           },
           {
             label: 'M.R. Sale', hot: 'R', children: [
-              { label: 'M.R. Sale Statement', hot: 'S' },
-              { label: 'M.R. Summary', hot: 'u' },
+              { label: 'M.R. Sale Statement', hot: 'S', action: 'report.mrsale:single' },
+              { label: 'M.R. Summary', hot: 'u', action: 'report.mrsale:summary' },
               { label: 'M.R./ Company Wise Summary', hot: 'C' },
-              { label: 'M.R./Product Wise Summary', hot: 'P' },
+              { label: 'M.R./Product Wise Summary', hot: 'P', action: 'report.mrsale:items' },
             ],
           },
           {
@@ -2138,7 +2138,9 @@ const REPORT_LINKS: Record<string, string> = {
   'Reports > Sale Analysis > Party Wise Sale > All Parties/Month': S('SALE/party/month'),
   'Reports > Sale Analysis > Party Wise Sale > Bill Collection Ageing': 'report.ageing',
   'Reports > Sale Analysis > M.R. Wise Sale > All M.R./Month': S('SALE/mr/month'),
-  'Reports > Sale Analysis > M.R. Wise Sale > M.R. Wise Sale': S('SALE/mr'),
+  'Reports > Sale Analysis > M.R. Wise Sale > M.R. Wise Sale': 'report.mrsale:summary',
+  'Reports > Sale Analysis > M.R. Wise Sale > Single M.R. Sale': 'report.mrsale:single',
+  'Reports > Sale Analysis > M.R. Wise Sale > M.R./All Items': 'report.mrsale:items',
   // Reports → Purchase Analysis
   'Reports > Purchase Analysis > Item Wise Purchase & %': S('PURCHASE/item'),
   'Reports > Purchase Analysis > Company Wise Purchase': S('PURCHASE/company'),

@@ -825,6 +825,10 @@ export function summary(spec: string) {
     extraFoot = '<span><b>F3</b> Select Party</span>';
     extraKeys['F3'] = () => singlePartySale();
     onEnter = (r: SumRow) => singlePartySale((r as any).id || r.name);
+  } else if (by === 'mr' && side === 'SALE') {
+    extraFoot = '<span><b>F3</b> Select M.R.</span>';
+    extraKeys['F3'] = () => mrSaleReport('single');
+    onEnter = (r: SumRow) => mrSaleReport('items', (r as any).id);
   }
 
   return reportWin<SumRow>({
@@ -1203,6 +1207,33 @@ export async function productSummary(side: 'SALE' | 'PURCHASE' = 'SALE') {
 
 
 // ------------------------------------------------------------------ Single Product / Company / Party Sale Drill-down
+
+
+export async function pickSalesman(includeAll = false): Promise<{ id: number | string; name: string; area?: string } | null> {
+  let list: { id: number; name: string; area?: string }[] = [];
+  try {
+    list = await api<{ id: number; name: string; area?: string }[]>('/salesmen');
+  } catch {
+    list = [];
+  }
+  const rows: { id: number | string; name: string; area?: string }[] = [];
+  if (includeAll) {
+    rows.push({ id: 'all', name: '<ALL M.R. (ALL SALESMEN)>', area: 'All Salesmen' });
+    rows.push({ id: '0', name: '<DIRECT / NO M.R.>', area: 'Direct Sale / No M.R.' });
+  }
+  rows.push(...list.sort((a, b) => a.name.localeCompare(b.name)));
+
+  return pick<{ id: number | string; name: string; area?: string }>({
+    title: 'Select M.R. (Salesman)',
+    rows,
+    cols: [
+      { title: 'M.R. / Salesman Name', get: (r) => r.name },
+      { title: 'Area', get: (r) => r.area || '-' },
+    ],
+    key: (r) => `${r.name} ${r.area || ''}`,
+    size: 'mid',
+  });
+}
 
 export async function pickCompany(initial = ''): Promise<string | null> {
   const rows = await api<{ company: string }[]>('/companies-list');
@@ -2466,6 +2497,7 @@ async function showMrSaleScreen(params: {
       }
 
       let totQty = 0, totFree = 0, totGross = 0, totDisc = 0, totTaxable = 0, totTax = 0, totNet = 0;
+      let allItemIndex = 0;
 
       let html = `<table class="mr-sale-table">
         <thead>
@@ -2485,7 +2517,8 @@ async function showMrSaleScreen(params: {
           gQty += Number(it.qty || 0); gFree += Number(it.free_qty || 0); gGross += Number(it.gross_amt || 0);
           gDisc += Number(it.disc_amt || 0); gTaxable += Number(it.taxable || 0); gTax += Number(it.tax || 0); gNet += Number(it.net_amt || 0);
 
-          html += `<tr>
+          const itemIdx = allItemIndex++;
+          html += `<tr class="mr-item-tr ${itemIdx === selectedRowIndex ? 'selected' : ''}" data-idx="${itemIdx}" data-id="${it.item_id}" data-name="${esc(it.item_name)}" style="cursor:pointer;">
             <td><b>${esc(it.item_name)}</b></td><td>${esc(it.pack)}</td><td>${esc(it.company)}</td><td>${esc(it.batch)}</td><td>${esc(it.expiry)}</td>
             <td class="n">${it.bills_count || 0}</td><td class="n">${f2(it.qty)}</td><td class="n">${f2(it.free_qty)}</td><td class="n">${f2(it.rate)}</td>
             <td class="n">${money(it.gross_amt)}</td><td class="n">${money(it.disc_amt)}</td>
@@ -2511,6 +2544,18 @@ async function showMrSaleScreen(params: {
       </tr></tbody></table>`;
 
       gridWrap.innerHTML = html;
+
+      gridWrap.querySelectorAll<HTMLTableRowElement>('.mr-item-tr').forEach((tr) => {
+        tr.addEventListener('click', () => {
+          selectedRowIndex = Number(tr.dataset.idx || 0);
+          gridWrap.querySelectorAll('.mr-item-tr').forEach((x, i) => x.classList.toggle('selected', i === selectedRowIndex));
+        });
+        tr.addEventListener('dblclick', () => {
+          const itemId = tr.dataset.id;
+          const itemName = tr.dataset.name;
+          if (itemId || itemName) singleProductSale(itemId || itemName, curFrom, curTo);
+        });
+      });
     } else {
       let filtered = rowsData;
       if (q) {
@@ -2626,10 +2671,33 @@ async function showMrSaleScreen(params: {
     });
   });
 
+  async function chooseMr() {
+    const chosen = await pickSalesman(true);
+    if (chosen) {
+      curMrId = String(chosen.id);
+      curMrName = chosen.name;
+      const mrB = topControls.querySelector('.mr-sale-info span:nth-of-type(2) b');
+      if (mrB) mrB.textContent = curMrName;
+      load();
+    }
+  }
+
+  async function choosePeriod() {
+    const res = await askPeriod(curFrom, curTo);
+    if (res) {
+      curFrom = res.from;
+      curTo = res.to;
+      const periodB = topControls.querySelector('.mr-sale-info span:nth-of-type(1) b');
+      if (periodB) periodB.textContent = `${dmy(curFrom)} to ${dmy(curTo)}`;
+      load();
+    }
+  }
+
   topControls.querySelectorAll('button[data-a]').forEach((b) => {
     b.addEventListener('click', () => {
       const act = (b as HTMLElement).dataset.a;
-      if (act === 'period' || act === 'pickmr') openPeriodModal();
+      if (act === 'period') choosePeriod();
+      else if (act === 'pickmr') chooseMr();
     });
   });
 
@@ -2647,11 +2715,11 @@ async function showMrSaleScreen(params: {
       return true;
     }
     if (k === 'F2') {
-      openPeriodModal();
+      choosePeriod();
       return true;
     }
     if (k === 'F3') {
-      openPeriodModal();
+      chooseMr();
       return true;
     }
     if (k === 'Alt+X') {
@@ -2662,20 +2730,30 @@ async function showMrSaleScreen(params: {
       printReport();
       return true;
     }
-    if (k === 'ArrowDown' && curMode === 'summary') {
+    if (k === 'ArrowDown') {
       const max = gridWrap.querySelectorAll('tbody tr[data-idx]').length - 1;
       if (selectedRowIndex < max) { selectedRowIndex++; render(); }
       return true;
     }
-    if (k === 'ArrowUp' && curMode === 'summary') {
+    if (k === 'ArrowUp') {
       if (selectedRowIndex > 0) { selectedRowIndex--; render(); }
       return true;
     }
-    if (k === 'Enter' && curMode === 'summary') {
-      const tr = gridWrap.querySelector(`tbody tr[data-idx="${selectedRowIndex}"]`) as HTMLElement;
-      if (tr) {
-        drillDownItems(tr.dataset.id || '', tr.dataset.name || '');
-        return true;
+    if (k === 'Enter') {
+      if (curMode === 'summary') {
+        const tr = gridWrap.querySelector(`tbody tr[data-idx="${selectedRowIndex}"]`) as HTMLElement;
+        if (tr) {
+          drillDownItems(tr.dataset.id || '', tr.dataset.name || '');
+          return true;
+        }
+      } else if (curMode === 'items') {
+        const tr = gridWrap.querySelector(`tbody tr.mr-item-tr[data-idx="${selectedRowIndex}"]`) as HTMLElement;
+        if (tr) {
+          const itemId = tr.dataset.id;
+          const itemName = tr.dataset.name;
+          if (itemId || itemName) singleProductSale(itemId || itemName, curFrom, curTo);
+          return true;
+        }
       }
     }
     if (k === 'Escape') {
@@ -2700,30 +2778,45 @@ async function showMrSaleScreen(params: {
 /**
  * Main Entry for Reports -> Sale Analysis -> M.R. Wise Sale and M.R. / All Items
  */
-export async function mrSaleReport(modeParam?: string) {
-  const initialMode: 'summary' | 'items' = modeParam === 'items' ? 'items' : 'summary';
-  const initialMrId = modeParam === 'single' ? '' : 'all';
+export async function mrSaleReport(modeParam?: string, initialMrId?: string | number) {
+  let curMode: 'summary' | 'items' = modeParam === 'items' ? 'items' : 'summary';
+  let curFrom = fyStart();
+  let curTo = today();
+  let curMrId = initialMrId ? String(initialMrId) : 'all';
+  let curMrName = '<ALL M.R.>';
 
-  const chosen = await askMrSaleParams({ mode: initialMode, mr_id: initialMrId });
-  if (!chosen) return;
-
-  if (chosen.action === 'excel') {
-    const data = await api<any[]>(`/reports/mr-sale?from=${chosen.from}&to=${chosen.to}&mode=${chosen.mode}${chosen.mr_id ? `&mr_id=${chosen.mr_id}` : ''}`);
-    exportMrSaleExcel(data, chosen.mode, chosen.from, chosen.to, chosen.mr_name);
-    return;
+  if (modeParam === 'month') {
+    return summary('SALE/mr/month');
   }
-  if (chosen.action === 'print') {
-    const data = await api<any[]>(`/reports/mr-sale?from=${chosen.from}&to=${chosen.to}&mode=${chosen.mode}${chosen.mr_id ? `&mr_id=${chosen.mr_id}` : ''}`);
-    printMrSaleHtml(data, chosen.mode, chosen.from, chosen.to, chosen.mr_name);
-    return;
+
+  if (initialMrId) {
+    curMrId = String(initialMrId);
+    try {
+      const salesmen = await api<any[]>('/salesmen');
+      const found = salesmen.find((s) => String(s.id) === String(initialMrId));
+      if (found) curMrName = found.name;
+    } catch {}
+    curMode = 'items';
+  } else if (modeParam === 'single') {
+    const chosenMr = await pickSalesman(false);
+    if (!chosenMr) return;
+    curMrId = String(chosenMr.id);
+    curMrName = chosenMr.name;
+    curMode = 'items';
+  } else if (modeParam === 'items') {
+    const chosenMr = await pickSalesman(true);
+    if (!chosenMr) return;
+    curMrId = String(chosenMr.id);
+    curMrName = chosenMr.name;
+    curMode = 'items';
   }
 
   showMrSaleScreen({
-    from: chosen.from,
-    to: chosen.to,
-    mr_id: chosen.mr_id,
-    mr_name: chosen.mr_name,
-    mode: chosen.mode,
+    from: curFrom,
+    to: curTo,
+    mr_id: curMrId,
+    mr_name: curMrName,
+    mode: curMode,
   });
 }
 

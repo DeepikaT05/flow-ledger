@@ -1417,8 +1417,8 @@ app.get('/api/reports/mr-sale', h((req) => {
 
   const mrCond = mrId != null
     ? mrId === 0
-      ? ` AND (COALESCE(s.id, CAST(json_extract(l.details, '$.mr_id') AS INTEGER)) IS NULL OR COALESCE(s.id, CAST(json_extract(l.details, '$.mr_id') AS INTEGER)) = 0)`
-      : ` AND (COALESCE(s.id, CAST(json_extract(l.details, '$.mr_id') AS INTEGER)) = ${mrId})`
+      ? ` AND (COALESCE(b.mr_id, s.id, CAST(json_extract(l.details, '$.mr_id') AS INTEGER)) IS NULL OR COALESCE(b.mr_id, s.id, CAST(json_extract(l.details, '$.mr_id') AS INTEGER)) = 0)`
+      : ` AND (COALESCE(b.mr_id, s.id, CAST(json_extract(l.details, '$.mr_id') AS INTEGER)) = ${mrId})`
     : '';
 
   if (mode === 'items') {
@@ -1431,8 +1431,8 @@ app.get('/api/reports/mr-sale', h((req) => {
         i.name AS item_name,
         COALESCE(i.pack, '') AS pack,
         COALESCE(i.company, '') AS company,
-        COALESCE(bi.batch, i.batch, '') AS batch,
-        COALESCE(bi.expiry, i.expiry, '') AS expiry,
+        COALESCE(bi.batch, '') AS batch,
+        COALESCE(bi.expiry, '') AS expiry,
         COUNT(DISTINCT b.id) AS bills_count,
         SUM(CASE WHEN b.type='SALE_RETURN' THEN -(bi.qty) ELSE bi.qty END) AS qty,
         SUM(CASE WHEN b.type='SALE_RETURN' THEN -(bi.free) ELSE bi.free END) AS free_qty,
