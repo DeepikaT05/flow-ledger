@@ -1,0 +1,21 @@
+{
+  "expo": {
+    "name": "Flow Ledger",
+    "slug": "flow-ledger",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#003366"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#003366"
+      }
+    }
+  }
+}
