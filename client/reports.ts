@@ -1,5 +1,6 @@
-import { api, openWin, GridList, money, drcr, esc, today, fmtDate, fyStart, h, formWin, reloadOnClose, toast, type Col } from './ui.ts';
-import { pickLedger, itemRegister, type Ledger } from './masters.ts';
+import { api, openWin, GridList, money, drcr, esc, today, fmtDate, fyStart, h, formWin, reloadOnClose, toast, type Col, pick } from './ui.ts';
+import { pickLedger, itemRegister, type Ledger, type Item, pickItem } from './masters.ts';
+import { pickParty } from './sale.ts';
 import { BILL_TITLE } from './billing.ts';
 import { saleEntry as billEntry } from './sale.ts';
 import { V_TITLE } from './vouchers.ts';
@@ -752,7 +753,7 @@ export function itemWiseSale() {
 }
 
 // ------------------------------------------------------------------ summaries (Party / Company / M.R. / Day / Month wise)
-interface SumRow { name: string; month: string; bills: number; returns: number; qty: number; taxable: number; tax: number; amount: number; cost: number | null }
+interface SumRow { id?: number; name: string; month: string; bills: number; returns: number; qty: number; taxable: number; tax: number; amount: number; cost: number | null; pack?: string; company?: string; city?: string }
 const SUM_BY: Record<string, string> = { party: 'Party', company: 'Company', item: 'Item', mr: 'M.R.', hsn: 'HSN/SAC', gst: 'GST %', day: 'Date', month: 'Month' };
 const monthName = (m: string) => `${new Date(`${m}-01`).toLocaleString('en', { month: 'short' })}-${m.slice(2, 4)}`;
 const monthsIn = (from: string, to: string) => {
@@ -812,8 +813,23 @@ export function summary(spec: string) {
       { title: 'Qty', get: (r) => r.qty, num: true }, { title: 'Taxable', get: (r) => r.taxable, money: true },
       { title: 'GST', get: (r) => r.tax, money: true }, { title: 'Amount', get: (r) => r.amount, money: true }];
   const s = (rows: SumRow[], k: 'qty' | 'taxable' | 'tax' | 'amount' | 'bills' | 'returns') => rows.reduce((a, r) => a + r[k], 0);
+  const extraKeys: Record<string, () => void> = {};
+  let extraFoot: string | undefined = undefined;
+  let onEnter: ((r: SumRow) => void) | undefined = undefined;
+
+  if (by === 'company' && side === 'SALE') {
+    extraFoot = '<span><b>F3</b> Select Company</span>';
+    extraKeys['F3'] = () => singleCompanySale();
+    onEnter = (r: SumRow) => singleCompanySale(r.name);
+  } else if (by === 'party' && side === 'SALE') {
+    extraFoot = '<span><b>F3</b> Select Party</span>';
+    extraKeys['F3'] = () => singlePartySale();
+    onEnter = (r: SumRow) => singlePartySale((r as any).id || r.name);
+  }
+
   return reportWin<SumRow>({
     title, period: true, cols, search: (r) => nameOf(r), load, from,
+    onEnter, extraKeys, extraFoot,
     footer: (rows) => {
       if (gp) {
         const sale = s(rows, 'taxable'), cost = rows.reduce((a, r) => a + (r.cost ?? 0), 0);
@@ -884,7 +900,7 @@ export async function productSummary(side: 'SALE' | 'PURCHASE' = 'SALE') {
   const what = side === 'PURCHASE' ? 'PURCHASE' : 'SALE';
   const w = openWin(`PRODUCT ${what} SUMMARY`, 'full', '');
   w.el.classList.add('marg');
-  w.setFoot('<span><b>1/M</b>-Monthly</span><span><b>2/W</b>-Weekly</span><span><b>3/D</b>-Daily</span><span><b>4/S</b>-Summary</span><span><b>F2</b>-Period</span><span><b>Alt+X</b>-Excel</span><span><b>Alt+P</b>-PDF</span><span><b>Esc</b>-Close</span>');
+  w.setFoot('<span><b>F3</b>-Select Product</span><span><b>Enter</b>-Product Details</span><span><b>1/M</b>-Monthly</span><span><b>2/W</b>-Weekly</span><span><b>3/D</b>-Daily</span><span><b>4/S</b>-Summary</span><span><b>F2</b>-Period</span><span><b>Alt+X</b>-Excel</span><span><b>Alt+P</b>-PDF</span><span><b>Esc</b>-Close</span>');
 
   const screen = h('div', { class: 'ps-screen' });
   screen.innerHTML = `
@@ -898,6 +914,7 @@ export async function productSummary(side: 'SALE' | 'PURCHASE' = 'SALE') {
       </div>
       <div class="ps-info">
         <span class="ps-period">Period: <b>${fmtDate(from)}</b> to <b>${fmtDate(to)}</b> <button type="button" class="ps-btn-period" style="margin-left:6px;cursor:pointer;padding:1px 6px;">Change (F2)</button></span>
+        <button type="button" class="ps-btn-pick-product" style="margin-left:8px;margin-right:8px;cursor:pointer;padding:3px 10px;background:#003366;color:#fff;border:1px solid #ffcc00;font-weight:bold;border-radius:3px;">🔍 Select Product (F3)</button>
         <div class="ps-find"><span>Find Product ? &gt;&gt;</span> [ <input autocomplete="off" spellcheck="false" placeholder="Type name to filter..."> ]</div>
       </div>
     </div>
@@ -936,6 +953,7 @@ export async function productSummary(side: 'SALE' | 'PURCHASE' = 'SALE') {
     updateModeButtons();
     periodSpan.innerHTML = `Period: <b>${fmtDate(from)}</b> to <b>${fmtDate(to)}</b> <button type="button" class="ps-btn-period" style="margin-left:6px;cursor:pointer;padding:1px 6px;">Change (F2)</button>`;
     screen.querySelector('.ps-btn-period')?.addEventListener('click', changePeriod);
+    screen.querySelector('.ps-btn-pick-product')?.addEventListener('click', () => singleProductSale(undefined, from, to));
 
     const q = findInput.value.trim().toLowerCase();
 
@@ -1111,6 +1129,14 @@ export async function productSummary(side: 'SALE' | 'PURCHASE' = 'SALE') {
         </table>
       `;
     }
+
+    gridWrap.querySelectorAll<HTMLTableRowElement>('tbody tr').forEach((tr) => {
+      tr.style.cursor = 'pointer';
+      tr.addEventListener('dblclick', () => {
+        const itName = tr.querySelector('td b')?.textContent?.trim();
+        if (itName && !itName.toUpperCase().includes('TOTAL')) singleProductSale(itName, from, to);
+      });
+    });
   }
 
   function exportExcel() {
@@ -1164,7 +1190,814 @@ export async function productSummary(side: 'SALE' | 'PURCHASE' = 'SALE') {
     if (k === '2' || k === 'w' || k === 'W') { mode = 'week'; load(); return true; }
     if (k === '3' || k === 'd' || k === 'D') { mode = 'day'; load(); return true; }
     if (k === '4' || k === 's' || k === 'S') { mode = 'summary'; load(); return true; }
+    if (k === 'F3') { singleProductSale(undefined, from, to); return true; }
     if (k === 'F2') { changePeriod(); return true; }
+    if (k === 'Alt+X') { exportExcel(); return true; }
+    if (k === 'Alt+P' || k === 'Ctrl+P' || k === 'F10') { printCurrent(); return true; }
+    return false;
+  };
+
+  await load();
+  findInput.focus();
+}
+
+
+// ------------------------------------------------------------------ Single Product / Company / Party Sale Drill-down
+
+export async function pickCompany(initial = ''): Promise<string | null> {
+  const rows = await api<{ company: string }[]>('/companies-list');
+  const res = await pick<{ company: string }>({
+    title: 'Select Company',
+    rows,
+    cols: [{ title: 'Company Name', get: (r) => r.company }],
+    key: (r) => r.company,
+    initial,
+    size: 'mid',
+  });
+  return res ? res.company : null;
+}
+
+/**
+ * Single Product Sale Detail: Shows all sales bills for a single item,
+ * with batch, expiry, qty, rate, discount, taxable, tax, and total.
+ * Pressing Enter on any bill opens bill alteration.
+ */
+export async function singleProductSale(itemOrId?: any, initFrom?: string, initTo?: string) {
+  let it: any = itemOrId;
+  if (!it) {
+    it = await pickItem();
+    if (!it) return;
+  }
+  let itemId = typeof it === 'object' ? it.id : (typeof it === 'number' ? it : undefined);
+  let itemName = typeof it === 'object' ? it.name : (typeof it === 'string' ? it : undefined);
+
+  let from = initFrom || fyStart();
+  let to = initTo || today();
+
+  const w = openWin('SINGLE PRODUCT SALE REPORT', 'full', '');
+  w.el.classList.add('marg');
+  w.setFoot('<span><b>F2</b>-Period</span><span><b>F3</b>-Change Product</span><span><b>Enter</b>-Open Bill</span><span><b>Alt+X</b>-Excel</span><span><b>Alt+P</b>-PDF</span><span><b>Esc</b>-Close</span>');
+
+  const screen = h('div', { class: 'ps-screen' });
+  screen.innerHTML = `
+    <div class="ps-top">
+      <div class="ps-modes" style="align-items:center;">
+        <span class="ps-label" style="font-size:15px;color:#ffcc00;font-weight:bold;">📦 PRODUCT SALE DETAIL</span>
+        <button type="button" class="ps-btn-change-item" style="margin-left:12px;cursor:pointer;padding:3px 10px;background:#003366;color:#fff;border:1px solid #ffcc00;font-weight:bold;border-radius:3px;">🔍 Change Product (F3)</button>
+      </div>
+      <div class="ps-info">
+        <span class="ps-period">Period: <b>${fmtDate(from)}</b> to <b>${fmtDate(to)}</b> <button type="button" class="ps-btn-period" style="margin-left:6px;cursor:pointer;padding:1px 6px;">Change (F2)</button></span>
+        <div class="ps-find"><span>Find in Bills &gt;&gt;</span> [ <input autocomplete="off" spellcheck="false" placeholder="Filter by bill no, party, batch..."> ]</div>
+      </div>
+    </div>
+    <div class="ps-item-banner" style="background:#0c2540;color:#e8f4f8;padding:6px 12px;border-bottom:1px solid #204060;display:flex;flex-wrap:wrap;gap:18px;font-size:13px;">
+      <div>Item: <b class="item-name" style="font-size:15px;color:#fff;">Loading...</b></div>
+      <div>Pack: <b class="item-pack">-</b></div>
+      <div>Company: <b class="item-company">-</b></div>
+      <div>HSN: <b class="item-hsn">-</b></div>
+    </div>
+    <div class="ps-item-summary-cards" style="display:flex;gap:18px;padding:6px 12px;background:#13293d;color:#fff;font-size:13px;border-bottom:1px solid #204060;"></div>
+    <div class="ps-grid-wrap" style="flex:1;overflow:auto;"></div>
+  `;
+
+  const bar = margBar('SINGLE PRODUCT SALE REPORT');
+  addExportToMargBar(bar, { onExcel: () => exportExcel(), onPdf: () => printCurrent() });
+  screen.prepend(bar);
+  w.body.append(screen);
+
+  const gridWrap = screen.querySelector('.ps-grid-wrap') as HTMLElement;
+  const findInput = screen.querySelector('.ps-find input') as HTMLInputElement;
+  const periodSpan = screen.querySelector('.ps-period') as HTMLElement;
+  const summaryCards = screen.querySelector('.ps-item-summary-cards') as HTMLElement;
+  const itemNameEl = screen.querySelector('.item-name') as HTMLElement;
+  const itemPackEl = screen.querySelector('.item-pack') as HTMLElement;
+  const itemCompanyEl = screen.querySelector('.item-company') as HTMLElement;
+  const itemHsnEl = screen.querySelector('.item-hsn') as HTMLElement;
+
+  let loadedData: { item: any; rows: any[] } = { item: null, rows: [] };
+  let filteredRows: any[] = [];
+  let sel = 0;
+
+  async function load() {
+    gridWrap.innerHTML = '<div style="padding:24px;text-align:center;font-size:16px;">Loading product sale transactions...</div>';
+    const params = new URLSearchParams({ from, to });
+    if (itemId) params.set('item_id', String(itemId));
+    if (itemName) params.set('name', itemName);
+    loadedData = await api<{ item: any; rows: any[] }>(`/reports/item-sale-detail?${params.toString()}`);
+
+    const itm = loadedData.item || (typeof it === 'object' ? it : null);
+    if (itm) {
+      itemNameEl.textContent = itm.name || itemName || '';
+      itemPackEl.textContent = itm.pack || '-';
+      itemCompanyEl.textContent = itm.company || '-';
+      itemHsnEl.textContent = itm.hsn || '-';
+      const titleSpan = bar.querySelector('span');
+      if (titleSpan) titleSpan.textContent = `PRODUCT SALE REPORT — ${itm.name}`;
+    } else if (itemName) {
+      itemNameEl.textContent = itemName;
+    }
+    render();
+  }
+
+  function render() {
+    periodSpan.innerHTML = `Period: <b>${fmtDate(from)}</b> to <b>${fmtDate(to)}</b> <button type="button" class="ps-btn-period" style="margin-left:6px;cursor:pointer;padding:1px 6px;">Change (F2)</button>`;
+    screen.querySelector('.ps-btn-period')?.addEventListener('click', changePeriod);
+    screen.querySelector('.ps-btn-change-item')?.addEventListener('click', chooseAnotherItem);
+
+    const q = findInput.value.trim().toLowerCase();
+    filteredRows = loadedData.rows || [];
+    if (q) {
+      filteredRows = filteredRows.filter((r) =>
+        String(r.no || '').toLowerCase().includes(q) ||
+        String(r.party || '').toLowerCase().includes(q) ||
+        String(r.batch || '').toLowerCase().includes(q) ||
+        String(r.type || '').toLowerCase().includes(q)
+      );
+    }
+
+    if (sel >= filteredRows.length) sel = Math.max(0, filteredRows.length - 1);
+
+    const totBills = new Set(filteredRows.map((r) => r.bill_id)).size;
+    const totQty = filteredRows.reduce((s, r) => s + Number(r.qty || 0), 0);
+    const totFree = filteredRows.reduce((s, r) => s + Number(r.free || 0), 0);
+    const totTaxable = filteredRows.reduce((s, r) => s + Number(r.taxable || 0), 0);
+    const totTax = filteredRows.reduce((s, r) => s + Number(r.tax || 0), 0);
+    const totAmt = filteredRows.reduce((s, r) => s + Number(r.amount || 0), 0);
+
+    summaryCards.innerHTML = `
+      <div>Bills: <b style="color:#ffcc00">${totBills}</b></div>
+      <div>Qty Sold: <b style="color:#00e676">${totQty}</b></div>
+      <div>Free Qty: <b>${totFree}</b></div>
+      <div>Taxable: <b>${money(totTaxable)}</b></div>
+      <div>GST: <b>${money(totTax)}</b></div>
+      <div>Total Sales: <b style="color:#ffcc00;font-size:14px;">${money(totAmt)}</b></div>
+    `;
+
+    gridWrap.innerHTML = `
+      <table class="grid ps-table" style="width:100%;">
+        <thead>
+          <tr>
+            <th style="width:90px;">DATE</th>
+            <th style="width:110px;">BILL NO</th>
+            <th style="width:80px;">TYPE</th>
+            <th style="text-align:left;">PARTY NAME</th>
+            <th style="width:100px;">BATCH</th>
+            <th style="width:80px;">EXPIRY</th>
+            <th class="n" style="width:70px;">QTY</th>
+            <th class="n" style="width:60px;">FREE</th>
+            <th class="n" style="width:90px;">RATE</th>
+            <th class="n" style="width:70px;">DISC %</th>
+            <th class="n" style="width:100px;">TAXABLE</th>
+            <th class="n" style="width:90px;">GST</th>
+            <th class="n" style="width:110px;">AMOUNT</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${filteredRows.length ? filteredRows.map((r, i) => `
+            <tr class="ps-row ${i === sel ? 'sel' : ''}" data-idx="${i}" style="cursor:pointer;">
+              <td>${fmtDate(r.date)}</td>
+              <td><b>${esc(r.no)}</b></td>
+              <td>${esc(BILL_TITLE[r.type] || r.type)}</td>
+              <td><b>${esc(r.party)}</b></td>
+              <td>${esc(r.batch || '-')}</td>
+              <td>${esc(r.expiry || '-')}</td>
+              <td class="n"><b>${r.qty}</b></td>
+              <td class="n">${r.free || '-'}</td>
+              <td class="n">${money(r.rate)}</td>
+              <td class="n">${r.disc_pct ? `${r.disc_pct}%` : '-'}</td>
+              <td class="n">${money(r.taxable)}</td>
+              <td class="n">${money(r.tax)}</td>
+              <td class="n"><b>${money(r.amount)}</b></td>
+            </tr>
+          `).join('') : '<tr><td colspan="13" style="text-align:center;padding:24px;">No sales found for this product in selected period</td></tr>'}
+        </tbody>
+        <tfoot>
+          <tr class="total">
+            <td colspan="4"><b>TOTAL (${filteredRows.length} Rows / ${totBills} Bills)</b></td>
+            <td colspan="2"></td>
+            <td class="n"><b>${totQty}</b></td>
+            <td class="n"><b>${totFree}</b></td>
+            <td colspan="2"></td>
+            <td class="n"><b>${money(totTaxable)}</b></td>
+            <td class="n"><b>${money(totTax)}</b></td>
+            <td class="n"><b>${money(totAmt)}</b></td>
+          </tr>
+        </tfoot>
+      </table>
+    `;
+
+    gridWrap.querySelectorAll<HTMLTableRowElement>('.ps-row').forEach((tr) => {
+      tr.addEventListener('click', () => {
+        sel = Number(tr.dataset.idx);
+        gridWrap.querySelectorAll('.ps-row').forEach((x, idx) => x.classList.toggle('sel', idx === sel));
+      });
+      tr.addEventListener('dblclick', () => {
+        sel = Number(tr.dataset.idx);
+        openSelectedBill();
+      });
+    });
+  }
+
+  function openSelectedBill() {
+    const cur = filteredRows[sel];
+    if (!cur) return;
+    const bills = filteredRows.map((r) => ({ id: r.bill_id, type: r.type })).filter((b, i, a) => a.findIndex((x) => x.id === b.id) === i);
+    const at = bills.findIndex((b) => b.id === cur.bill_id);
+    import('./billview.ts').then((m) => m.billAlteration(bills, at >= 0 ? at : 0, () => load()));
+  }
+
+  async function chooseAnotherItem() {
+    const newIt = await pickItem();
+    if (newIt) {
+      it = newIt;
+      itemId = newIt.id;
+      itemName = newIt.name;
+      load();
+    }
+  }
+
+  async function changePeriod() {
+    const res = await askPeriod(from, to);
+    if (res) {
+      from = res.from;
+      to = res.to;
+      load();
+    }
+  }
+
+  function exportExcel() {
+    const table = gridWrap.querySelector('table');
+    if (!table) return;
+    const headers: string[] = [];
+    table.querySelectorAll('thead th').forEach((th) => headers.push(th.textContent?.replace(/\s+/g, ' ').trim() || ''));
+    const rows: (string | number)[][] = [];
+    table.querySelectorAll('tbody tr').forEach((tr) => {
+      const row: (string | number)[] = [];
+      tr.querySelectorAll('td').forEach((td) => row.push(td.textContent?.replace(/\s+/g, ' ').trim() || ''));
+      rows.push(row);
+    });
+    table.querySelectorAll('tfoot tr').forEach((tr) => {
+      const row: (string | number)[] = [];
+      tr.querySelectorAll('td').forEach((td) => row.push(td.textContent?.replace(/\s+/g, ' ').trim() || ''));
+      rows.push(row);
+    });
+    const safeName = (itemNameEl.textContent || 'Item').replace(/[^a-zA-Z0-9_-]/g, '_');
+    downloadCsv(`Product_Sale_${safeName}_${from}_${to}.csv`, headers, rows);
+  }
+
+  function printCurrent() {
+    const table = gridWrap.querySelector('table');
+    if (!table) return;
+    let companyInfo: any = {};
+    api('/company').then((c) => { companyInfo = c; }).finally(() => {
+      const html = `<h2>${esc(companyInfo.name || '')}</h2>
+        <h3 style="text-align:center">SINGLE PRODUCT SALE REPORT — ${esc(itemNameEl.textContent || '')}</h3>
+        <p style="text-align:center;font-size:12px;">Period: ${fmtDate(from)} to ${fmtDate(to)} | Pack: ${esc(itemPackEl.textContent || '')} | Company: ${esc(itemCompanyEl.textContent || '')} | HSN: ${esc(itemHsnEl.textContent || '')}</p>
+        ${table.outerHTML}`;
+      import('./billing.ts').then((m) => m.printHtml(html, 1));
+    });
+  }
+
+  findInput.addEventListener('input', () => { sel = 0; render(); });
+
+  w.onKey = (_e, k) => {
+    if (k === 'ArrowDown') {
+      if (sel < filteredRows.length - 1) {
+        sel++;
+        render();
+        const curRow = gridWrap.querySelector(`.ps-row[data-idx="${sel}"]`);
+        curRow?.scrollIntoView({ block: 'nearest' });
+      }
+      return true;
+    }
+    if (k === 'ArrowUp') {
+      if (sel > 0) {
+        sel--;
+        render();
+        const curRow = gridWrap.querySelector(`.ps-row[data-idx="${sel}"]`);
+        curRow?.scrollIntoView({ block: 'nearest' });
+      }
+      return true;
+    }
+    if (k === 'Enter') {
+      openSelectedBill();
+      return true;
+    }
+    if (k === 'F2') { changePeriod(); return true; }
+    if (k === 'F3') { chooseAnotherItem(); return true; }
+    if (k === 'Alt+X') { exportExcel(); return true; }
+    if (k === 'Alt+P' || k === 'Ctrl+P' || k === 'F10') { printCurrent(); return true; }
+    return false;
+  };
+
+  await load();
+  findInput.focus();
+}
+
+/**
+ * Single Company Sale: Shows product-wise breakdown of sales for a company.
+ * Pressing Enter on any product drills down into Single Product Sale.
+ */
+export async function singleCompanySale(companyName?: string, initFrom?: string, initTo?: string) {
+  let comp = companyName;
+  if (!comp) {
+    comp = (await pickCompany()) || '';
+    if (!comp) return;
+  }
+
+  let from = initFrom || fyStart();
+  let to = initTo || today();
+
+  const w = openWin(`COMPANY SALE: ${comp.toUpperCase()}`, 'wide', '');
+  w.el.classList.add('marg');
+  w.setFoot('<span><b>F2</b>-Period</span><span><b>F3</b>-Change Company</span><span><b>Enter</b>-Product Sale Detail</span><span><b>Alt+X</b>-Excel</span><span><b>Alt+P</b>-PDF</span><span><b>Esc</b>-Close</span>');
+
+  const screen = h('div', { class: 'ps-screen' });
+  screen.innerHTML = `
+    <div class="ps-top">
+      <div class="ps-modes" style="align-items:center;">
+        <span class="ps-label" style="font-size:15px;color:#ffcc00;font-weight:bold;">🏢 SINGLE COMPANY SALE</span>
+        <button type="button" class="ps-btn-change-comp" style="margin-left:12px;cursor:pointer;padding:3px 10px;background:#003366;color:#fff;border:1px solid #ffcc00;font-weight:bold;border-radius:3px;">🔍 Change Company (F3)</button>
+      </div>
+      <div class="ps-info">
+        <span class="ps-period">Period: <b>${fmtDate(from)}</b> to <b>${fmtDate(to)}</b> <button type="button" class="ps-btn-period" style="margin-left:6px;cursor:pointer;padding:1px 6px;">Change (F2)</button></span>
+        <div class="ps-find"><span>Find Product &gt;&gt;</span> [ <input autocomplete="off" spellcheck="false" placeholder="Filter products..."> ]</div>
+      </div>
+    </div>
+    <div class="ps-item-banner" style="background:#0c2540;color:#e8f4f8;padding:6px 12px;border-bottom:1px solid #204060;display:flex;flex-wrap:wrap;gap:18px;font-size:13px;">
+      <div>Company: <b class="comp-title" style="font-size:15px;color:#fff;">${esc(comp)}</b></div>
+    </div>
+    <div class="ps-item-summary-cards" style="display:flex;gap:18px;padding:6px 12px;background:#13293d;color:#fff;font-size:13px;border-bottom:1px solid #204060;"></div>
+    <div class="ps-grid-wrap" style="flex:1;overflow:auto;"></div>
+  `;
+
+  const bar = margBar(`COMPANY SALE — ${comp}`);
+  addExportToMargBar(bar, { onExcel: () => exportExcel(), onPdf: () => printCurrent() });
+  screen.prepend(bar);
+  w.body.append(screen);
+
+  const gridWrap = screen.querySelector('.ps-grid-wrap') as HTMLElement;
+  const findInput = screen.querySelector('.ps-find input') as HTMLInputElement;
+  const periodSpan = screen.querySelector('.ps-period') as HTMLElement;
+  const summaryCards = screen.querySelector('.ps-item-summary-cards') as HTMLElement;
+  const compTitleEl = screen.querySelector('.comp-title') as HTMLElement;
+
+  let loadedRows: any[] = [];
+  let filteredRows: any[] = [];
+  let sel = 0;
+
+  async function load() {
+    gridWrap.innerHTML = '<div style="padding:24px;text-align:center;font-size:16px;">Loading company products sale...</div>';
+    compTitleEl.textContent = comp || '';
+    const titleSpan = bar.querySelector('span');
+    if (titleSpan) titleSpan.textContent = `COMPANY SALE — ${comp}`;
+    loadedRows = await api<any[]>(`/reports/summary?side=SALE&by=item&company=${encodeURIComponent(comp!)}&from=${from}&to=${to}`);
+    render();
+  }
+
+  function render() {
+    periodSpan.innerHTML = `Period: <b>${fmtDate(from)}</b> to <b>${fmtDate(to)}</b> <button type="button" class="ps-btn-period" style="margin-left:6px;cursor:pointer;padding:1px 6px;">Change (F2)</button>`;
+    screen.querySelector('.ps-btn-period')?.addEventListener('click', changePeriod);
+    screen.querySelector('.ps-btn-change-comp')?.addEventListener('click', chooseAnotherComp);
+
+    const q = findInput.value.trim().toLowerCase();
+    filteredRows = loadedRows;
+    if (q) {
+      filteredRows = filteredRows.filter((r) => String(r.name).toLowerCase().includes(q) || String(r.pack || '').toLowerCase().includes(q));
+    }
+
+    if (sel >= filteredRows.length) sel = Math.max(0, filteredRows.length - 1);
+
+    const totBills = filteredRows.reduce((s, r) => s + Number(r.bills || 0), 0);
+    const totRet = filteredRows.reduce((s, r) => s + Number(r.returns || 0), 0);
+    const totQty = filteredRows.reduce((s, r) => s + Number(r.qty || 0), 0);
+    const totTaxable = filteredRows.reduce((s, r) => s + Number(r.taxable || 0), 0);
+    const totTax = filteredRows.reduce((s, r) => s + Number(r.tax || 0), 0);
+    const totAmt = filteredRows.reduce((s, r) => s + Number(r.amount || 0), 0);
+
+    summaryCards.innerHTML = `
+      <div>Products: <b style="color:#ffcc00">${filteredRows.length}</b></div>
+      <div>Bills: <b>${totBills}</b></div>
+      <div>Returns: <b>${totRet}</b></div>
+      <div>Qty Sold: <b style="color:#00e676">${totQty}</b></div>
+      <div>Taxable: <b>${money(totTaxable)}</b></div>
+      <div>GST: <b>${money(totTax)}</b></div>
+      <div>Total Sales: <b style="color:#ffcc00;font-size:14px;">${money(totAmt)}</b></div>
+    `;
+
+    gridWrap.innerHTML = `
+      <table class="grid ps-table" style="width:100%;">
+        <thead>
+          <tr>
+            <th style="text-align:left;">PRODUCT NAME</th>
+            <th style="width:90px;">PACK</th>
+            <th class="n" style="width:80px;">BILLS</th>
+            <th class="n" style="width:80px;">RETURNS</th>
+            <th class="n" style="width:90px;">TOTAL QTY</th>
+            <th class="n" style="width:110px;">TAXABLE</th>
+            <th class="n" style="width:100px;">GST</th>
+            <th class="n" style="width:120px;">TOTAL AMOUNT</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${filteredRows.length ? filteredRows.map((r, i) => `
+            <tr class="ps-row ${i === sel ? 'sel' : ''}" data-idx="${i}" style="cursor:pointer;">
+              <td><b>${esc(r.name)}</b></td>
+              <td>${esc(r.pack || '-')}</td>
+              <td class="n">${r.bills ?? '-'}</td>
+              <td class="n">${r.returns || '-'}</td>
+              <td class="n"><b>${r.qty}</b></td>
+              <td class="n">${money(r.taxable)}</td>
+              <td class="n">${money(r.tax)}</td>
+              <td class="n"><b>${money(r.amount)}</b></td>
+            </tr>
+          `).join('') : '<tr><td colspan="8" style="text-align:center;padding:24px;">No products sold for this company in selected period</td></tr>'}
+        </tbody>
+        <tfoot>
+          <tr class="total">
+            <td colspan="2"><b>TOTAL (${filteredRows.length} Products)</b></td>
+            <td class="n"><b>${totBills}</b></td>
+            <td class="n"><b>${totRet}</b></td>
+            <td class="n"><b>${totQty}</b></td>
+            <td class="n"><b>${money(totTaxable)}</b></td>
+            <td class="n"><b>${money(totTax)}</b></td>
+            <td class="n"><b>${money(totAmt)}</b></td>
+          </tr>
+        </tfoot>
+      </table>
+    `;
+
+    gridWrap.querySelectorAll<HTMLTableRowElement>('.ps-row').forEach((tr) => {
+      tr.addEventListener('click', () => {
+        sel = Number(tr.dataset.idx);
+        gridWrap.querySelectorAll('.ps-row').forEach((x, idx) => x.classList.toggle('sel', idx === sel));
+      });
+      tr.addEventListener('dblclick', () => {
+        sel = Number(tr.dataset.idx);
+        openSelectedProduct();
+      });
+    });
+  }
+
+  function openSelectedProduct() {
+    const cur = filteredRows[sel];
+    if (!cur) return;
+    singleProductSale(cur.id || cur.name, from, to);
+  }
+
+  async function chooseAnotherComp() {
+    const newComp = await pickCompany();
+    if (newComp) {
+      comp = newComp;
+      load();
+    }
+  }
+
+  async function changePeriod() {
+    const res = await askPeriod(from, to);
+    if (res) {
+      from = res.from;
+      to = res.to;
+      load();
+    }
+  }
+
+  function exportExcel() {
+    const table = gridWrap.querySelector('table');
+    if (!table) return;
+    const headers: string[] = [];
+    table.querySelectorAll('thead th').forEach((th) => headers.push(th.textContent?.replace(/\s+/g, ' ').trim() || ''));
+    const rows: (string | number)[][] = [];
+    table.querySelectorAll('tbody tr').forEach((tr) => {
+      const row: (string | number)[] = [];
+      tr.querySelectorAll('td').forEach((td) => row.push(td.textContent?.replace(/\s+/g, ' ').trim() || ''));
+      rows.push(row);
+    });
+    table.querySelectorAll('tfoot tr').forEach((tr) => {
+      const row: (string | number)[] = [];
+      tr.querySelectorAll('td').forEach((td) => row.push(td.textContent?.replace(/\s+/g, ' ').trim() || ''));
+      rows.push(row);
+    });
+    const safeName = (comp || 'Company').replace(/[^a-zA-Z0-9_-]/g, '_');
+    downloadCsv(`Company_Sale_${safeName}_${from}_${to}.csv`, headers, rows);
+  }
+
+  function printCurrent() {
+    const table = gridWrap.querySelector('table');
+    if (!table) return;
+    let companyInfo: any = {};
+    api('/company').then((c) => { companyInfo = c; }).finally(() => {
+      const html = `<h2>${esc(companyInfo.name || '')}</h2>
+        <h3 style="text-align:center">SINGLE COMPANY SALE REPORT — ${esc(comp || '')}</h3>
+        <p style="text-align:center;font-size:12px;">Period: ${fmtDate(from)} to ${fmtDate(to)}</p>
+        ${table.outerHTML}`;
+      import('./billing.ts').then((m) => m.printHtml(html, 1));
+    });
+  }
+
+  findInput.addEventListener('input', () => { sel = 0; render(); });
+
+  w.onKey = (_e, k) => {
+    if (k === 'ArrowDown') {
+      if (sel < filteredRows.length - 1) {
+        sel++;
+        render();
+        const curRow = gridWrap.querySelector(`.ps-row[data-idx="${sel}"]`);
+        curRow?.scrollIntoView({ block: 'nearest' });
+      }
+      return true;
+    }
+    if (k === 'ArrowUp') {
+      if (sel > 0) {
+        sel--;
+        render();
+        const curRow = gridWrap.querySelector(`.ps-row[data-idx="${sel}"]`);
+        curRow?.scrollIntoView({ block: 'nearest' });
+      }
+      return true;
+    }
+    if (k === 'Enter') {
+      openSelectedProduct();
+      return true;
+    }
+    if (k === 'F2') { changePeriod(); return true; }
+    if (k === 'F3') { chooseAnotherComp(); return true; }
+    if (k === 'Alt+X') { exportExcel(); return true; }
+    if (k === 'Alt+P' || k === 'Ctrl+P' || k === 'F10') { printCurrent(); return true; }
+    return false;
+  };
+
+  await load();
+  findInput.focus();
+}
+
+/**
+ * Single Party Sale: Shows all sale bills for a party, with date, bill no, mode, items summary, taxable, tax, and net.
+ * Pressing Enter on any bill opens bill alteration.
+ */
+export async function singlePartySale(partyOrId?: any, initFrom?: string, initTo?: string) {
+  let party = partyOrId;
+  if (!party) {
+    party = await pickParty();
+    if (!party) return;
+  }
+  let partyId = typeof party === 'object' ? party.id : (typeof party === 'number' ? party : undefined);
+  let partyName = typeof party === 'object' ? party.name : (typeof party === 'string' ? party : undefined);
+
+  let from = initFrom || fyStart();
+  let to = initTo || today();
+
+  const w = openWin('SINGLE PARTY SALE REPORT', 'wide', '');
+  w.el.classList.add('marg');
+  w.setFoot('<span><b>F2</b>-Period</span><span><b>F3</b>-Change Party</span><span><b>Enter</b>-Open Bill</span><span><b>Alt+X</b>-Excel</span><span><b>Alt+P</b>-PDF</span><span><b>Esc</b>-Close</span>');
+
+  const screen = h('div', { class: 'ps-screen' });
+  screen.innerHTML = `
+    <div class="ps-top">
+      <div class="ps-modes" style="align-items:center;">
+        <span class="ps-label" style="font-size:15px;color:#ffcc00;font-weight:bold;">👤 SINGLE PARTY SALE</span>
+        <button type="button" class="ps-btn-change-party" style="margin-left:12px;cursor:pointer;padding:3px 10px;background:#003366;color:#fff;border:1px solid #ffcc00;font-weight:bold;border-radius:3px;">🔍 Change Party (F3)</button>
+      </div>
+      <div class="ps-info">
+        <span class="ps-period">Period: <b>${fmtDate(from)}</b> to <b>${fmtDate(to)}</b> <button type="button" class="ps-btn-period" style="margin-left:6px;cursor:pointer;padding:1px 6px;">Change (F2)</button></span>
+        <div class="ps-find"><span>Find in Bills &gt;&gt;</span> [ <input autocomplete="off" spellcheck="false" placeholder="Filter by bill no, item..."> ]</div>
+      </div>
+    </div>
+    <div class="ps-item-banner" style="background:#0c2540;color:#e8f4f8;padding:6px 12px;border-bottom:1px solid #204060;display:flex;flex-wrap:wrap;gap:18px;font-size:13px;">
+      <div>Party: <b class="party-name" style="font-size:15px;color:#fff;">Loading...</b></div>
+      <div>Station: <b class="party-city">-</b></div>
+      <div>Phone: <b class="party-phone">-</b></div>
+      <div>GSTIN: <b class="party-gstin">-</b></div>
+      <div>Closing Bal: <b class="party-bal" style="color:#ffcc00">-</b></div>
+    </div>
+    <div class="ps-item-summary-cards" style="display:flex;gap:18px;padding:6px 12px;background:#13293d;color:#fff;font-size:13px;border-bottom:1px solid #204060;"></div>
+    <div class="ps-grid-wrap" style="flex:1;overflow:auto;"></div>
+  `;
+
+  const bar = margBar('SINGLE PARTY SALE REPORT');
+  addExportToMargBar(bar, { onExcel: () => exportExcel(), onPdf: () => printCurrent() });
+  screen.prepend(bar);
+  w.body.append(screen);
+
+  const gridWrap = screen.querySelector('.ps-grid-wrap') as HTMLElement;
+  const findInput = screen.querySelector('.ps-find input') as HTMLInputElement;
+  const periodSpan = screen.querySelector('.ps-period') as HTMLElement;
+  const summaryCards = screen.querySelector('.ps-item-summary-cards') as HTMLElement;
+  const partyNameEl = screen.querySelector('.party-name') as HTMLElement;
+  const partyCityEl = screen.querySelector('.party-city') as HTMLElement;
+  const partyPhoneEl = screen.querySelector('.party-phone') as HTMLElement;
+  const partyGstinEl = screen.querySelector('.party-gstin') as HTMLElement;
+  const partyBalEl = screen.querySelector('.party-bal') as HTMLElement;
+
+  let loadedData: { party: any; bills: any[] } = { party: null, bills: [] };
+  let filteredBills: any[] = [];
+  let sel = 0;
+
+  async function load() {
+    gridWrap.innerHTML = '<div style="padding:24px;text-align:center;font-size:16px;">Loading party sale bills...</div>';
+    if (!partyId && partyName) {
+      const ledgers = await api<any[]>(`/ledgers?group=Sundry Debtors,Sundry Creditors`);
+      const matched = ledgers.find((l) => l.name.toUpperCase() === partyName!.toUpperCase());
+      if (matched) partyId = matched.id;
+    }
+    if (!partyId) {
+      gridWrap.innerHTML = '<div style="padding:24px;text-align:center;color:#ff6666;">Party not found</div>';
+      return;
+    }
+    loadedData = await api<{ party: any; bills: any[] }>(`/reports/party-sale-detail?party_id=${partyId}&from=${from}&to=${to}`);
+
+    const pty = loadedData.party || (typeof party === 'object' ? party : null);
+    if (pty) {
+      partyNameEl.textContent = pty.name || partyName || '';
+      partyCityEl.textContent = pty.city || '-';
+      partyPhoneEl.textContent = pty.phone || pty.mobile || '-';
+      partyGstinEl.textContent = pty.gstin || '-';
+      partyBalEl.textContent = pty.balance != null ? `${money(Math.abs(pty.balance))} ${pty.balance >= 0 ? 'Dr' : 'Cr'}` : '-';
+      const titleSpan = bar.querySelector('span');
+      if (titleSpan) titleSpan.textContent = `PARTY SALE REPORT — ${pty.name}`;
+    } else if (partyName) {
+      partyNameEl.textContent = partyName;
+    }
+    render();
+  }
+
+  function render() {
+    periodSpan.innerHTML = `Period: <b>${fmtDate(from)}</b> to <b>${fmtDate(to)}</b> <button type="button" class="ps-btn-period" style="margin-left:6px;cursor:pointer;padding:1px 6px;">Change (F2)</button>`;
+    screen.querySelector('.ps-btn-period')?.addEventListener('click', changePeriod);
+    screen.querySelector('.ps-btn-change-party')?.addEventListener('click', chooseAnotherParty);
+
+    const q = findInput.value.trim().toLowerCase();
+    filteredBills = loadedData.bills || [];
+    if (q) {
+      filteredBills = filteredBills.filter((b) =>
+        String(b.no || '').toLowerCase().includes(q) ||
+        String(b.mode || '').toLowerCase().includes(q) ||
+        String(b.type || '').toLowerCase().includes(q) ||
+        String(b.items_summary || '').toLowerCase().includes(q)
+      );
+    }
+
+    if (sel >= filteredBills.length) sel = Math.max(0, filteredBills.length - 1);
+
+    const totBills = filteredBills.length;
+    const totGross = filteredBills.reduce((s, r) => s + Number(r.gross || 0), 0);
+    const totDisc = filteredBills.reduce((s, r) => s + Number(r.discount || 0), 0);
+    const totTaxable = filteredBills.reduce((s, r) => s + Number(r.taxable || 0), 0);
+    const totTax = filteredBills.reduce((s, r) => s + Number(r.tax || 0), 0);
+    const totNet = filteredBills.reduce((s, r) => s + Number(r.net || 0), 0);
+
+    summaryCards.innerHTML = `
+      <div>Bills: <b style="color:#ffcc00">${totBills}</b></div>
+      <div>Gross: <b>${money(totGross)}</b></div>
+      <div>Discount: <b>${money(totDisc)}</b></div>
+      <div>Taxable: <b>${money(totTaxable)}</b></div>
+      <div>GST: <b>${money(totTax)}</b></div>
+      <div>Total Sales: <b style="color:#ffcc00;font-size:14px;">${money(totNet)}</b></div>
+    `;
+
+    gridWrap.innerHTML = `
+      <table class="grid ps-table" style="width:100%;">
+        <thead>
+          <tr>
+            <th style="width:90px;">DATE</th>
+            <th style="width:110px;">BILL NO</th>
+            <th style="width:80px;">TYPE</th>
+            <th style="width:80px;">MODE</th>
+            <th style="text-align:left;">ITEMS SOLD</th>
+            <th class="n" style="width:90px;">GROSS</th>
+            <th class="n" style="width:80px;">DISC</th>
+            <th class="n" style="width:100px;">TAXABLE</th>
+            <th class="n" style="width:90px;">GST</th>
+            <th class="n" style="width:110px;">NET AMOUNT</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${filteredBills.length ? filteredBills.map((r, i) => `
+            <tr class="ps-row ${i === sel ? 'sel' : ''}" data-idx="${i}" style="cursor:pointer;">
+              <td>${fmtDate(r.date)}</td>
+              <td><b>${esc(r.no)}</b></td>
+              <td>${esc(BILL_TITLE[r.type] || r.type)}</td>
+              <td>${esc(r.mode)}</td>
+              <td style="max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(r.items_summary || '')}">${esc(r.items_summary || '-')}</td>
+              <td class="n">${money(r.gross)}</td>
+              <td class="n">${money(r.discount)}</td>
+              <td class="n">${money(r.taxable)}</td>
+              <td class="n">${money(r.tax)}</td>
+              <td class="n"><b>${money(r.net)}</b></td>
+            </tr>
+          `).join('') : '<tr><td colspan="10" style="text-align:center;padding:24px;">No sale bills found for this party in selected period</td></tr>'}
+        </tbody>
+        <tfoot>
+          <tr class="total">
+            <td colspan="5"><b>TOTAL (${filteredBills.length} Bills)</b></td>
+            <td class="n"><b>${money(totGross)}</b></td>
+            <td class="n"><b>${money(totDisc)}</b></td>
+            <td class="n"><b>${money(totTaxable)}</b></td>
+            <td class="n"><b>${money(totTax)}</b></td>
+            <td class="n"><b>${money(totNet)}</b></td>
+          </tr>
+        </tfoot>
+      </table>
+    `;
+
+    gridWrap.querySelectorAll<HTMLTableRowElement>('.ps-row').forEach((tr) => {
+      tr.addEventListener('click', () => {
+        sel = Number(tr.dataset.idx);
+        gridWrap.querySelectorAll('.ps-row').forEach((x, idx) => x.classList.toggle('sel', idx === sel));
+      });
+      tr.addEventListener('dblclick', () => {
+        sel = Number(tr.dataset.idx);
+        openSelectedBill();
+      });
+    });
+  }
+
+  function openSelectedBill() {
+    const cur = filteredBills[sel];
+    if (!cur) return;
+    const bills = filteredBills.map((r) => ({ id: r.bill_id, type: r.type }));
+    import('./billview.ts').then((m) => m.billAlteration(bills, sel, () => load()));
+  }
+
+  async function chooseAnotherParty() {
+    const newP = await pickParty();
+    if (newP) {
+      party = newP;
+      partyId = newP.id;
+      partyName = newP.name;
+      load();
+    }
+  }
+
+  async function changePeriod() {
+    const res = await askPeriod(from, to);
+    if (res) {
+      from = res.from;
+      to = res.to;
+      load();
+    }
+  }
+
+  function exportExcel() {
+    const table = gridWrap.querySelector('table');
+    if (!table) return;
+    const headers: string[] = [];
+    table.querySelectorAll('thead th').forEach((th) => headers.push(th.textContent?.replace(/\s+/g, ' ').trim() || ''));
+    const rows: (string | number)[][] = [];
+    table.querySelectorAll('tbody tr').forEach((tr) => {
+      const row: (string | number)[] = [];
+      tr.querySelectorAll('td').forEach((td) => row.push(td.textContent?.replace(/\s+/g, ' ').trim() || ''));
+      rows.push(row);
+    });
+    table.querySelectorAll('tfoot tr').forEach((tr) => {
+      const row: (string | number)[] = [];
+      tr.querySelectorAll('td').forEach((td) => row.push(td.textContent?.replace(/\s+/g, ' ').trim() || ''));
+      rows.push(row);
+    });
+    const safeName = (partyNameEl.textContent || 'Party').replace(/[^a-zA-Z0-9_-]/g, '_');
+    downloadCsv(`Party_Sale_${safeName}_${from}_${to}.csv`, headers, rows);
+  }
+
+  function printCurrent() {
+    const table = gridWrap.querySelector('table');
+    if (!table) return;
+    let companyInfo: any = {};
+    api('/company').then((c) => { companyInfo = c; }).finally(() => {
+      const html = `<h2>${esc(companyInfo.name || '')}</h2>
+        <h3 style="text-align:center">SINGLE PARTY SALE REPORT — ${esc(partyNameEl.textContent || '')}</h3>
+        <p style="text-align:center;font-size:12px;">Period: ${fmtDate(from)} to ${fmtDate(to)} | Station: ${esc(partyCityEl.textContent || '')} | Phone: ${esc(partyPhoneEl.textContent || '')} | GSTIN: ${esc(partyGstinEl.textContent || '')}</p>
+        ${table.outerHTML}`;
+      import('./billing.ts').then((m) => m.printHtml(html, 1));
+    });
+  }
+
+  findInput.addEventListener('input', () => { sel = 0; render(); });
+
+  w.onKey = (_e, k) => {
+    if (k === 'ArrowDown') {
+      if (sel < filteredBills.length - 1) {
+        sel++;
+        render();
+        const curRow = gridWrap.querySelector(`.ps-row[data-idx="${sel}"]`);
+        curRow?.scrollIntoView({ block: 'nearest' });
+      }
+      return true;
+    }
+    if (k === 'ArrowUp') {
+      if (sel > 0) {
+        sel--;
+        render();
+        const curRow = gridWrap.querySelector(`.ps-row[data-idx="${sel}"]`);
+        curRow?.scrollIntoView({ block: 'nearest' });
+      }
+      return true;
+    }
+    if (k === 'Enter') {
+      openSelectedBill();
+      return true;
+    }
+    if (k === 'F2') { changePeriod(); return true; }
+    if (k === 'F3') { chooseAnotherParty(); return true; }
     if (k === 'Alt+X') { exportExcel(); return true; }
     if (k === 'Alt+P' || k === 'Ctrl+P' || k === 'F10') { printCurrent(); return true; }
     return false;

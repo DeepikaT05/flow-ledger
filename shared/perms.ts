@@ -98,7 +98,9 @@ export function permsForAction(action: string): string[] | null {
     case 'report.summary': return arg.startsWith('GP') ? ['reports.profit'] : ['reports.daily', 'books.registers'];
     case 'report.stock': case 'report.filtered_stock': case 'report.negstock': case 'report.batch': case 'report.expiry': case 'report.near_expiry': case 'report.reorder': return ['reports.stock'];
     case 'report.gp': return ['reports.profit'];
-    case 'report.mis': case 'report.mop': case 'report.itemsale': case 'report.mrsale': return ['reports.daily'];
+    case 'report.mis': case 'report.mop': case 'report.itemsale': case 'report.mrsale':
+    case 'report.single_item_sale': case 'report.company_sale': case 'report.single_company_sale':
+    case 'report.party_sale': case 'report.single_party_sale': return ['reports.daily'];
     default: return null; // calculator, calendar, print, shortcuts, change user, exit, about, menus…
   }
 }

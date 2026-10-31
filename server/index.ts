@@ -1270,14 +1270,96 @@ app.get('/api/reports/mode-of-payment', h((req) => {
 
 app.get('/api/reports/item-sale', h((req) => {
   const { from, to } = req.query as Record<string, string>;
-  return db.prepare(`SELECT i.name, i.pack, i.company,
+  const itemId = Number(req.query.item_id) || 0;
+  const company = req.query.company ? String(req.query.company).trim() : '';
+  const partyId = Number(req.query.party_id) || 0;
+
+  const conds: string[] = [];
+  const args: SQLInputValue[] = [from, to];
+  if (itemId) { conds.push('i.id = ?'); args.push(itemId); }
+  if (company) { conds.push('UPPER(i.company) = UPPER(?)'); args.push(company); }
+  if (partyId) { conds.push('b.party_id = ?'); args.push(partyId); }
+  const extraWhere = conds.length ? 'AND ' + conds.join(' AND ') : '';
+
+  return db.prepare(`SELECT i.id AS item_id, i.name, i.pack, i.company,
       SUM(CASE WHEN b.type='SALE_RETURN' THEN -(bi.qty+bi.free) ELSE bi.qty+bi.free END) AS qty,
       SUM(CASE WHEN b.type='SALE_RETURN' THEN -bi.taxable ELSE bi.taxable END) AS taxable,
       SUM(CASE WHEN b.type='SALE_RETURN' THEN -bi.tax ELSE bi.tax END) AS tax,
       SUM(CASE WHEN b.type='SALE_RETURN' THEN -bi.qty ELSE bi.qty END * i.purchase_rate) AS cost
     FROM bill_items bi JOIN bills b ON b.id=bi.bill_id JOIN items i ON i.id=bi.item_id
     WHERE b.type IN ('SALE','COUNTER_SALE','SALE_RETURN') AND b.date BETWEEN ? AND ?
-    GROUP BY i.id ORDER BY taxable DESC`).all(from, to);
+    ${extraWhere}
+    GROUP BY i.id ORDER BY taxable DESC`).all(...args)
+    .map((r: any) => ({ ...r, qty: r2(r.qty), taxable: r2(r.taxable), tax: r2(r.tax), cost: r.cost != null ? r2(r.cost) : null }));
+}));
+
+app.get('/api/reports/item-sale-detail', h((req) => {
+  const { from, to } = req.query as Record<string, string>;
+  const itemId = Number(req.query.item_id) || 0;
+  const itemName = req.query.name ? String(req.query.name).trim() : '';
+  const company = req.query.company ? String(req.query.company).trim() : '';
+  const partyId = Number(req.query.party_id) || 0;
+
+  const conds: string[] = [];
+  const args: SQLInputValue[] = [from, to];
+  if (itemId) { conds.push('i.id = ?'); args.push(itemId); }
+  else if (itemName) { conds.push('UPPER(i.name) = UPPER(?)'); args.push(itemName); }
+  if (company) { conds.push('UPPER(i.company) = UPPER(?)'); args.push(company); }
+  if (partyId) { conds.push('b.party_id = ?'); args.push(partyId); }
+  const extraWhere = conds.length ? 'AND ' + conds.join(' AND ') : '';
+
+  const item = itemId ? db.prepare('SELECT id, name, pack, company, hsn, purchase_rate, mrp, sale_rate FROM items WHERE id = ?').get(itemId)
+             : itemName ? db.prepare('SELECT id, name, pack, company, hsn, purchase_rate, mrp, sale_rate FROM items WHERE UPPER(name) = UPPER(?) LIMIT 1').get(itemName)
+             : null;
+
+  const rows = db.prepare(`SELECT b.id AS bill_id, b.date, b.type, b.no, b.party_id,
+      CASE WHEN b.walkin_name IS NOT NULL AND TRIM(b.walkin_name) <> '' THEN b.walkin_name ELSE l.name END AS party,
+      i.id AS item_id, i.name AS item_name, i.pack, i.company,
+      COALESCE(bi.batch, '') AS batch, COALESCE(bi.expiry, '') AS expiry,
+      CASE WHEN b.type='SALE_RETURN' THEN -(bi.qty) ELSE bi.qty END AS qty,
+      CASE WHEN b.type='SALE_RETURN' THEN -(bi.free) ELSE bi.free END AS free,
+      bi.rate, bi.disc_pct,
+      CASE WHEN b.type='SALE_RETURN' THEN -bi.taxable ELSE bi.taxable END AS taxable,
+      CASE WHEN b.type='SALE_RETURN' THEN -bi.tax ELSE bi.tax END AS tax,
+      CASE WHEN b.type='SALE_RETURN' THEN -bi.amount ELSE bi.amount END AS amount
+    FROM bill_items bi
+    JOIN bills b ON b.id = bi.bill_id
+    JOIN items i ON i.id = bi.item_id
+    JOIN ledgers l ON l.id = b.party_id
+    WHERE b.type IN ('SALE','COUNTER_SALE','SALE_RETURN') AND b.date BETWEEN ? AND ?
+    ${extraWhere}
+    ORDER BY b.date DESC, b.id DESC`).all(...args)
+    .map((r: any) => ({ ...r, qty: r2(r.qty), free: r2(r.free), rate: r2(r.rate), taxable: r2(r.taxable), tax: r2(r.tax), amount: r2(r.amount) }));
+
+  return { item, rows };
+}));
+
+app.get('/api/reports/party-sale-detail', h((req) => {
+  const { from, to } = req.query as Record<string, string>;
+  const partyId = Number(req.query.party_id) || 0;
+  if (!partyId) throw new Error('Party ID is required');
+
+  const party = db.prepare(`${LEDGER_BAL} WHERE l.id = ?`).get(partyId);
+  const bills = db.prepare(`SELECT b.id AS bill_id, b.date, b.type, b.no, b.mode, b.gross, b.discount, b.taxable, b.tax, b.round_off, b.net,
+      (SELECT GROUP_CONCAT(i.name || ' (' || bi.qty || ')', ', ')
+       FROM bill_items bi JOIN items i ON i.id=bi.item_id WHERE bi.bill_id=b.id) AS items_summary
+    FROM bills b
+    WHERE b.type IN ('SALE','COUNTER_SALE','SALE_RETURN') AND b.party_id = ? AND b.date BETWEEN ? AND ?
+    ORDER BY b.date DESC, b.id DESC`).all(partyId, from, to)
+    .map((r: any) => ({
+      ...r,
+      gross: r2(r.gross),
+      discount: r2(r.discount),
+      taxable: r2(r.taxable),
+      tax: r2(r.tax),
+      round_off: r2(r.round_off),
+      net: r2(r.net)
+    }));
+  return { party, bills };
+}));
+
+app.get('/api/companies-list', h(() => {
+  return db.prepare(`SELECT DISTINCT TRIM(company) AS company FROM items WHERE company IS NOT NULL AND TRIM(company) <> '' ORDER BY company COLLATE NOCASE`).all();
 }));
 
 // Sale / purchase summaries grouped by party, company, item, M.R., HSN, GST %, day or month
@@ -1298,7 +1380,21 @@ app.get('/api/reports/summary', h((req) => {
                  : pivot === 'week' ? "strftime('%Y-W%W', b.date)"
                  : pivot === 'day' ? 'b.date'
                  : "''";
-  return db.prepare(`SELECT ${key} AS name, ${pivotCol} AS month, ${pivotCol} AS period_key,
+
+  const conds: string[] = [];
+  const args: SQLInputValue[] = [from, to];
+  if (req.query.company) {
+    conds.push('UPPER(i.company) = UPPER(?)');
+    args.push(String(req.query.company).trim());
+  }
+  if (req.query.party_id) {
+    conds.push('b.party_id = ?');
+    args.push(Number(req.query.party_id));
+  }
+  const extraWhere = conds.length ? 'AND ' + conds.join(' AND ') : '';
+  const idSelect = by === 'party' ? 'l.id AS id, l.city,' : by === 'mr' ? 'COALESCE(s.id, 0) AS id,' : by === 'item' ? 'i.id AS id, i.pack, i.company,' : '';
+
+  return db.prepare(`SELECT ${idSelect} ${key} AS name, ${pivotCol} AS month, ${pivotCol} AS period_key,
       COUNT(DISTINCT CASE WHEN b.type<>'${ret}' THEN b.id END) AS bills,
       COUNT(DISTINCT CASE WHEN b.type='${ret}' THEN b.id END) AS returns,
       SUM(${sg}*(bi.qty+bi.free)) AS qty, SUM(${sg}*bi.taxable) AS taxable, SUM(${sg}*bi.tax) AS tax,
@@ -1306,7 +1402,8 @@ app.get('/api/reports/summary', h((req) => {
     FROM bill_items bi JOIN bills b ON b.id=bi.bill_id JOIN items i ON i.id=bi.item_id JOIN ledgers l ON l.id=b.party_id
     LEFT JOIN salesmen s ON s.id=b.mr_id
     WHERE b.type IN (${types},'${ret}') AND b.date BETWEEN ? AND ?
-    GROUP BY 1, 2 ORDER BY ${by === 'day' || by === 'month' || pivot === 'day' || pivot === 'week' || pivot === 'month' ? '2, 1' : 'amount DESC'}`).all(from, to)
+    ${extraWhere}
+    GROUP BY 1, 2 ORDER BY ${by === 'day' || by === 'month' || pivot === 'day' || pivot === 'week' || pivot === 'month' ? '2, 1' : 'amount DESC'}`).all(...args)
     .map((r: any) => ({ ...r, qty: r2(r.qty), taxable: r2(r.taxable), tax: r2(r.tax), amount: r2(r.amount), cost: r2(r.cost) }));
 }));
 
