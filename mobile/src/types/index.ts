@@ -153,3 +153,4 @@ export interface Voucher {
   narration?: string;
   lines?: VoucherLine[];
 }
+

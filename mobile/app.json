@@ -13,9 +13,11 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.flowledger.app",
       "adaptiveIcon": {
         "backgroundColor": "#003366"
       }
     }
   }
 }
+

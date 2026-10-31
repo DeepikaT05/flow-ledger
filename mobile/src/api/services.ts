@@ -92,3 +92,4 @@ export const ItemService = {
     return api.get<Batch[]>(`/batches?item_id=${itemId}`);
   },
 };
+
