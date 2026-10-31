@@ -159,7 +159,7 @@ function needsFor(req: Request, a: AuthCtx): { need: Need | null; backdate?: { d
       'trial-balance': ['reports.final'], 'stock-value': ['reports.final'],
       outstanding: ['reports.outstanding'],
       stock: ['reports.stock'], reorder: ['reports.stock'], 'batch-stock': ['reports.stock'],
-      daybook: ['books.daybook'], 'day-book': ['books.daybook'], 'sale-book': ['books.registers'],
+      daybook: ['books.daybook'], 'day-book': ['books.daybook'], 'day-book-tformat': ['books.daybook'], 'sale-book': ['books.registers'],
       'gross-profit': ['reports.profit'],
       mis: ['reports.daily'], 'mode-of-payment': ['reports.daily'], 'item-sale': ['reports.daily'],
       'item-sale-detail': ['reports.daily', 'books.registers'], 'party-sale-detail': ['reports.daily', 'books.registers'],

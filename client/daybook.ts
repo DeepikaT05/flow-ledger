@@ -271,7 +271,7 @@ export async function bookScreen(kind: Kind) {
 
   const w = openWin(title, 'full', '');
   w.el.classList.add('marg');
-  w.setFoot('<span><b>F2</b>-Dt</span><span><b>F4</b>-Nar</span><span><b>Enter</b>-Bill / Voucher</span><span><b>Del</b>-Delete</span><span><b>F10/Ctrl+P</b>-Print</span><span><b>Esc</b>-Exit</span>');
+  w.setFoot('<span><b>F2</b>-Dt</span><span><b>F4</b>-Nar</span><span><b>F7</b>-T-Format</span><span><b>Enter</b>-Bill / Voucher</span><span><b>Del</b>-Delete</span><span><b>F10/Ctrl+P</b>-Print</span><span><b>Esc</b>-Exit</span>');
   const screen = h('div', { class: 'db-screen' });
   screen.innerHTML = `
     <div class="db-main">
@@ -380,6 +380,18 @@ export async function bookScreen(kind: Kind) {
     (await import('./billing.ts')).printHtml(html, 1);
   }
 
+  async function showTFormat() {
+    try {
+      const tdata = await api<TFormatData>(`/reports/day-book-tformat?from=${from}&to=${to}${ledger ? `&ledger=${ledger.id}` : ''}`);
+      const html = tformatHtml(title, company, from, to, tdata, lastOpts);
+      const pv = openWin(`View - ${title}`, 'wide', '<span><b>Ctrl+P</b> Print</span><span><b>Esc</b> Close</span>');
+      pv.body.append(h('div', { class: 'print-area' }, html));
+      pv.onKey = (_e, k) => { if (k === 'Ctrl+P') { import('./billing.ts').then((m) => m.printHtml(html, 1)); return true; } return false; };
+    } catch (e: any) {
+      toast(e.message || 'Error loading T-Format Day Book', true);
+    }
+  }
+
   function open(r: Row) {
     if (r.source === 'BILL') {
       // SALE ALTERATION: the saved bill with Next / Previous walking the bills of this book.
@@ -391,6 +403,15 @@ export async function bookScreen(kind: Kind) {
       import('./vouchers.ts').then((m) => m.voucherEntry(r.vtype, r.source_id));
     }
   }
+
+  const footEl = w.el.querySelector('.win-foot') as HTMLElement | null;
+  footEl?.addEventListener('click', (e) => {
+    const txt = (e.target as HTMLElement).closest('span')?.textContent || '';
+    if (txt.includes('F7') || txt.includes('T-Format')) showTFormat();
+    else if (txt.includes('F2') || txt.includes('Dt')) { periodBox(title, from, to, false).then((p) => { if (p) { from = p.from; to = p.to; load(); } }); }
+    else if (txt.includes('F4') || txt.includes('Nar')) { showNarr = !showNarr; draw(); }
+    else if (txt.includes('F10') || txt.includes('Print')) { printFlow(); }
+  });
 
   rowsBox.addEventListener('click', (e) => {
     const el = (e.target as HTMLElement).closest('[data-i]') as HTMLElement | null;
@@ -407,6 +428,7 @@ export async function bookScreen(kind: Kind) {
       return true;
     }
     if (k === 'F4') { showNarr = !showNarr; draw(); return true; }
+    if (k === 'F7') { showTFormat(); return true; }
     if (k === 'F10' || k === 'Ctrl+P') { printFlow(); return true; }
     if (k === 'Enter' && rows[sel]) { open(rows[sel]); return true; }
     if (k === 'Delete' && rows[sel]) { remove(rows[sel]); return true; }
