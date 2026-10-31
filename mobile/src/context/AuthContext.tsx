@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { Alert } from 'react-native';
 import { User, Company, RolePermissions } from '../types';
 import { AuthService } from '../api/services';
-import { clearAuth } from '../api/client';
+import { clearAuth, setAuthToken, getAuthToken } from '../api/client';
 
 interface AuthContextType {
   user: User | null;
@@ -56,10 +57,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const refreshProfile = async () => {
     try {
+      const token = await getAuthToken();
+      if (!token) {
+        setUser(null);
+        setCompany(null);
+        setIsLoading(false);
+        return;
+      }
       const data = await AuthService.getMe();
-      if (data && data.user) {
-        setUser(data.user);
-        setCompany(data.company || null);
+      if (data && data.name) {
+        setUser({
+          id: data.id,
+          username: data.name,
+          role: data.role,
+          name: data.name,
+        } as any);
+
+        try {
+          const comps = await AuthService.getCompanies();
+          if (Array.isArray(comps) && comps.length > 0) {
+            const active = comps.find((c: any) => c.id === data.company_id) || comps[0];
+            setCompany(active);
+          }
+        } catch {}
       } else {
         setUser(null);
         setCompany(null);
@@ -80,13 +100,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(true);
     try {
       const res = await AuthService.login(u, p);
-      if (res.ok) {
+      if (res && res.token) {
+        await setAuthToken(res.token);
+        try {
+          await AuthService.selectCompany(res.company_id || 1);
+        } catch {}
         await refreshProfile();
         return true;
       }
+      Alert.alert('Login Failed', 'Invalid username or password');
       return false;
     } catch (err: any) {
-      alert(err.message || 'Login failed');
+      Alert.alert('Login Failed', err.message || 'Invalid username or password');
       return false;
     } finally {
       setIsLoading(false);

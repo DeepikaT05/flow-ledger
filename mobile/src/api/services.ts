@@ -3,16 +3,27 @@ import { Bill, Voucher, Ledger, LedgerStatementRow, Item, Batch, Company } from 
 
 export const AuthService = {
   login: async (username: string, password: string) => {
-    return api.post<{ ok: boolean; user?: any; company?: any; token?: string }>('/login', { username, password });
+    return api.post<{
+      token: string;
+      id: number;
+      name: string;
+      role: string;
+      perms: string[];
+      company_id?: number;
+    }>('/login', {
+      name: username.trim().toUpperCase(),
+      password,
+      company_id: 1,
+    });
   },
   getMe: async () => {
-    return api.get<{ user: any; company: Company; perms: string[] }>('/me');
+    return api.get<{ id: number; name: string; role: string; perms: string[]; company_id?: number }>('/me');
   },
   getCompanies: async () => {
     return api.get<Company[]>('/companies');
   },
   selectCompany: async (companyId: number) => {
-    return api.post('/session', { company_id: companyId });
+    return api.post('/session/company', { id: companyId });
   },
   logout: async () => {
     return api.post('/logout');

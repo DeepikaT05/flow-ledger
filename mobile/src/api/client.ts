@@ -50,6 +50,17 @@ export async function request<T = any>(endpoint: string, options: RequestInit = 
   }
 
   if (res.status === 401) {
+    let errMessage = 'Invalid username or password';
+    try {
+      const errJson = await res.json();
+      if (errJson.error) errMessage = errJson.error;
+      else if (errJson.message) errMessage = errJson.message;
+    } catch {}
+
+    if (cleanEndpoint.includes('/login')) {
+      throw new Error(errMessage);
+    }
+
     await clearAuth();
     throw new Error('Session expired. Please login again.');
   }
