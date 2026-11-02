@@ -1,303 +1,176 @@
-import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  ScrollView,
-  StyleSheet,
-  Alert,
-  ActivityIndicator,
-} from 'react-native';
-import { Header } from '../components/Header';
-import { Ledger } from '../types';
+import React, { useEffect, useState } from 'react';
+import { View, Text, ScrollView, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { Screen, TopBar, Card, Field, SelectField, Segmented, SectionTitle, Btn, Loading, PickerModal } from '../components/ui';
 import { LedgerService } from '../api/services';
+import { useAuth } from '../context/AuthContext';
+import { Group } from '../types';
+import { MODULE, C } from '../theme';
 
-const GROUPS = [
-  { id: 1, name: 'Sundry Debtors' },
-  { id: 2, name: 'Sundry Creditors' },
-  { id: 3, name: 'Bank Accounts' },
-  { id: 4, name: 'Cash-in-hand' },
-  { id: 5, name: 'Indirect Expenses' },
-  { id: 6, name: 'Direct Expenses' },
+const STATES = [
+  'Andhra Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Delhi', 'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh', 'Jharkhand',
+  'Karnataka', 'Kerala', 'Madhya Pradesh', 'Maharashtra', 'Odisha', 'Punjab', 'Rajasthan', 'Tamil Nadu', 'Telangana',
+  'Uttar Pradesh', 'Uttarakhand', 'West Bengal',
 ];
 
-export const LedgerEntryScreen: React.FC<{ navigation: any; route: any }> = ({
-  navigation,
-  route,
-}) => {
-  const editLedger = route.params?.ledger as Ledger | undefined;
+/** New / modify ledger (web: Masters ▸ Ledger Master). */
+export const LedgerEntryScreen: React.FC<{ navigation: any; route: any }> = ({ navigation, route }) => {
+  const { user } = useAuth();
+  const id: number | undefined = route.params?.id;
 
-  const [name, setName] = useState(editLedger?.name || '');
-  const [groupId, setGroupId] = useState<number>(editLedger?.group_id || 1);
-  const [city, setCity] = useState(editLedger?.city || '');
-  const [phone, setPhone] = useState(editLedger?.phone || '');
-  const [gstin, setGstin] = useState(editLedger?.gstin || '');
-  const [state, setState] = useState(editLedger?.state || 'CHHATTISGARH');
-  const [creditLimit, setCreditLimit] = useState(
-    editLedger?.credit_limit ? String(editLedger.credit_limit) : '0'
-  );
-  const [opening, setOpening] = useState(
-    editLedger?.opening ? String(editLedger.opening) : '0'
-  );
-  const [openingType, setOpeningType] = useState<'Dr' | 'Cr'>(
-    editLedger?.opening_type || 'Dr'
-  );
-  const [saving, setSaving] = useState(false);
-
-  const handleSave = async () => {
-    if (!name.trim()) {
-      Alert.alert('Validation', 'Please enter Ledger / Party Name');
-      return;
+  useEffect(() => {
+    if (id && user?.app_perms?.edit === false) {
+      Alert.alert('Permission Denied', 'Editing is not permitted on this account.', [
+        { text: 'OK', onPress: () => navigation.goBack() },
+      ]);
     }
+  }, [id, user]);
+  const accent = MODULE.ledger;
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [picker, setPicker] = useState<'' | 'group' | 'state'>('');
+  const [isSystem, setIsSystem] = useState(false);
+  const [f, setF] = useState({
+    name: '', group_id: 0, address: '', city: '', state: 'Chhattisgarh', phone: '', mobile: '', gstin: '',
+    opening: '', opening_type: 'Dr', credit_limit: '', due_days: '',
+  });
+  const set = (k: keyof typeof f) => (v: string) => setF((o) => ({ ...o, [k]: v }));
 
+  useEffect(() => {
+    (async () => {
+      try {
+        const gs = await LedgerService.groups();
+        setGroups(gs);
+        if (id) {
+          const l = await LedgerService.get(id);
+          let det: Record<string, string> = {};
+          try { det = JSON.parse(l.details || '{}'); } catch { /* old rows */ }
+          setIsSystem(!!l.is_system);
+          setF({
+            name: l.name, group_id: l.group_id, address: l.address ?? '', city: l.city ?? '', state: l.state || '',
+            phone: l.phone ?? '', mobile: String(det.mobile ?? ''), gstin: l.gstin ?? '',
+            opening: l.opening ? String(l.opening) : '', opening_type: l.opening_type ?? 'Dr',
+            credit_limit: l.credit_limit ? String(l.credit_limit) : '', due_days: String(det.due_days ?? ''),
+          });
+        } else {
+          const want = route.params?.group ?? 'Sundry Debtors';
+          const g = gs.find((x) => x.name === want);
+          setF((o) => ({ ...o, group_id: g?.id ?? gs[0]?.id ?? 0, opening_type: want === 'Sundry Creditors' ? 'Cr' : 'Dr' }));
+        }
+      } catch (e: any) {
+        Alert.alert('Error', e.message);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const group = groups.find((g) => g.id === f.group_id);
+  const isParty = group?.name === 'Sundry Debtors' || group?.name === 'Sundry Creditors';
+
+  const save = async () => {
+    if (!f.name.trim()) { Alert.alert('Name required', 'Enter the ledger name.'); return; }
+    if (f.gstin && !/^[0-9A-Z]{15}$/.test(f.gstin.trim().toUpperCase())) { Alert.alert('GSTIN', 'GSTIN must be 15 characters.'); return; }
+    const body = {
+      name: f.name.trim().toUpperCase(), group_id: f.group_id, address: f.address, city: f.city.toUpperCase(), state: f.state,
+      phone: f.phone, gstin: f.gstin.trim().toUpperCase(), opening: Number(f.opening) || 0, opening_type: f.opening_type,
+      credit_limit: Number(f.credit_limit) || 0,
+      details: { mobile: f.mobile, due_days: Number(f.due_days) || 0 },
+    };
     setSaving(true);
     try {
-      const payload: Partial<Ledger> = {
-        name: name.trim().toUpperCase(),
-        group_id: groupId,
-        city: city.trim().toUpperCase(),
-        phone: phone.trim(),
-        gstin: gstin.trim().toUpperCase(),
-        state: state.trim().toUpperCase(),
-        credit_limit: Number(creditLimit) || 0,
-        opening: Number(opening) || 0,
-        opening_type: openingType,
-      };
-
-      if (editLedger?.id) {
-        await LedgerService.update(editLedger.id, payload);
-        Alert.alert('Success', 'Ledger updated successfully!');
-      } else {
-        await LedgerService.create(payload);
-        Alert.alert('Success', 'New Ledger created successfully!');
-      }
-      navigation.goBack();
-    } catch (err: any) {
-      Alert.alert('Error', err.message || 'Failed to save ledger');
+      if (id) await LedgerService.update(id, body);
+      else await LedgerService.create(body);
+      Alert.alert('Saved ✓', `Ledger ${body.name} saved.`, [{ text: 'OK', onPress: () => navigation.goBack() }]);
+    } catch (e: any) {
+      Alert.alert('Could not save', e.message);
     } finally {
       setSaving(false);
     }
   };
 
+  if (loading) return <Screen accent={accent}><TopBar title="Ledger" accent={accent} onBack={() => navigation.goBack()} /><Loading color={accent.main} /></Screen>;
+
   return (
-    <View style={styles.container}>
-      <Header
-        title={editLedger ? `Edit ${editLedger.name}` : 'New Ledger Account'}
-        subtitle="Master Account (Delete Locked)"
+    <Screen accent={accent}>
+      <TopBar
+        title={id ? 'Modify Ledger' : 'New Ledger'}
+        subtitle={group?.name}
+        accent={accent}
         onBack={() => navigation.goBack()}
-        rightActionText={saving ? 'Saving...' : 'SAVE (F10)'}
-        onRightAction={handleSave}
+        right={{ label: 'SAVE', onPress: save, busy: saving }}
       />
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView contentContainerStyle={{ padding: 14, paddingBottom: 80 }} keyboardShouldPersistTaps="handled">
+          <Card>
+            <Field label="Ledger Name *" value={f.name} onChangeText={set('name')} autoCapitalize="characters" editable={!isSystem} />
+            <SelectField label="Account Group" value={group?.name} sub={group?.nature} onPress={() => setPicker('group')} />
+            {isSystem ? <Text style={{ color: C.sub, fontSize: 12 }}>System ledger — name is fixed.</Text> : null}
+          </Card>
 
-      <ScrollView contentContainerStyle={styles.scroll}>
-        <View style={styles.card}>
-          <Text style={styles.sectionHeading}>ACCOUNT MASTER</Text>
+          {isParty ? (
+            <>
+              <SectionTitle>Contact & GST</SectionTitle>
+              <Card>
+                <Field label="Address" value={f.address} onChangeText={set('address')} />
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <Field label="City / Station" value={f.city} onChangeText={set('city')} autoCapitalize="characters" style={{ flex: 1 }} />
+                  <SelectField label="State" value={f.state} onPress={() => setPicker('state')} style={{ flex: 1 }} />
+                </View>
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <Field label="Phone" value={f.phone} onChangeText={set('phone')} keyboardType="phone-pad" style={{ flex: 1 }} />
+                  <Field label="Mobile" value={f.mobile} onChangeText={set('mobile')} keyboardType="phone-pad" style={{ flex: 1 }} />
+                </View>
+                <Field label="GSTIN" value={f.gstin} onChangeText={set('gstin')} autoCapitalize="characters" maxLength={15} style={{ marginBottom: 0 }} />
+              </Card>
+            </>
+          ) : null}
 
-          <Text style={styles.label}>Ledger / Party Name *</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="e.g. RAM TRADERS or ELECTRICITY EXPENSE"
-            value={name}
-            onChangeText={setName}
-            autoCapitalize="characters"
-          />
+          <SectionTitle>Opening & Credit</SectionTitle>
+          <Card>
+            <Field label="Opening Balance" value={f.opening} onChangeText={set('opening')} keyboardType="decimal-pad" />
+            <Segmented
+              color={accent.main}
+              value={f.opening_type}
+              onChange={set('opening_type')}
+              options={[{ key: 'Dr', label: 'Dr (Receivable)' }, { key: 'Cr', label: 'Cr (Payable)' }]}
+            />
+            {isParty ? (
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+                <Field label="Credit Limit ₹" value={f.credit_limit} onChangeText={set('credit_limit')} keyboardType="decimal-pad" style={{ flex: 1, marginBottom: 0 }} />
+                <Field label="Credit Days" value={f.due_days} onChangeText={set('due_days')} keyboardType="number-pad" style={{ flex: 1, marginBottom: 0 }} />
+              </View>
+            ) : null}
+          </Card>
+          <Btn label={id ? 'Save Changes' : 'Create Ledger'} color={accent.main} busy={saving} onPress={save} style={{ marginTop: 18 }} />
+        </ScrollView>
+      </KeyboardAvoidingView>
 
-          <Text style={styles.label}>Account Group *</Text>
-          <View style={styles.groupContainer}>
-            {GROUPS.map((g) => (
-              <TouchableOpacity
-                key={g.id}
-                style={[
-                  styles.groupPill,
-                  groupId === g.id && styles.groupPillActive,
-                ]}
-                onPress={() => setGroupId(g.id)}
-              >
-                <Text
-                  style={[
-                    styles.groupPillText,
-                    groupId === g.id && styles.groupPillTextActive,
-                  ]}
-                >
-                  {g.name}
-                </Text>
-              </TouchableOpacity>
-            ))}
+      <PickerModal<Group>
+        visible={picker === 'group'}
+        title="Account Group"
+        items={groups}
+        keyOf={(g) => g.id}
+        search={(g) => g.name}
+        onClose={() => setPicker('')}
+        onPick={(g) => { setF((o) => ({ ...o, group_id: g.id })); setPicker(''); }}
+        render={(g) => (
+          <View>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: C.text }}>{g.name}</Text>
+            <Text style={{ fontSize: 12, color: C.sub }}>{g.nature}</Text>
           </View>
-
-          <View style={styles.row}>
-            <View style={{ flex: 1, marginRight: 8 }}>
-              <Text style={styles.label}>Station / City</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g. DURG"
-                value={city}
-                onChangeText={setCity}
-                autoCapitalize="characters"
-              />
-            </View>
-            <View style={{ flex: 1, marginLeft: 8 }}>
-              <Text style={styles.label}>Phone / Mobile</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="10-digit phone"
-                keyboardType="phone-pad"
-                value={phone}
-                onChangeText={setPhone}
-              />
-            </View>
-          </View>
-
-          <Text style={styles.label}>GSTIN / Tax ID (Optional)</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="15-character GSTIN"
-            value={gstin}
-            onChangeText={setGstin}
-            autoCapitalize="characters"
-          />
-
-          <View style={styles.row}>
-            <View style={{ flex: 1.4, marginRight: 8 }}>
-              <Text style={styles.label}>Credit Limit (₹)</Text>
-              <TextInput
-                style={styles.input}
-                keyboardType="numeric"
-                value={creditLimit}
-                onChangeText={setCreditLimit}
-              />
-            </View>
-            <View style={{ flex: 1.4, marginLeft: 8 }}>
-              <Text style={styles.label}>Opening Balance (₹)</Text>
-              <TextInput
-                style={styles.input}
-                keyboardType="numeric"
-                value={opening}
-                onChangeText={setOpening}
-              />
-            </View>
-            <View style={{ flex: 0.8, marginLeft: 8 }}>
-              <Text style={styles.label}>Dr/Cr</Text>
-              <TouchableOpacity
-                style={styles.drcrToggle}
-                onPress={() => setOpeningType(openingType === 'Dr' ? 'Cr' : 'Dr')}
-              >
-                <Text style={styles.drcrText}>{openingType}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-
-        <TouchableOpacity
-          style={styles.saveBtn}
-          onPress={handleSave}
-          disabled={saving}
-        >
-          {saving ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.saveBtnText}>SAVE LEDGER ACCOUNT</Text>
-          )}
-        </TouchableOpacity>
-      </ScrollView>
-    </View>
+        )}
+      />
+      <PickerModal<string>
+        visible={picker === 'state'}
+        title="State"
+        items={STATES}
+        keyOf={(s) => s}
+        search={(s) => s}
+        onClose={() => setPicker('')}
+        onPick={(s) => { setF((o) => ({ ...o, state: s })); setPicker(''); }}
+        render={(s) => <Text style={{ fontSize: 15, fontWeight: '600', color: C.text }}>{s}</Text>}
+      />
+    </Screen>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f0f4f8',
-  },
-  scroll: {
-    padding: 14,
-  },
-  card: {
-    backgroundColor: '#ffffff',
-    borderRadius: 8,
-    padding: 14,
-    marginBottom: 16,
-    elevation: 2,
-  },
-  sectionHeading: {
-    fontSize: 13,
-    fontWeight: 'bold',
-    color: '#003366',
-    marginBottom: 12,
-  },
-  row: {
-    flexDirection: 'row',
-  },
-  label: {
-    fontSize: 12,
-    color: '#555',
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#cfd8dc',
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    fontSize: 14,
-    backgroundColor: '#fafafa',
-    marginBottom: 12,
-  },
-  groupContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginBottom: 10,
-  },
-  groupPill: {
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#ccc',
-    marginRight: 6,
-    marginBottom: 6,
-    backgroundColor: '#f5f5f5',
-  },
-  groupPillActive: {
-    backgroundColor: '#003366',
-    borderColor: '#003366',
-  },
-  groupPillText: {
-    color: '#444',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  groupPillTextActive: {
-    color: '#ffcc00',
-    fontWeight: 'bold',
-  },
-  drcrToggle: {
-    borderWidth: 1,
-    borderColor: '#003366',
-    backgroundColor: '#003366',
-    borderRadius: 6,
-    paddingVertical: 8,
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  drcrText: {
-    color: '#ffcc00',
-    fontWeight: 'bold',
-    fontSize: 14,
-  },
-  saveBtn: {
-    backgroundColor: '#003366',
-    paddingVertical: 14,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  saveBtnText: {
-    color: '#ffcc00',
-    fontWeight: 'bold',
-    fontSize: 16,
-    letterSpacing: 1,
-  },
-});
-

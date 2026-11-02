@@ -13,6 +13,8 @@ public/app.js
 public/app.js.map
 admin-public/admin.js
 admin-public/admin.js.map
+*.apk
+mobile/.expo/
 
 # Environment and secrets
 .env

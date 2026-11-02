@@ -90,6 +90,6 @@ export const api = {
   get: <T = any>(url: string) => request<T>(url, { method: 'GET' }),
   post: <T = any>(url: string, body?: any) => request<T>(url, { method: 'POST', body: JSON.stringify(body) }),
   put: <T = any>(url: string, body?: any) => request<T>(url, { method: 'PUT', body: JSON.stringify(body) }),
-  // NOTE: DELETE is intentionally omitted in mobile client to enforce no-delete policy!
+  delete: <T = any>(url: string) => request<T>(url, { method: 'DELETE' }),
 };
 

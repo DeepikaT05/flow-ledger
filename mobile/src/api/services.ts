@@ -1,117 +1,80 @@
 import { api } from './client';
-import { Bill, Voucher, Ledger, LedgerStatementRow, Item, Batch, Company } from '../types';
+import {
+  Bill, BillType, Voucher, VoucherType, Ledger, LedgerAccount, LedgerEntryRow, Item, Batch, Company, Group,
+  PendingBill, PartyStatus, Mis,
+} from '../types';
+
+const qs = (o: Record<string, string | number | undefined | null>) => {
+  const p = Object.entries(o).filter(([, v]) => v !== undefined && v !== null && v !== '')
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`);
+  return p.length ? `?${p.join('&')}` : '';
+};
+
+export interface Session {
+  token?: string;
+  id: number;
+  name: string;
+  role: string;
+  is_super?: boolean;
+  access_type?: 'BOTH' | 'APP' | 'WEB';
+  app_perms?: Record<string, boolean>;
+  perms: string[];
+  company_id?: number;
+}
 
 export const AuthService = {
-  login: async (username: string, password: string) => {
-    return api.post<{
-      token: string;
-      id: number;
-      name: string;
-      role: string;
-      access_type?: string;
-      app_perms?: Record<string, boolean>;
-      perms: string[];
-      company_id?: number;
-    }>('/login', {
-      name: username.trim().toUpperCase(),
-      password,
-      company_id: 1,
-      platform: 'app',
-    });
-  },
-  getMe: async () => {
-    return api.get<{
-      id: number;
-      name: string;
-      role: string;
-      access_type?: string;
-      app_perms?: Record<string, boolean>;
-      perms: string[];
-      company_id?: number;
-    }>('/me');
-  },
-  getCompanies: async () => {
-    return api.get<Company[]>('/companies');
-  },
-  selectCompany: async (companyId: number) => {
-    return api.post('/session/company', { id: companyId });
-  },
-  logout: async () => {
-    return api.post('/logout');
-  },
+  login: (username: string, password: string) =>
+    api.post<Session>('/login', { name: username.trim().toUpperCase(), password, platform: 'app' }),
+  getMe: () => api.get<Session>('/me'),
+  getCompanies: () => api.get<Company[]>('/companies'),
+  selectCompany: (companyId: number) => api.post<Company>('/session/company', { id: companyId }),
+  logout: () => api.post('/logout'),
 };
 
 export const BillService = {
-  list: async (type: 'SALE' | 'PURCHASE', from?: string, to?: string, partyId?: number) => {
-    const params = new URLSearchParams({ type });
-    if (from) params.set('from', from);
-    if (to) params.set('to', to);
-    if (partyId) params.set('party_id', String(partyId));
-    return api.get<Bill[]>(`/bills?${params.toString()}`);
-  },
-  get: async (id: number) => {
-    return api.get<Bill>(`/bills/${id}`);
-  },
-  create: async (bill: Partial<Bill>) => {
-    return api.post<{ id: number; no: string }>('/bills', bill);
-  },
-  update: async (id: number, bill: Partial<Bill>) => {
-    return api.put<{ ok: boolean }>(`/bills/${id}`, bill);
-  },
-  getNextNo: async (type: string) => {
-    return api.get<{ no: string }>(`/bills/next-no?type=${type}`);
-  },
+  /** types: one or more bill types, comma separated server-side. */
+  list: (types: BillType[], from?: string, to?: string, party?: number) =>
+    api.get<Bill[]>(`/bills${qs({ type: types.join(','), from, to, party })}`),
+  get: (id: number) => api.get<Bill>(`/bills/${id}`),
+  create: (bill: Record<string, unknown>) => api.post<{ id: number; no: string; net: number }>('/bills', bill),
+  update: (id: number, bill: Record<string, unknown>) => api.put<{ id: number; no: string; net: number }>(`/bills/${id}`, bill),
+  delete: (id: number) => api.delete<{ ok: boolean }>(`/bills/${id}`),
+  nextNo: (type: BillType) => api.get<{ no: string }>(`/bills/next-no?type=${type}`),
 };
 
 export const VoucherService = {
-  list: async (type: 'RECEIPT' | 'PAYMENT' | 'CONTRA', from?: string, to?: string) => {
-    const params = new URLSearchParams({ type });
-    if (from) params.set('from', from);
-    if (to) params.set('to', to);
-    return api.get<Voucher[]>(`/vouchers?${params.toString()}`);
-  },
-  get: async (id: number) => {
-    return api.get<Voucher>(`/vouchers/${id}`);
-  },
-  create: async (voucher: Partial<Voucher>) => {
-    return api.post<{ id: number; no: string }>('/vouchers', voucher);
-  },
-  update: async (id: number, voucher: Partial<Voucher>) => {
-    return api.put<{ ok: boolean }>(`/vouchers/${id}`, voucher);
-  },
-  getNextNo: async (type: string) => {
-    return api.get<{ no: string }>(`/vouchers/next-no?type=${type}`);
-  },
+  list: (type: VoucherType, from?: string, to?: string) => api.get<Voucher[]>(`/vouchers${qs({ type, from, to })}`),
+  get: (id: number) => api.get<Voucher>(`/vouchers/${id}`),
+  create: (v: Record<string, unknown>) => api.post<{ id: number; no: string }>('/vouchers', v),
+  update: (id: number, v: Record<string, unknown>) => api.put<{ id: number; no: string }>(`/vouchers/${id}`, v),
+  delete: (id: number) => api.delete<{ ok: boolean }>(`/vouchers/${id}`),
+  nextNo: (type: VoucherType) => api.get<{ no: string }>(`/vouchers/next-no?type=${type}`),
 };
 
 export const LedgerService = {
-  list: async (group?: string) => {
-    const param = group ? `?group=${encodeURIComponent(group)}` : '';
-    return api.get<Ledger[]>(`/ledgers${param}`);
-  },
-  get: async (id: number) => {
-    return api.get<Ledger>(`/ledgers/${id}`);
-  },
-  statement: async (id: number, from?: string, to?: string) => {
-    const params = new URLSearchParams({ id: String(id) });
-    if (from) params.set('from', from);
-    if (to) params.set('to', to);
-    return api.get<{ rows: LedgerStatementRow[]; opening: number; opening_type: string; closing: number }>(`/reports/ledger?${params.toString()}`);
-  },
-  create: async (ledger: Partial<Ledger>) => {
-    return api.post<{ id: number }>('/ledgers', ledger);
-  },
-  update: async (id: number, ledger: Partial<Ledger>) => {
-    return api.put<{ ok: boolean }>(`/ledgers/${id}`, ledger);
-  },
+  /** group: one or more account group names, comma separated. */
+  list: (group?: string) => api.get<Ledger[]>(`/ledgers${qs({ group })}`),
+  get: (id: number) => api.get<Ledger>(`/ledgers/${id}`),
+  create: (l: Record<string, unknown>) => api.post<{ id: number }>('/ledgers', l),
+  update: (id: number, l: Record<string, unknown>) => api.put<{ ok: boolean }>(`/ledgers/${id}`, l),
+  delete: (id: number) => api.delete<{ ok: boolean }>(`/ledgers/${id}`),
+  groups: () => api.get<Group[]>('/groups'),
+  createGroup: (name: string, nature: string) => api.post<{ id: number }>('/groups', { name, nature }),
+  paymentModes: () => api.get<Ledger[]>('/payment-modes'),
+  statement: (id: number, from?: string, to?: string) =>
+    api.get<{ ledger: Ledger; opening: number; rows: LedgerEntryRow[] }>(`/reports/ledger/${id}${qs({ from, to })}`),
+  accounts: (upto?: string) => api.get<LedgerAccount[]>(`/reports/ledger-accounts${qs({ upto })}`),
+  pendingBills: (id: number, kind: 'SALE' | 'PURCHASE', exclude?: number) =>
+    api.get<PendingBill[]>(`/ledgers/${id}/pending-bills${qs({ kind, exclude })}`),
+  status: (id: number, kind?: 'SALE' | 'PURCHASE') => api.get<PartyStatus>(`/ledgers/${id}/status${qs({ kind })}`),
 };
 
 export const ItemService = {
-  list: async () => {
-    return api.get<Item[]>('/items');
-  },
-  getBatches: async (itemId: number) => {
-    return api.get<Batch[]>(`/batches?item_id=${itemId}`);
-  },
+  list: () => api.get<Item[]>('/items'),
+  batches: (itemId: number) => api.get<Batch[]>(`/items/${itemId}/batches`),
 };
 
+export const ReportService = {
+  mis: (from: string, to: string) => api.get<Mis>(`/reports/mis${qs({ from, to })}`),
+  get: <T = any>(path: string) => api.get<T>(path),
+};

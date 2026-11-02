@@ -1,250 +1,118 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  FlatList,
-  TouchableOpacity,
-  StyleSheet,
-  TextInput,
-  ActivityIndicator,
-  RefreshControl,
-} from 'react-native';
-import { Header } from '../components/Header';
-import { Ledger } from '../types';
+import React, { useCallback, useState } from 'react';
+import { View, Text, FlatList, RefreshControl, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import { Screen, TopBar, Card, SearchBar, StatStrip, Empty, ErrorBox, Loading } from '../components/ui';
 import { LedgerService } from '../api/services';
+import { Ledger } from '../types';
+import { useAuth } from '../context/AuthContext';
+import { MODULE, C } from '../theme';
+import { money, drcr } from '../utils/format';
 
-const TABS = [
-  { label: 'ALL', group: '' },
-  { label: 'DEBTORS', group: 'Sundry Debtors' },
-  { label: 'CREDITORS', group: 'Sundry Creditors' },
-  { label: 'CASH/BANK', group: 'Cash-in-hand,Bank Accounts' },
-  { label: 'EXPENSES', group: 'Indirect Expenses,Direct Expenses' },
+/** What tapping a ledger does — set by the menu that opened the list. */
+type Pick = 'statement' | 'edit' | 'status' | 'txn';
+
+const FILTERS = [
+  { key: '', label: 'All' },
+  { key: 'Sundry Debtors', label: 'Debtors' },
+  { key: 'Sundry Creditors', label: 'Creditors' },
+  { key: 'Cash-in-hand,Bank Accounts', label: 'Cash & Bank' },
+  { key: 'Duties & Taxes', label: 'Taxes' },
 ];
 
-export const LedgerListScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
-  const [ledgers, setLedgers] = useState<Ledger[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState(0);
-  const [search, setSearch] = useState('');
+export const LedgerListScreen: React.FC<{ navigation: any; route: any }> = ({ navigation, route }) => {
+  const fixedGroup: string | undefined = route.params?.group;
+  const pick: Pick = route.params?.pick ?? 'statement';
+  const kind: 'SALE' | 'PURCHASE' | undefined = route.params?.kind;
+  const accent = MODULE.ledger;
+  const { can } = useAuth();
+  const [group, setGroup] = useState(fixedGroup ?? '');
+  const [rows, setRows] = useState<Ledger[]>([]);
+  const [q, setQ] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  const loadLedgers = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
+    setError('');
     try {
-      const g = TABS[activeTab].group;
-      const data = await LedgerService.list(g);
-      setLedgers(data);
-    } catch (err: any) {
-      alert(err.message || 'Failed to load ledgers');
+      setRows(await LedgerService.list(group || undefined));
+    } catch (e: any) {
+      setError(e.message);
     } finally {
       setLoading(false);
     }
+  }, [group]);
+  useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  const w = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const shown = w.length ? rows.filter((l) => { const h = `${l.name} ${l.city ?? ''} ${l.phone ?? ''} ${l.gstin ?? ''}`.toLowerCase(); return w.every((x) => h.includes(x)); }) : rows;
+  const dr = shown.reduce((s, l) => s + (l.balance > 0 ? l.balance : 0), 0);
+  const cr = shown.reduce((s, l) => s + (l.balance < 0 ? -l.balance : 0), 0);
+
+  const open = (l: Ledger) => {
+    if (pick === 'edit') navigation.navigate('LedgerEntry', { id: l.id });
+    else if (pick === 'status') navigation.navigate('PartyStatus', { id: l.id, kind });
+    else if (pick === 'txn') navigation.navigate('BillList', {
+      party: l.id, partyName: l.name, title: 'Party Transaction',
+      types: l.group_name === 'Sundry Creditors' ? ['PURCHASE', 'PURCHASE_CHALLAN', 'PURCHASE_RETURN'] : ['SALE', 'SALE_CHALLAN', 'COUNTER_SALE', 'SALE_RETURN'],
+    });
+    else navigation.navigate('LedgerStatement', { id: l.id, name: l.name });
   };
 
-  useEffect(() => {
-    loadLedgers();
-  }, [activeTab]);
-
-  const filtered = ledgers.filter((l) =>
-    l.name.toLowerCase().includes(search.toLowerCase()) ||
-    (l.city && l.city.toLowerCase().includes(search.toLowerCase())) ||
-    (l.phone && l.phone.includes(search)) ||
-    (l.gstin && l.gstin.toLowerCase().includes(search.toLowerCase()))
-  );
-
   return (
-    <View style={styles.container}>
-      <Header
-        title="LEDGER ACCOUNTS"
-        subtitle={`${filtered.length} Accounts`}
+    <Screen accent={accent}>
+      <TopBar
+        title={route.params?.title ?? 'Ledgers'}
+        subtitle={pick === 'edit' ? 'Tap to modify' : pick === 'status' ? 'Tap for status' : pick === 'txn' ? 'Tap for bills' : 'Tap for statement'}
+        accent={accent}
         onBack={() => navigation.goBack()}
-        rightActionText="+ New Ledger"
-        onRightAction={() => navigation.navigate('LedgerEntry')}
-      />
-
-      {/* Tabs */}
-      <View style={styles.tabBar}>
-        {TABS.map((t, i) => (
-          <TouchableOpacity
-            key={i}
-            style={[styles.tabItem, activeTab === i && styles.tabItemActive]}
-            onPress={() => setActiveTab(i)}
-          >
-            <Text style={[styles.tabText, activeTab === i && styles.tabTextActive]}>
-              {t.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      <View style={styles.searchBox}>
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search by Name, Station/City, Phone, GSTIN..."
-          value={search}
-          onChangeText={setSearch}
-        />
-      </View>
-
-      {loading && !ledgers.length ? (
-        <ActivityIndicator size="large" color="#003366" style={{ marginTop: 40 }} />
-      ) : (
+        right={can(['masters.ledger']) ? { label: '+ New', onPress: () => navigation.navigate('LedgerEntry', { group: fixedGroup?.split(',').pop() }) } : undefined}
+      >
+        <View style={{ marginTop: 12 }}><SearchBar value={q} onChange={setQ} placeholder="Name, city, phone, GSTIN…" onDark /></View>
+        {!fixedGroup ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingTop: 10 }}>
+            {FILTERS.map((f) => (
+              <TouchableOpacity key={f.key} onPress={() => setGroup(f.key)} style={[st.chip, group === f.key && { backgroundColor: C.white }]}>
+                <Text style={{ color: group === f.key ? accent.dark : C.white, fontWeight: '700', fontSize: 12.5 }}>{f.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        ) : null}
+        <StatStrip items={[{ label: 'Ledgers', value: String(shown.length) }, { label: 'Total Dr', value: money(dr) }, { label: 'Total Cr', value: money(cr) }]} />
+      </TopBar>
+      {error ? <ErrorBox message={error} onRetry={load} /> : null}
+      {loading && !rows.length ? <Loading color={accent.main} /> : (
         <FlatList
-          data={filtered}
-          keyExtractor={(item) => String(item.id)}
-          refreshControl={<RefreshControl refreshing={loading} onRefresh={loadLedgers} />}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={styles.card}
-              onPress={() => navigation.navigate('LedgerStatement', { ledgerId: item.id, ledgerName: item.name })}
-              activeOpacity={0.7}
-            >
-              <View style={styles.cardLeft}>
-                <Text style={styles.ledgerName}>{item.name}</Text>
-                <Text style={styles.metaText}>
-                  {item.city ? `${item.city} • ` : ''}
-                  {item.group_name}
-                  {item.phone ? ` • Ph: ${item.phone}` : ''}
-                </Text>
-                {item.credit_limit ? (
-                  <Text style={styles.crLimit}>Cr. Limit: ₹{item.credit_limit.toFixed(2)}</Text>
-                ) : null}
-              </View>
-
-              <View style={styles.cardRight}>
-                <Text
-                  style={[
-                    styles.balanceVal,
-                    { color: item.balance >= 0 ? '#00796b' : '#c62828' },
-                  ]}
-                >
-                  ₹{Math.abs(item.balance).toFixed(2)}
-                </Text>
-                <Text
-                  style={[
-                    styles.balanceType,
-                    { color: item.balance >= 0 ? '#00796b' : '#c62828' },
-                  ]}
-                >
-                  {item.balance >= 0 ? 'Dr' : 'Cr'}
-                </Text>
-                <TouchableOpacity
-                  style={styles.editPill}
-                  onPress={() => navigation.navigate('LedgerEntry', { ledger: item })}
-                >
-                  <Text style={styles.editPillText}>Edit</Text>
-                </TouchableOpacity>
-              </View>
-            </TouchableOpacity>
-          )}
+          data={shown}
+          keyExtractor={(l) => String(l.id)}
+          refreshControl={<RefreshControl refreshing={loading} onRefresh={load} colors={[accent.main]} />}
+          contentContainerStyle={{ padding: 14, paddingBottom: 40 }}
           ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
-          contentContainerStyle={{ padding: 12 }}
-          ListEmptyComponent={() => (
-            <Text style={styles.empty}>No ledger accounts found.</Text>
+          renderItem={({ item: l }) => (
+            <Card onPress={() => open(l)} style={{ paddingVertical: 12 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View style={[st.avatar, { backgroundColor: accent.soft }]}>
+                  <Text style={{ color: accent.dark, fontWeight: '900', fontSize: 16 }}>{l.name.slice(0, 1).toUpperCase()}</Text>
+                </View>
+                <View style={{ flex: 1, marginRight: 8 }}>
+                  <Text style={st.name} numberOfLines={1}>{l.name}</Text>
+                  <Text style={st.meta} numberOfLines={1}>{l.group_name}{l.city ? ` · ${l.city}` : ''}{l.phone ? ` · ${l.phone}` : ''}</Text>
+                </View>
+                <Text style={[st.bal, { color: l.balance < -0.004 ? C.cr : l.balance > 0.004 ? C.dr : C.faint }]}>{drcr(l.balance)}</Text>
+              </View>
+            </Card>
           )}
+          ListEmptyComponent={!loading && !error ? <Empty icon="📒" title="No ledgers here" sub="Create one with + New." /> : null}
         />
       )}
-    </View>
+    </Screen>
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f7fa',
-  },
-  tabBar: {
-    flexDirection: 'row',
-    backgroundColor: '#002244',
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-  },
-  tabItem: {
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 4,
-    marginRight: 4,
-  },
-  tabItemActive: {
-    backgroundColor: '#ffcc00',
-  },
-  tabText: {
-    color: '#90caf9',
-    fontSize: 11,
-    fontWeight: 'bold',
-  },
-  tabTextActive: {
-    color: '#002244',
-  },
-  searchBox: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: '#ffffff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
-  searchInput: {
-    backgroundColor: '#f0f4f8',
-    borderRadius: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    fontSize: 13,
-  },
-  card: {
-    backgroundColor: '#ffffff',
-    borderRadius: 6,
-    padding: 12,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    elevation: 1,
-  },
-  cardLeft: {
-    flex: 1,
-    marginRight: 10,
-  },
-  ledgerName: {
-    fontSize: 15,
-    fontWeight: 'bold',
-    color: '#263238',
-  },
-  metaText: {
-    fontSize: 12,
-    color: '#78909c',
-    marginTop: 2,
-  },
-  crLimit: {
-    fontSize: 11,
-    color: '#f57c00',
-    marginTop: 2,
-    fontWeight: '600',
-  },
-  cardRight: {
-    alignItems: 'flex-end',
-  },
-  balanceVal: {
-    fontSize: 15,
-    fontWeight: 'bold',
-  },
-  balanceType: {
-    fontSize: 11,
-    fontWeight: 'bold',
-  },
-  editPill: {
-    marginTop: 6,
-    backgroundColor: '#e8eaf6',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 3,
-  },
-  editPillText: {
-    fontSize: 11,
-    color: '#3949ab',
-    fontWeight: 'bold',
-  },
-  empty: {
-    textAlign: 'center',
-    color: '#90a4ae',
-    marginTop: 40,
-  },
+const st = StyleSheet.create({
+  chip: { paddingHorizontal: 13, paddingVertical: 7, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.16)' },
+  avatar: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  name: { fontSize: 15, fontWeight: '700', color: C.text },
+  meta: { fontSize: 12, color: C.sub, marginTop: 2 },
+  bal: { fontSize: 14.5, fontWeight: '800' },
 });
-

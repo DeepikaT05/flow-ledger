@@ -1211,7 +1211,7 @@ app.get('/api/reports/daybook', h((req) => {
 
 app.get('/api/reports/gross-profit', h((req) => {
   const { from, to } = req.query as Record<string, string>;
-  return db.prepare(`SELECT b.date, b.no, l.name AS party, SUM(bi.taxable) AS sale, SUM(bi.qty*i.purchase_rate) AS cost,
+  return db.prepare(`SELECT b.id, b.date, b.no, l.name AS party, SUM(bi.taxable) AS sale, SUM(bi.qty*i.purchase_rate) AS cost,
       SUM(bi.taxable) - SUM(bi.qty*i.purchase_rate) AS profit
     FROM bills b JOIN bill_items bi ON bi.bill_id=b.id JOIN items i ON i.id=bi.item_id JOIN ledgers l ON l.id=b.party_id
     WHERE b.type IN ('SALE','COUNTER_SALE') AND b.date BETWEEN ? AND ? GROUP BY b.id ORDER BY b.date, b.id`).all(from, to);

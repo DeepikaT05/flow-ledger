@@ -1,245 +1,122 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  FlatList,
-  TouchableOpacity,
-  StyleSheet,
-  ActivityIndicator,
-} from 'react-native';
-import { Header } from '../components/Header';
-import { Ledger, LedgerStatementRow } from '../types';
+import React, { useCallback, useState } from 'react';
+import { View, Text, FlatList, RefreshControl, TouchableOpacity, StyleSheet } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import { Screen, TopBar, PeriodChips, StatStrip, Empty, ErrorBox, Loading, Btn } from '../components/ui';
 import { LedgerService } from '../api/services';
+import { Ledger, LedgerEntryRow } from '../types';
+import { useAuth } from '../context/AuthContext';
+import { MODULE, C, R } from '../theme';
+import { drcr, dmy, money, fyOf, Period, r2 } from '../utils/format';
 
-export const LedgerStatementScreen: React.FC<{ navigation: any; route: any }> = ({
-  navigation,
-  route,
-}) => {
-  const ledgerId = route.params?.ledgerId;
-  const ledgerName = route.params?.ledgerName;
+const VT: Record<string, string> = {
+  SALE: 'Sale', COUNTER_SALE: 'Cntr', SALE_CHALLAN: 'S.Ch', PURCHASE: 'Purc', PURCHASE_CHALLAN: 'P.Ch', SALE_RETURN: 'S.Rt',
+  PURCHASE_RETURN: 'P.Rt', RECEIPT: 'Rcpt', PAYMENT: 'Pymt', CONTRA: 'Ctra', JOURNAL: 'Jrnl', DEBIT_NOTE: 'D.N.', CREDIT_NOTE: 'C.N.',
+};
 
-  const [ledger, setLedger] = useState<Ledger | null>(null);
-  const [statement, setStatement] = useState<{
-    rows: LedgerStatementRow[];
-    opening: number;
-    opening_type: string;
-    closing: number;
-  }>({
-    rows: [],
-    opening: 0,
-    opening_type: 'Dr',
-    closing: 0,
-  });
+/** Running Dr / Cr statement of one ledger for a period (web: All Ledgers ▸ ledger, Alt+L). */
+export const LedgerStatementScreen: React.FC<{ navigation: any; route: any }> = ({ navigation, route }) => {
+  const id: number = route.params.id;
+  const accent = MODULE.ledger;
+  const { can, user } = useAuth();
+  const fy = fyOf();
+  const [period, setPeriod] = useState<Period>({ key: 'fy', label: 'This F.Y.', ...fy });
+  const [data, setData] = useState<{ ledger: Ledger; opening: number; rows: LedgerEntryRow[] } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  const loadStatement = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
+    setError('');
     try {
-      const [lData, sData] = await Promise.all([
-        LedgerService.get(ledgerId),
-        LedgerService.statement(ledgerId),
-      ]);
-      setLedger(lData);
-      setStatement(sData);
-    } catch (err: any) {
-      alert(err.message || 'Failed to load ledger statement');
+      setData(await LedgerService.statement(id, period.from, period.to));
+    } catch (e: any) {
+      setError(e.message);
     } finally {
       setLoading(false);
     }
-  };
+  }, [id, period.from, period.to]);
+  useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  useEffect(() => {
-    loadStatement();
-  }, [ledgerId]);
-
-  const totalDebit = statement.rows.reduce((s, r) => s + Number(r.debit || 0), 0);
-  const totalCredit = statement.rows.reduce((s, r) => s + Number(r.credit || 0), 0);
+  let run = data?.opening ?? 0;
+  const rows = (data?.rows ?? []).map((r) => { run = r2(run + Number(r.debit) - Number(r.credit)); return { ...r, bal: run }; });
+  const dr = rows.reduce((s, r) => s + Number(r.debit), 0);
+  const cr = rows.reduce((s, r) => s + Number(r.credit), 0);
+  const l = data?.ledger;
+  const party = l && (l.group_name === 'Sundry Debtors' || l.group_name === 'Sundry Creditors');
 
   return (
-    <View style={styles.container}>
-      <Header
-        title={ledgerName || 'Ledger Statement'}
-        subtitle={ledger?.city ? `${ledger.city} • ${ledger.group_name}` : ledger?.group_name}
+    <Screen accent={accent}>
+      <TopBar
+        title={l?.name ?? route.params?.name ?? 'Ledger'}
+        subtitle={l ? `${l.group_name}${l.city ? ' · ' + l.city : ''}` : undefined}
+        accent={accent}
         onBack={() => navigation.goBack()}
-        rightActionText="Edit Party"
-        onRightAction={() => {
-          if (ledger) navigation.navigate('LedgerEntry', { ledger });
-        }}
-      />
-
-      {loading ? (
-        <ActivityIndicator size="large" color="#003366" style={{ marginTop: 40 }} />
-      ) : (
-        <View style={{ flex: 1 }}>
-          {/* Header Balance Banner */}
-          <View style={styles.balanceBanner}>
-            <View>
-              <Text style={styles.bannerLabel}>Opening Balance</Text>
-              <Text style={styles.bannerVal}>
-                ₹{Math.abs(statement.opening).toFixed(2)} {statement.opening_type}
-              </Text>
-            </View>
-            <View style={{ alignItems: 'flex-end' }}>
-              <Text style={styles.bannerLabel}>Closing Balance</Text>
-              <Text
-                style={[
-                  styles.closingVal,
-                  { color: statement.closing >= 0 ? '#00796b' : '#c62828' },
-                ]}
-              >
-                ₹{Math.abs(statement.closing).toFixed(2)} {statement.closing >= 0 ? 'Dr' : 'Cr'}
-              </Text>
-            </View>
-          </View>
-
-          {/* Statement Table */}
-          <View style={styles.tableHead}>
-            <Text style={[styles.th, { flex: 1.1 }]}>Date</Text>
-            <Text style={[styles.th, { flex: 2.2 }]}>Particulars</Text>
-            <Text style={[styles.th, { flex: 1.2, textAlign: 'right' }]}>Debit (₹)</Text>
-            <Text style={[styles.th, { flex: 1.2, textAlign: 'right' }]}>Credit (₹)</Text>
-          </View>
-
-          <FlatList
-            data={statement.rows}
-            keyExtractor={(_, i) => String(i)}
-            renderItem={({ item }) => (
-              <View style={styles.tableRow}>
-                <Text style={[styles.tdDate, { flex: 1.1 }]}>{item.date}</Text>
-                <View style={{ flex: 2.2 }}>
-                  <Text style={styles.tdPart}>{item.particulars || item.type}</Text>
-                  <Text style={styles.tdNo}>#{item.no}</Text>
-                </View>
-                <Text style={[styles.tdDebit, { flex: 1.2, textAlign: 'right' }]}>
-                  {item.debit > 0 ? `₹${item.debit.toFixed(2)}` : '-'}
-                </Text>
-                <Text style={[styles.tdCredit, { flex: 1.2, textAlign: 'right' }]}>
-                  {item.credit > 0 ? `₹${item.credit.toFixed(2)}` : '-'}
-                </Text>
-              </View>
-            )}
-            ItemSeparatorComponent={() => <View style={styles.sep} />}
-            ListEmptyComponent={() => (
-              <Text style={styles.empty}>No transactions recorded in this period.</Text>
-            )}
-          />
-
-          {/* Totals Footer */}
-          <View style={styles.footer}>
-            <Text style={styles.footerLabel}>TOTAL TRANSACTIONS</Text>
-            <View style={{ flexDirection: 'row' }}>
-              <Text style={styles.footerDebit}>Dr: ₹{totalDebit.toFixed(2)}</Text>
-              <Text style={styles.footerCredit}>Cr: ₹{totalCredit.toFixed(2)}</Text>
-            </View>
-          </View>
+        right={l && user?.app_perms?.edit !== false && can(['masters.ledger']) ? { label: '✏️ Edit', onPress: () => navigation.navigate('LedgerEntry', { id }) } : undefined}
+      >
+        <View style={{ marginTop: 10 }}><PeriodChips value={period} onChange={setPeriod} /></View>
+        <StatStrip items={[
+          { label: 'Opening', value: drcr(data?.opening ?? 0) },
+          { label: 'Debit', value: money(dr) },
+          { label: 'Credit', value: money(cr) },
+        ]} />
+        <View style={st.closing}>
+          <Text style={st.closingLbl}>Closing Balance</Text>
+          <Text style={st.closingVal}>{drcr(run)}</Text>
         </View>
+      </TopBar>
+      {error ? <ErrorBox message={error} onRetry={load} /> : null}
+      {loading && !data ? <Loading color={accent.main} /> : (
+        <FlatList
+          data={rows}
+          keyExtractor={(r) => String(r.id)}
+          refreshControl={<RefreshControl refreshing={loading} onRefresh={load} colors={[accent.main]} />}
+          contentContainerStyle={{ padding: 14, paddingBottom: 40 }}
+          ListHeaderComponent={party ? (
+            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
+              <Btn small label="📋 Status" ghost color={accent.main} style={{ flex: 1 }}
+                onPress={() => navigation.navigate('PartyStatus', { id, kind: l!.group_name === 'Sundry Creditors' ? 'PURCHASE' : 'SALE' })} />
+              <Btn small label={l!.group_name === 'Sundry Creditors' ? '💸 Payment' : '💰 Receipt'} color={accent.main} style={{ flex: 1 }}
+                onPress={() => navigation.navigate('VoucherEntry', { type: l!.group_name === 'Sundry Creditors' ? 'PAYMENT' : 'RECEIPT' })} />
+            </View>
+          ) : null}
+          renderItem={({ item: r }) => (
+            <TouchableOpacity
+              style={st.row}
+              activeOpacity={0.7}
+              onPress={() => navigation.navigate(r.source === 'BILL' ? 'BillDetail' : 'VoucherDetail', { id: r.source_id })}
+            >
+              <View style={st.left}>
+                <Text style={st.date}>{dmy(r.date).slice(0, 5)}</Text>
+                <Text style={st.vt}>{VT[r.vtype] ?? r.vtype}</Text>
+              </View>
+              <View style={{ flex: 1, marginHorizontal: 10 }}>
+                <Text style={st.against} numberOfLines={1}>{r.against || r.narration || '—'}</Text>
+                <Text style={st.meta}>{r.vno}{r.narration && r.against ? ` · ${r.narration}` : ''}</Text>
+              </View>
+              <View style={{ alignItems: 'flex-end' }}>
+                {Number(r.debit) ? <Text style={[st.amt, { color: C.dr }]}>{money(r.debit)} Dr</Text> : null}
+                {Number(r.credit) ? <Text style={[st.amt, { color: C.cr }]}>{money(r.credit)} Cr</Text> : null}
+                <Text style={st.bal}>{drcr(r.bal)}</Text>
+              </View>
+            </TouchableOpacity>
+          )}
+          ListEmptyComponent={!loading && !error ? <Empty icon="📒" title="No entries in this period" sub="Try This F.Y. or All." /> : null}
+        />
       )}
-    </View>
+    </Screen>
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f7fa',
-  },
-  balanceBanner: {
-    backgroundColor: '#002244',
-    padding: 14,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  bannerLabel: {
-    fontSize: 11,
-    color: '#90caf9',
-  },
-  bannerVal: {
-    fontSize: 15,
-    fontWeight: 'bold',
-    color: '#ffffff',
-    marginTop: 2,
-  },
-  closingVal: {
-    fontSize: 17,
-    fontWeight: 'bold',
-    marginTop: 2,
-  },
-  tableHead: {
-    flexDirection: 'row',
-    backgroundColor: '#cfd8dc',
-    paddingVertical: 7,
-    paddingHorizontal: 12,
-  },
-  th: {
-    fontSize: 11,
-    fontWeight: 'bold',
-    color: '#37474f',
-  },
-  tableRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 9,
-    paddingHorizontal: 12,
-    backgroundColor: '#ffffff',
-  },
-  tdDate: {
-    fontSize: 11,
-    color: '#607d8b',
-  },
-  tdPart: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#263238',
-  },
-  tdNo: {
-    fontSize: 10,
-    color: '#90a4ae',
-    marginTop: 1,
-  },
-  tdDebit: {
-    fontSize: 13,
-    fontWeight: 'bold',
-    color: '#00796b',
-  },
-  tdCredit: {
-    fontSize: 13,
-    fontWeight: 'bold',
-    color: '#c62828',
-  },
-  sep: {
-    height: 1,
-    backgroundColor: '#eceff1',
-  },
-  empty: {
-    textAlign: 'center',
-    color: '#90a4ae',
-    marginTop: 40,
-  },
-  footer: {
-    backgroundColor: '#eceff1',
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: '#cfd8dc',
-  },
-  footerLabel: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#37474f',
-  },
-  footerDebit: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#00796b',
-    marginRight: 14,
-  },
-  footerCredit: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#c62828',
-  },
+const st = StyleSheet.create({
+  closing: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, backgroundColor: C.white, borderRadius: R.md, paddingHorizontal: 14, paddingVertical: 10 },
+  closingLbl: { color: C.sub, fontWeight: '700' },
+  closingVal: { color: MODULE.ledger.dark, fontWeight: '900', fontSize: 18 },
+  row: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.white, borderRadius: R.md, padding: 11, marginBottom: 8, borderWidth: 1, borderColor: C.line },
+  left: { width: 46, alignItems: 'center', borderRightWidth: 1, borderRightColor: C.line, paddingRight: 8 },
+  date: { fontWeight: '800', color: C.text, fontSize: 13 },
+  vt: { fontSize: 11, color: MODULE.ledger.main, fontWeight: '800', marginTop: 2 },
+  against: { fontSize: 14, fontWeight: '700', color: C.text },
+  meta: { fontSize: 11.5, color: C.sub, marginTop: 2 },
+  amt: { fontSize: 14, fontWeight: '800' },
+  bal: { fontSize: 11.5, color: C.sub, marginTop: 2 },
 });
-

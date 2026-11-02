@@ -27,37 +27,38 @@ mobile/
 ├── tsconfig.json               # TypeScript config
 └── src/
     ├── config.ts               # Backend API URL configuration
-    ├── types/
-    │   └── index.ts            # Type definitions (Bill, Voucher, Ledger, Item, etc.)
+    ├── theme.ts                # Colours, module accents (Sale teal, Purchase blue, …)
+    ├── menus.ts                # The 6 modules' menus & submenus (mirrors the web menu) + permission filter
+    ├── labels.ts               # How each bill / voucher type behaves (party group, inward, reason…)
+    ├── utils/format.ts         # ₹ money, DD-MM-YYYY dates, period presets
+    ├── types/index.ts          # Shapes exactly as server/index.ts returns them
     ├── api/
-    │   ├── client.ts           # HTTP Client with Cookie/Token Session
-    │   └── services.ts         # Sale, Purchase, Receipt, Payment, Contra, Ledger APIs
+    │   ├── client.ts           # HTTP client with token session
+    │   └── services.ts         # Bills, vouchers, ledgers, items, reports endpoints
     ├── context/
-    │   └── AuthContext.tsx     # Session management & Delete-Protected Permissions
+    │   └── AuthContext.tsx     # Session, company selection, can(perm) / canModule()
     ├── components/
-    │   ├── Header.tsx          # Reusable Marg-style Header with Back & Action button
-    │   ├── PartyPickerModal.tsx# Fast search & selection for Debtors / Creditors
-    │   └── ItemPickerModal.tsx # Product & Batch selection with Stock & Rates
+    │   ├── ui.tsx              # Screen, TopBar, Card, fields, period chips, searchable picker
+    │   └── LineEditor.tsx      # Bill line: qty / free / rate / disc / GST (+ batch, expiry, MRP inward)
     ├── navigation/
-    │   └── AppNavigator.tsx    # NativeStack navigation for all 6 modules
+    │   └── AppNavigator.tsx    # Login → Company → Home → module menus & screens
     └── screens/
-        ├── LoginScreen.tsx     # Sign In with server URL override
-        ├── DashboardScreen.tsx # Overview KPIs, live balances & module launcher
-        ├── SaleListScreen.tsx  # Sale bills listing & search
-        ├── SaleEntryScreen.tsx # Sale invoice creation & modification
-        ├── SaleDetailScreen.tsx# Sale invoice breakdown (Delete locked)
-        ├── PurchaseListScreen.tsx
-        ├── PurchaseEntryScreen.tsx
-        ├── PurchaseDetailScreen.tsx
-        ├── ReceiptListScreen.tsx
-        ├── ReceiptEntryScreen.tsx
-        ├── PaymentListScreen.tsx
-        ├── PaymentEntryScreen.tsx
-        ├── ContraListScreen.tsx
-        ├── ContraEntryScreen.tsx
-        ├── LedgerListScreen.tsx # Debtors, Creditors, Balances
-        ├── LedgerStatementScreen.tsx # Running Dr/Cr Ledger Statement
-        └── LedgerEntryScreen.tsx # New / Edit Ledger Account
+        ├── LoginScreen.tsx
+        ├── CompanySelectScreen.tsx  # LIST OF COMPANIES
+        ├── HomeScreen.tsx           # Live MIS (sale, purchase, receipt, payment, cash, bank, O/s) + 6 modules
+        ├── MenuScreen.tsx           # One menu level; submenus open nested MenuScreens
+        ├── BillListScreen.tsx       # Any bill type(s): modify lists, registers, party transaction
+        ├── BillDetailScreen.tsx
+        ├── BillEntryScreen.tsx      # Sale, Challan, Counter Sale, Sale Return, Purchase, P.Challan, P.Return
+        ├── VoucherListScreen.tsx    # Receipt / Payment / Contra / Journal / Note books
+        ├── VoucherDetailScreen.tsx
+        ├── VoucherEntryScreen.tsx   # Receipt & Payment with bill adjustment, Contra, Journal, Dr/Cr Notes
+        ├── LedgerListScreen.tsx
+        ├── LedgerStatementScreen.tsx
+        ├── LedgerEntryScreen.tsx
+        ├── GroupEntryScreen.tsx
+        ├── PartyStatusScreen.tsx    # Customer / Supplier status
+        └── ReportScreen.tsx         # O/s, ageing, trial balance, day book, sale book, G.P., all ledgers…
 ```
 
 ---

@@ -3,35 +3,34 @@ import { View, ActivityIndicator } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from '../context/AuthContext';
+import { C } from '../theme';
 
-// Screens
 import { LoginScreen } from '../screens/LoginScreen';
-import { DashboardScreen } from '../screens/DashboardScreen';
-import { SaleListScreen } from '../screens/SaleListScreen';
-import { SaleEntryScreen } from '../screens/SaleEntryScreen';
-import { SaleDetailScreen } from '../screens/SaleDetailScreen';
-import { PurchaseListScreen } from '../screens/PurchaseListScreen';
-import { PurchaseEntryScreen } from '../screens/PurchaseEntryScreen';
-import { PurchaseDetailScreen } from '../screens/PurchaseDetailScreen';
-import { ReceiptListScreen } from '../screens/ReceiptListScreen';
-import { ReceiptEntryScreen } from '../screens/ReceiptEntryScreen';
-import { PaymentListScreen } from '../screens/PaymentListScreen';
-import { PaymentEntryScreen } from '../screens/PaymentEntryScreen';
-import { ContraListScreen } from '../screens/ContraListScreen';
-import { ContraEntryScreen } from '../screens/ContraEntryScreen';
+import { CompanySelectScreen } from '../screens/CompanySelectScreen';
+import { HomeScreen } from '../screens/HomeScreen';
+import { MenuScreen } from '../screens/MenuScreen';
+import { BillListScreen } from '../screens/BillListScreen';
+import { BillDetailScreen } from '../screens/BillDetailScreen';
+import { BillEntryScreen } from '../screens/BillEntryScreen';
+import { VoucherListScreen } from '../screens/VoucherListScreen';
+import { VoucherDetailScreen } from '../screens/VoucherDetailScreen';
+import { VoucherEntryScreen } from '../screens/VoucherEntryScreen';
 import { LedgerListScreen } from '../screens/LedgerListScreen';
 import { LedgerStatementScreen } from '../screens/LedgerStatementScreen';
 import { LedgerEntryScreen } from '../screens/LedgerEntryScreen';
+import { GroupEntryScreen } from '../screens/GroupEntryScreen';
+import { PartyStatusScreen } from '../screens/PartyStatusScreen';
+import { ReportScreen } from '../screens/ReportScreen';
 
 const Stack = createNativeStackNavigator();
 
 export const AppNavigator: React.FC = () => {
-  const { user, isLoading } = useAuth();
+  const { user, company, isLoading } = useAuth();
 
   if (isLoading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#002244' }}>
-        <ActivityIndicator size="large" color="#ffcc00" />
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: C.navy }}>
+        <ActivityIndicator size="large" color={C.gold} />
       </View>
     );
   }
@@ -41,40 +40,27 @@ export const AppNavigator: React.FC = () => {
       <Stack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
         {!user ? (
           <Stack.Screen name="Login" component={LoginScreen} />
+        ) : !company ? (
+          <Stack.Screen name="CompanySelect" component={CompanySelectScreen} />
         ) : (
           <>
-            <Stack.Screen name="Dashboard" component={DashboardScreen} />
-
-            {/* Sale Module */}
-            <Stack.Screen name="SaleList" component={SaleListScreen} />
-            <Stack.Screen name="SaleEntry" component={SaleEntryScreen} />
-            <Stack.Screen name="SaleDetail" component={SaleDetailScreen} />
-
-            {/* Purchase Module */}
-            <Stack.Screen name="PurchaseList" component={PurchaseListScreen} />
-            <Stack.Screen name="PurchaseEntry" component={PurchaseEntryScreen} />
-            <Stack.Screen name="PurchaseDetail" component={PurchaseDetailScreen} />
-
-            {/* Receipt Module */}
-            <Stack.Screen name="ReceiptList" component={ReceiptListScreen} />
-            <Stack.Screen name="ReceiptEntry" component={ReceiptEntryScreen} />
-
-            {/* Payment Module */}
-            <Stack.Screen name="PaymentList" component={PaymentListScreen} />
-            <Stack.Screen name="PaymentEntry" component={PaymentEntryScreen} />
-
-            {/* Contra Module */}
-            <Stack.Screen name="ContraList" component={ContraListScreen} />
-            <Stack.Screen name="ContraEntry" component={ContraEntryScreen} />
-
-            {/* Ledger Module */}
+            <Stack.Screen name="Home" component={HomeScreen} />
+            <Stack.Screen name="Menu" component={MenuScreen} />
+            <Stack.Screen name="BillList" component={BillListScreen} />
+            <Stack.Screen name="BillDetail" component={BillDetailScreen} />
+            <Stack.Screen name="BillEntry" component={BillEntryScreen} />
+            <Stack.Screen name="VoucherList" component={VoucherListScreen} />
+            <Stack.Screen name="VoucherDetail" component={VoucherDetailScreen} />
+            <Stack.Screen name="VoucherEntry" component={VoucherEntryScreen} />
             <Stack.Screen name="LedgerList" component={LedgerListScreen} />
             <Stack.Screen name="LedgerStatement" component={LedgerStatementScreen} />
             <Stack.Screen name="LedgerEntry" component={LedgerEntryScreen} />
+            <Stack.Screen name="GroupEntry" component={GroupEntryScreen} />
+            <Stack.Screen name="PartyStatus" component={PartyStatusScreen} />
+            <Stack.Screen name="Report" component={ReportScreen} />
           </>
         )}
       </Stack.Navigator>
     </NavigationContainer>
   );
 };
-
