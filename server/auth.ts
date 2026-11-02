@@ -279,7 +279,17 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction) 
   a.yearId = s.yearId;
   (req as unknown as { auth: AuthCtx }).auth = a;
   if (!NO_COMPANY.test(req.path)) {
-    if (!s.companyId) { res.status(409).json({ error: 'No company open — select one from the LIST OF COMPANIES (F1)' }); return; }
+    if (!s.companyId) {
+      const first = sysDb.prepare('SELECT id FROM companies ORDER BY id LIMIT 1').get() as { id: number } | undefined;
+      if (first) {
+        s.companyId = first.id;
+        a.companyId = first.id;
+        saveSessionToDb(token, s);
+      } else {
+        res.status(409).json({ error: 'No company open — select one from the LIST OF COMPANIES (F1)' });
+        return;
+      }
+    }
     try { useCompany(s.companyId); } catch (e) { res.status(409).json({ error: (e as Error).message }); return; }
   }
 

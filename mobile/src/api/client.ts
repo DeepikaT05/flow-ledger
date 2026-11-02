@@ -21,8 +21,13 @@ export async function request<T = any>(endpoint: string, options: RequestInit = 
   const token = await getAuthToken();
   const savedCookie = await AsyncStorage.getItem(COOKIE_KEY);
 
-  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-  const url = `${baseUrl}${cleanEndpoint}`;
+  let cleanEndpoint = endpoint.trim();
+  if (cleanEndpoint.startsWith('/api/')) cleanEndpoint = cleanEndpoint.slice(4);
+  else if (cleanEndpoint.startsWith('api/')) cleanEndpoint = cleanEndpoint.slice(3);
+  if (!cleanEndpoint.startsWith('/')) cleanEndpoint = `/${cleanEndpoint}`;
+
+  const cleanBase = baseUrl.trim().replace(/\/+$/, '');
+  const url = `${cleanBase}${cleanEndpoint}`;
 
   const headers: Record<string, string> = {
     'Accept': 'application/json',

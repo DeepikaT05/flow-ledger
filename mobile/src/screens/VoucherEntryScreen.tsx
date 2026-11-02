@@ -201,14 +201,8 @@ export const VoucherEntryScreen: React.FC<{ navigation: any; route: any }> = ({ 
                 <SelectField
                   label={kind.partyLabel!}
                   value={party?.name}
-                  sub={party ? `${party.group_name} · Bal ${drcr(party.balance)}` : undefined}
+                  sub={party ? `${party.group_name}${party.city ? ' · ' + party.city : ''} · Bal ${drcr(party.balance)}` : undefined}
                   onPress={() => setPicker('party')}
-                />
-                <SelectField
-                  label={kind.bankLabel!}
-                  value={bank?.name}
-                  sub={bank ? `Bal ${drcr(bank.balance)}` : undefined}
-                  onPress={() => setPicker('bank')}
                 />
                 <Text style={ui.label}>Amount</Text>
                 <View style={[ui.input, { flexDirection: 'row', alignItems: 'center', borderColor: accent.main, borderWidth: 1.6 }]}>
@@ -222,6 +216,12 @@ export const VoucherEntryScreen: React.FC<{ navigation: any; route: any }> = ({ 
                     style={{ flex: 1, fontSize: 24, fontWeight: '800', color: C.text, padding: 0 }}
                   />
                 </View>
+                <SelectField
+                  label={kind.bankLabel!}
+                  value={bank?.name}
+                  sub={bank ? `Bal ${drcr(bank.balance)}` : undefined}
+                  onPress={() => setPicker('bank')}
+                />
               </>
             ) : null}
           </Card>

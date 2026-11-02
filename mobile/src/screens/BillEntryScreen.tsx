@@ -116,10 +116,8 @@ export const BillEntryScreen: React.FC<{ navigation: any; route: any }> = ({ nav
     setPicker('');
     const bs = await ItemService.batches(it.id).catch(() => [] as Batch[]);
     setBatches(bs);
-    if (kind.inward) { startLine(it, bs.find((b) => b.id) ?? bs[0]); return; }
-    const inStock = bs.filter((b) => Number(b.stock) > 0);
-    if (inStock.length > 1) { setPendingItem(it); setPicker('batch'); return; }
-    startLine(it, inStock[0] ?? bs[0]);
+    setPendingItem(it);
+    setPicker('batch');
   };
 
   const saveLine = (l: EditLine) => {
@@ -198,10 +196,20 @@ export const BillEntryScreen: React.FC<{ navigation: any; route: any }> = ({ nav
               placeholder={`Select ${kind.partyLabel.toLowerCase()}`}
               onPress={() => setPicker('party')}
             />
-            {type === 'COUNTER_SALE' ? (
+            {party && !party.name.toUpperCase().includes('CASH') ? (
+              <View style={{ backgroundColor: C.bg, borderRadius: R.sm, padding: 8, marginTop: 4, marginBottom: 8, flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={{ fontSize: 12, color: C.sub }}>
+                  {[party.city, party.phone, party.gstin].filter(Boolean).join(' · ')}
+                </Text>
+                {party.credit_limit ? (
+                  <Text style={{ fontSize: 12, color: C.text, fontWeight: '600' }}>Cr.Limit: ₹{amt(party.credit_limit)}</Text>
+                ) : null}
+              </View>
+            ) : null}
+            {party && (party.name.toUpperCase().includes('CASH') || type === 'COUNTER_SALE') ? (
               <View style={{ flexDirection: 'row', gap: 10 }}>
-                <Field label="Customer Name" value={walkin.name} onChangeText={(v) => setWalkin((w) => ({ ...w, name: v }))} style={{ flex: 1.4 }} />
-                <Field label="Mobile" value={walkin.mobile} onChangeText={(v) => setWalkin((w) => ({ ...w, mobile: v }))} keyboardType="phone-pad" style={{ flex: 1 }} />
+                <Field label="Customer Name" value={walkin.name} onChangeText={(v) => setWalkin((w) => ({ ...w, name: v }))} placeholder="Walk-in name" style={{ flex: 1.4 }} />
+                <Field label="Mobile" value={walkin.mobile} onChangeText={(v) => setWalkin((w) => ({ ...w, mobile: v }))} placeholder="10-digit" keyboardType="phone-pad" style={{ flex: 1 }} />
               </View>
             ) : null}
             {kind.hasRef ? (
@@ -337,18 +345,42 @@ export const BillEntryScreen: React.FC<{ navigation: any; route: any }> = ({ nav
       <PickerModal<Batch>
         visible={picker === 'batch'}
         title={`Batch — ${pendingItem?.name ?? ''}`}
-        items={batches.filter((b) => Number(b.stock) > 0)}
+        items={kind.inward ? batches : (batches.filter((b) => Number(b.stock) > 0).length ? batches.filter((b) => Number(b.stock) > 0) : batches)}
         keyOf={(b) => `${b.id}-${b.batch}`}
         search={(b) => `${b.batch} ${b.expiry}`}
         onClose={() => setPicker('')}
         onPick={(b) => { setPicker(''); if (pendingItem) startLine(pendingItem, b); }}
+        header={
+          kind.inward ? (
+            <TouchableOpacity
+              style={{ backgroundColor: accent.main, paddingVertical: 12, paddingHorizontal: 16, borderRadius: R.sm, marginBottom: 10, alignItems: 'center' }}
+              onPress={() => {
+                setPicker('');
+                if (pendingItem) {
+                  startLine(pendingItem, {
+                    id: 0,
+                    item_id: pendingItem.id,
+                    batch: '',
+                    expiry: '',
+                    mrp: pendingItem.mrp ?? 0,
+                    rate: pendingItem.purchase_rate ?? 0,
+                    purchase_rate: pendingItem.purchase_rate ?? 0,
+                    stock: 0,
+                  } as any);
+                }
+              }}
+            >
+              <Text style={{ color: C.white, fontWeight: '800', fontSize: 14 }}>＋ Create New Batch</Text>
+            </TouchableOpacity>
+          ) : undefined
+        }
         render={(b) => (
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <View style={{ flex: 1 }}>
-              <Text style={st.pickName}>{b.batch}</Text>
+              <Text style={st.pickName}>{b.batch || '< No Batch >'}</Text>
               <Text style={st.meta}>Exp {b.expiry || '—'} · MRP ₹{amt(b.mrp)} · Rate ₹{amt(b.rate)}</Text>
             </View>
-            <Badge label={`Stk ${b.stock}`} color={C.cr} soft />
+            <Badge label={`Stk ${b.stock}`} color={b.stock > 0 ? C.cr : C.danger} soft />
           </View>
         )}
       />

@@ -143,8 +143,12 @@ app.post('/api/companies/:id/new-year', h((req) => {
 app.post('/api/session/company', h((req) => {
   const c = companyRow(req.body?.id);
   if (!c) throw new Error('Company not found');
-  companyDb(c);
+  const d = companyDb(c);
   setSessionCompany(req, c.id);
+  const latestYear = d.prepare('SELECT id FROM company_years ORDER BY fy_end DESC LIMIT 1').get() as { id: number } | undefined;
+  if (latestYear) {
+    setSessionYear(req, Number(latestYear.id));
+  }
   return c;
 }));
 /** SELECT TO EXECUTE: the financial year to run. */

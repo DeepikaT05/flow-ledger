@@ -1,8 +1,11 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { Alert } from 'react-native';
 import { User, Company, ModuleKey } from '../types';
 import { AuthService, Session } from '../api/services';
 import { clearAuth, setAuthToken, getAuthToken } from '../api/client';
+
+const COMPANY_KEY = '@flow_ledger_company_id';
 
 interface AuthContextType {
   user: User | null;
@@ -40,12 +43,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(userOf(s));
     const list = await AuthService.getCompanies().catch(() => [] as Company[]);
     setCompanies(list);
-    const open = list.find((c) => c.id === s.company_id);
-    if (open) setCompany(open);
-    else if (list.length === 1) {
-      await AuthService.selectCompany(list[0].id);
-      setCompany(list[0]);
-    } else setCompany(null);   // more than one: the user picks on CompanySelect
+    const savedIdStr = await AsyncStorage.getItem(COMPANY_KEY);
+    const savedId = savedIdStr ? Number(savedIdStr) : undefined;
+    const targetId = s.company_id || savedId || (list.length > 0 ? list[0].id : undefined);
+    const open = list.find((c) => c.id === targetId) ?? (list.length ? list[0] : null);
+    if (open) {
+      const bound = await AuthService.selectCompany(open.id).catch(() => null);
+      await AsyncStorage.setItem(COMPANY_KEY, String(open.id));
+      setCompany({ ...open, ...(bound && typeof bound === 'object' ? bound : {}) });
+    } else {
+      setCompany(null);
+    }
   };
 
   const refreshProfile = async () => {
@@ -87,7 +95,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const selectCompany = async (c: Company) => {
     const open = await AuthService.selectCompany(c.id);
+    await AsyncStorage.setItem(COMPANY_KEY, String(c.id));
     setCompany({ ...c, ...(open && typeof open === 'object' ? open : {}) });
+  };
+
+  const changeCompany = () => {
+    AsyncStorage.removeItem(COMPANY_KEY).catch(() => {});
+    setCompany(null);
   };
 
   const can = useCallback((perms: string[]) => {

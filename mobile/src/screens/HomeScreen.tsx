@@ -80,7 +80,7 @@ export const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
               <Kpi label="Receipt" value={money(mis.receipt.s)} sub={`${mis.receipt.c} vouchers`} color={MODULE.receipt.main} />
               <Kpi label="Payment" value={money(mis.payment.s)} sub={`${mis.payment.c} vouchers`} color={MODULE.payment.main} />
             </View>
-          ) : misErr ? <Text style={st.misErr}>Live figures need the “Daily reports” permission.</Text> : null}
+          ) : misErr ? <Text style={st.misErr}>{misErr.includes('needs') ? 'Live figures need the “Daily reports” permission.' : misErr}</Text> : null}
         </View>
 
         {mis ? (
