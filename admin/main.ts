@@ -413,9 +413,9 @@ async function usersView(root: HTMLElement) {
     const curAccess = userToEdit?.access_type || 'BOTH';
     const accessSelect = h('select', { id: 'u-access', name: 'access_type' },
       [
-        { value: 'BOTH', label: '📱💻 Both Web & Mobile App (APK)' },
-        { value: 'APP', label: '📱 Mobile App (APK) Only' },
-        { value: 'WEB', label: '💻 Web ERP Only' },
+        { value: 'BOTH', label: 'Both Web & Mobile App (APK)' },
+        { value: 'APP', label: 'Mobile App (APK) Only' },
+        { value: 'WEB', label: 'Web ERP Only' },
       ].map((o) => h('option', { value: o.value, selected: curAccess === o.value }, o.label))
     );
 
@@ -442,17 +442,17 @@ async function usersView(root: HTMLElement) {
 
     const apkBox = h('div', { class: 'apk-box' },
       h('div', { class: 'apk-title' },
-        h('span', {}, '📱 Mobile App (APK) Permissions'),
+        h('span', {}, 'Mobile App (APK) Permissions'),
         h('small', { class: 'muted' }, 'Tick allowed menus in APK')
       ),
       h('div', { class: 'apk-grid' },
-        h('label', { class: 'apk-check' }, checks.sale, h('span', {}, '🛒 Sale')),
-        h('label', { class: 'apk-check' }, checks.purchase, h('span', {}, '📥 Purchase')),
-        h('label', { class: 'apk-check' }, checks.receipt, h('span', {}, '💵 Receipt')),
-        h('label', { class: 'apk-check' }, checks.payment, h('span', {}, '💸 Payment')),
-        h('label', { class: 'apk-check' }, checks.contra, h('span', {}, '🔄 Contra')),
-        h('label', { class: 'apk-check' }, checks.ledger, h('span', {}, '📑 Ledger')),
-        h('label', { class: 'apk-check', style: 'color: #dc2626; font-weight: 600;' }, checks.delete, h('span', {}, '⚠️ Allow Delete in APK'))
+        h('label', { class: 'apk-check' }, checks.sale, h('span', {}, 'Sale')),
+        h('label', { class: 'apk-check' }, checks.purchase, h('span', {}, 'Purchase')),
+        h('label', { class: 'apk-check' }, checks.receipt, h('span', {}, 'Receipt')),
+        h('label', { class: 'apk-check' }, checks.payment, h('span', {}, 'Payment')),
+        h('label', { class: 'apk-check' }, checks.contra, h('span', {}, 'Contra')),
+        h('label', { class: 'apk-check' }, checks.ledger, h('span', {}, 'Ledger')),
+        h('label', { class: 'apk-check', style: 'color: #dc2626; font-weight: 600;' }, checks.delete, h('span', {}, 'Allow Delete in APK'))
       )
     );
 
@@ -572,9 +572,9 @@ async function usersView(root: HTMLElement) {
     const self = u.id === me!.id;
     const accessType = u.access_type || 'BOTH';
 
-    let accessBadge = h('span', { class: 'badge both' }, '📱💻 Web & App');
-    if (accessType === 'APP') accessBadge = h('span', { class: 'badge app' }, '📱 App Only');
-    else if (accessType === 'WEB') accessBadge = h('span', { class: 'badge web' }, '💻 Web Only');
+    let accessBadge = h('span', { class: 'badge both' }, 'Web & App');
+    if (accessType === 'APP') accessBadge = h('span', { class: 'badge app' }, 'App Only');
+    else if (accessType === 'WEB') accessBadge = h('span', { class: 'badge web' }, 'Web Only');
 
     const pills: Node[] = [];
     if (accessType !== 'WEB') {
@@ -585,8 +585,8 @@ async function usersView(root: HTMLElement) {
       if (ap.payment !== false) pills.push(h('span', { class: 'pill' }, 'Pay'));
       if (ap.contra !== false) pills.push(h('span', { class: 'pill' }, 'Contra'));
       if (ap.ledger !== false) pills.push(h('span', { class: 'pill' }, 'Ledger'));
-      if (ap.delete) pills.push(h('span', { class: 'pill del-on' }, '✓ Del Allowed'));
-      else pills.push(h('span', { class: 'pill del-off' }, '✗ No Delete'));
+      if (ap.delete) pills.push(h('span', { class: 'pill del-on' }, 'Del Allowed'));
+      else pills.push(h('span', { class: 'pill del-off' }, 'No Delete'));
     }
 
     return h('li', { class: 'user-row' },
