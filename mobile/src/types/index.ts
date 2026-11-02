@@ -3,6 +3,8 @@ export interface User {
   username: string;
   name: string;
   role: string;
+  access_type?: 'BOTH' | 'APP' | 'WEB';
+  app_perms?: Record<string, boolean>;
 }
 
 export interface Company {
@@ -18,32 +20,32 @@ export interface RolePermissions {
   canViewSale: boolean;
   canCreateSale: boolean;
   canEditSale: boolean;
-  canDeleteSale: false; // STRICTLY DISABLED
+  canDeleteSale: boolean;
 
   canViewPurchase: boolean;
   canCreatePurchase: boolean;
   canEditPurchase: boolean;
-  canDeletePurchase: false; // STRICTLY DISABLED
+  canDeletePurchase: boolean;
 
   canViewReceipt: boolean;
   canCreateReceipt: boolean;
   canEditReceipt: boolean;
-  canDeleteReceipt: false; // STRICTLY DISABLED
+  canDeleteReceipt: boolean;
 
   canViewPayment: boolean;
   canCreatePayment: boolean;
   canEditPayment: boolean;
-  canDeletePayment: false; // STRICTLY DISABLED
+  canDeletePayment: boolean;
 
   canViewContra: boolean;
   canCreateContra: boolean;
   canEditContra: boolean;
-  canDeleteContra: false; // STRICTLY DISABLED
+  canDeleteContra: boolean;
 
   canViewLedger: boolean;
   canCreateLedger: boolean;
   canEditLedger: boolean;
-  canDeleteLedger: false; // STRICTLY DISABLED
+  canDeleteLedger: boolean;
 }
 
 export interface Ledger {

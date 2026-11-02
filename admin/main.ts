@@ -7,7 +7,15 @@ import { MENU_TREE, SPECIAL, GRANTABLE, type MenuNode } from '../shared/menuPerm
 
 interface Me { token: string; id: number; name: string; role: string; is_super: boolean }
 interface Company { id: number; name: string; station: string; address1: string | null; address2: string | null; gstin: string | null; state: string | null; file: string }
-interface User { id: number; name: string; role_id: number | null; role: string | null; is_super: number | null }
+interface User {
+  id: number;
+  name: string;
+  role_id: number | null;
+  role: string | null;
+  is_super: number | null;
+  access_type?: 'BOTH' | 'APP' | 'WEB';
+  app_perms?: Record<string, boolean>;
+}
 interface Role { id: number; name: string; is_super: number; perms: string[]; users: number }
 type Tab = 'companies' | 'users' | 'roles';
 
@@ -362,29 +370,191 @@ async function companiesView(root: HTMLElement) {
 
 // ---------------------------------------------------------------- users
 async function usersView(root: HTMLElement) {
-  root.replaceChildren(pageHead('Users', 'Who can sign in, and with which role.'), loading());
+  root.replaceChildren(pageHead('Users', 'Who can sign in, platform access (Web / APK) and permissions.'), loading());
   const [users, roles] = await Promise.all([api<User[]>('/users'), api<Role[]>('/roles')]);
   const roleOptions = roles.map((r) => ({ value: String(r.id), label: r.is_super ? `${r.name} (full access)` : r.name }));
   const defaultRole = String((roles.find((r) => r.name === 'ADMIN') ?? roles.find((r) => !r.is_super) ?? roles[0])?.id ?? '');
 
-  const newUser = () => formModal('New user', [
-    { name: 'name', label: 'User Id', required: true, upper: true, hint: 'Used to sign in, e.g. RAHUL' },
-    ...passwordFields('Password'),
-    { name: 'role_id', label: 'Role', type: 'select', value: defaultRole, options: roleOptions, hint: 'Pick SUPERADMIN for full access, or a role whose permissions you set under Roles & Permissions' },
-  ], 'Create user', async (v) => {
-    checkPasswords(v);
-    await api('/users', 'POST', { name: v.name.toUpperCase(), password: v.password, role_id: Number(v.role_id) });
-    toast(`User ${v.name.toUpperCase()} created`);
-    render();
-  });
+  function userModal(userToEdit?: User) {
+    const isEdit = !!userToEdit;
+    const title = isEdit ? `Edit Permissions & Role: ${userToEdit.name}` : 'New User';
+    const err = h('div', { class: 'form-err', role: 'alert' });
 
-  const changeRole = (u: User) => formModal(`Role for ${u.name}`, [
-    { name: 'role_id', label: 'Role', type: 'select', value: String(u.role_id ?? ''), options: roleOptions },
-  ], 'Save role', async (v) => {
-    await api(`/users/${u.id}`, 'PUT', { role_id: Number(v.role_id) });
-    toast(`${u.name} is now ${roles.find((r) => r.id === Number(v.role_id))?.name}`);
-    render();
-  });
+    const nameInput = h('input', {
+      id: 'u-name',
+      name: 'name',
+      type: 'text',
+      value: userToEdit ? userToEdit.name : '',
+      placeholder: 'e.g. RAHUL or OPERATOR1',
+      class: 'upper',
+      disabled: isEdit,
+    });
+
+    const passInput = h('input', {
+      id: 'u-pass',
+      name: 'password',
+      type: 'password',
+      placeholder: 'Password (min 4 characters)',
+      autocomplete: 'new-password',
+    });
+
+    const confirmInput = h('input', {
+      id: 'u-confirm',
+      name: 'confirm',
+      type: 'password',
+      placeholder: 'Confirm password',
+      autocomplete: 'new-password',
+    });
+
+    const roleSelect = h('select', { id: 'u-role', name: 'role_id' },
+      roleOptions.map((o) => h('option', { value: o.value, selected: String(userToEdit?.role_id ?? defaultRole) === o.value }, o.label))
+    );
+
+    const curAccess = userToEdit?.access_type || 'BOTH';
+    const accessSelect = h('select', { id: 'u-access', name: 'access_type' },
+      [
+        { value: 'BOTH', label: '📱💻 Both Web & Mobile App (APK)' },
+        { value: 'APP', label: '📱 Mobile App (APK) Only' },
+        { value: 'WEB', label: '💻 Web ERP Only' },
+      ].map((o) => h('option', { value: o.value, selected: curAccess === o.value }, o.label))
+    );
+
+    // App Permissions checkboxes
+    const existingApp = userToEdit?.app_perms || {
+      sale: true,
+      purchase: true,
+      receipt: true,
+      payment: true,
+      contra: true,
+      ledger: true,
+      delete: false,
+    };
+
+    const checks: Record<string, HTMLInputElement> = {
+      sale: h('input', { type: 'checkbox', checked: existingApp.sale !== false }),
+      purchase: h('input', { type: 'checkbox', checked: existingApp.purchase !== false }),
+      receipt: h('input', { type: 'checkbox', checked: existingApp.receipt !== false }),
+      payment: h('input', { type: 'checkbox', checked: existingApp.payment !== false }),
+      contra: h('input', { type: 'checkbox', checked: existingApp.contra !== false }),
+      ledger: h('input', { type: 'checkbox', checked: existingApp.ledger !== false }),
+      delete: h('input', { type: 'checkbox', checked: !!existingApp.delete }),
+    };
+
+    const apkBox = h('div', { class: 'apk-box' },
+      h('div', { class: 'apk-title' },
+        h('span', {}, '📱 Mobile App (APK) Permissions'),
+        h('small', { class: 'muted' }, 'Tick allowed menus in APK')
+      ),
+      h('div', { class: 'apk-grid' },
+        h('label', { class: 'apk-check' }, checks.sale, h('span', {}, '🛒 Sale')),
+        h('label', { class: 'apk-check' }, checks.purchase, h('span', {}, '📥 Purchase')),
+        h('label', { class: 'apk-check' }, checks.receipt, h('span', {}, '💵 Receipt')),
+        h('label', { class: 'apk-check' }, checks.payment, h('span', {}, '💸 Payment')),
+        h('label', { class: 'apk-check' }, checks.contra, h('span', {}, '🔄 Contra')),
+        h('label', { class: 'apk-check' }, checks.ledger, h('span', {}, '📑 Ledger')),
+        h('label', { class: 'apk-check', style: 'color: #dc2626; font-weight: 600;' }, checks.delete, h('span', {}, '⚠️ Allow Delete in APK'))
+      )
+    );
+
+    const updateApkVis = () => {
+      apkBox.hidden = accessSelect.value === 'WEB';
+    };
+    accessSelect.addEventListener('change', updateApkVis);
+    updateApkVis();
+
+    const formKids: (Node | null)[] = [
+      h('label', { class: 'field', for: 'u-name' },
+        h('span', { class: 'field-label' }, 'User Id', h('b', { class: 'req' }, ' *')),
+        nameInput,
+        isEdit ? null : h('small', {}, 'Username used to sign in, e.g. RAHUL')
+      ),
+    ];
+
+    if (!isEdit) {
+      formKids.push(
+        h('label', { class: 'field', for: 'u-pass' },
+          h('span', { class: 'field-label' }, 'Password', h('b', { class: 'req' }, ' *')),
+          passInput
+        ),
+        h('label', { class: 'field', for: 'u-confirm' },
+          h('span', { class: 'field-label' }, 'Confirm Password', h('b', { class: 'req' }, ' *')),
+          confirmInput
+        )
+      );
+    }
+
+    formKids.push(
+      h('label', { class: 'field', for: 'u-access' },
+        h('span', { class: 'field-label' }, 'Platform Access', h('b', { class: 'req' }, ' *')),
+        accessSelect,
+        h('small', {}, 'Select whether this user can sign in to Web, Mobile App (APK), or Both')
+      ),
+      h('label', { class: 'field', for: 'u-role' },
+        h('span', { class: 'field-label' }, 'Web Role'),
+        roleSelect,
+        h('small', {}, 'Role used for Web ERP menu permissions')
+      ),
+      apkBox,
+      err
+    );
+
+    const form = h('form', { class: 'form', novalidate: true }, formKids.filter(Boolean) as Node[]);
+    const saveBtn = h('button', { class: 'btn primary', type: 'button', onclick: () => save() }, isEdit ? 'Save Changes' : 'Create User');
+    const m = openModal(title, form, [
+      h('button', { class: 'btn', type: 'button', onclick: () => m.close() }, 'Cancel'),
+      saveBtn,
+    ]);
+
+    async function save() {
+      err.textContent = '';
+      const name = nameInput.value.trim().toUpperCase();
+      if (!name) { err.textContent = 'User Id is required'; nameInput.focus(); return; }
+
+      let pass = '';
+      if (!isEdit) {
+        pass = passInput.value;
+        if (!pass || pass.length < 4) { err.textContent = 'Password must be at least 4 characters'; passInput.focus(); return; }
+        if (pass !== confirmInput.value) { err.textContent = 'Passwords do not match'; confirmInput.focus(); return; }
+      }
+
+      const appPermsData = {
+        sale: checks.sale.checked,
+        purchase: checks.purchase.checked,
+        receipt: checks.receipt.checked,
+        payment: checks.payment.checked,
+        contra: checks.contra.checked,
+        ledger: checks.ledger.checked,
+        delete: checks.delete.checked,
+      };
+
+      saveBtn.disabled = true;
+      try {
+        if (isEdit) {
+          await api(`/users/${userToEdit!.id}`, 'PUT', {
+            role_id: Number(roleSelect.value),
+            access_type: accessSelect.value,
+            app_perms: appPermsData,
+          });
+          toast(`Permissions updated for ${userToEdit!.name}`);
+        } else {
+          await api('/users', 'POST', {
+            name,
+            password: pass,
+            role_id: Number(roleSelect.value),
+            access_type: accessSelect.value,
+            app_perms: appPermsData,
+          });
+          toast(`User ${name} created successfully`);
+        }
+        m.close();
+        render();
+      } catch (e) {
+        err.textContent = (e as Error).message;
+      } finally {
+        saveBtn.disabled = false;
+      }
+    }
+  }
 
   const resetPassword = (u: User) => formModal(`Reset password: ${u.name}`, passwordFields(), 'Reset password', async (v) => {
     checkPasswords(v);
@@ -400,19 +570,45 @@ async function usersView(root: HTMLElement) {
   const supers = users.filter((u) => u.is_super).length;
   const rows = users.map((u) => {
     const self = u.id === me!.id;
+    const accessType = u.access_type || 'BOTH';
+
+    let accessBadge = h('span', { class: 'badge both' }, '📱💻 Web & App');
+    if (accessType === 'APP') accessBadge = h('span', { class: 'badge app' }, '📱 App Only');
+    else if (accessType === 'WEB') accessBadge = h('span', { class: 'badge web' }, '💻 Web Only');
+
+    const pills: Node[] = [];
+    if (accessType !== 'WEB') {
+      const ap = u.app_perms || { sale: true, purchase: true, receipt: true, payment: true, contra: true, ledger: true, delete: false };
+      if (ap.sale !== false) pills.push(h('span', { class: 'pill' }, 'Sale'));
+      if (ap.purchase !== false) pills.push(h('span', { class: 'pill' }, 'Purc'));
+      if (ap.receipt !== false) pills.push(h('span', { class: 'pill' }, 'Rcpt'));
+      if (ap.payment !== false) pills.push(h('span', { class: 'pill' }, 'Pay'));
+      if (ap.contra !== false) pills.push(h('span', { class: 'pill' }, 'Contra'));
+      if (ap.ledger !== false) pills.push(h('span', { class: 'pill' }, 'Ledger'));
+      if (ap.delete) pills.push(h('span', { class: 'pill del-on' }, '✓ Del Allowed'));
+      else pills.push(h('span', { class: 'pill del-off' }, '✗ No Delete'));
+    }
+
     return h('li', { class: 'user-row' },
       h('span', { class: `avatar${u.is_super ? ' gold' : ''}` }, u.name.slice(0, 2)),
       h('div', { class: 'user-info' },
-        h('strong', {}, u.name, self ? h('span', { class: 'you' }, 'you') : null),
-        h('span', { class: `badge${u.is_super ? ' gold' : ''}` }, u.role ?? 'NO ROLE')),
+        h('div', { style: 'display: flex; align-items: center; gap: 8px;' },
+          h('strong', {}, u.name, self ? h('span', { class: 'you' }, 'you') : null),
+          accessBadge,
+          h('span', { class: `badge${u.is_super ? ' gold' : ''}` }, u.role ?? 'NO ROLE')
+        ),
+        pills.length ? h('div', { class: 'pill-list' }, pills) : null
+      ),
       h('div', { class: 'row-actions' },
-        h('button', { class: 'btn small', type: 'button', onclick: () => changeRole(u) }, 'Role'),
+        h('button', { class: 'btn small primary-ghost', type: 'button', onclick: () => userModal(u) }, 'Permissions & Access'),
         h('button', { class: 'btn small', type: 'button', onclick: () => resetPassword(u) }, 'Password'),
-        h('button', { class: 'btn small danger-ghost', type: 'button', disabled: self, title: self ? 'You cannot delete yourself' : undefined, onclick: () => remove(u) }, 'Delete')));
+        h('button', { class: 'btn small danger-ghost', type: 'button', disabled: self, title: self ? 'You cannot delete yourself' : undefined, onclick: () => remove(u) }, 'Delete')
+      )
+    );
   });
 
   root.replaceChildren(
-    pageHead('Users', `${users.length} user${users.length === 1 ? '' : 's'} · ${supers} SuperAdmin${supers === 1 ? '' : 's'}`, addBtn('New user', newUser)),
+    pageHead('Users', `${users.length} user${users.length === 1 ? '' : 's'} · ${supers} SuperAdmin${supers === 1 ? '' : 's'}`, addBtn('New user', () => userModal())),
     h('ul', { class: 'user-list' }, rows));
 }
 

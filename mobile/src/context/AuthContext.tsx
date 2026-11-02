@@ -14,45 +14,57 @@ interface AuthContextType {
   refreshProfile: () => Promise<void>;
 }
 
-// Global Permissions Configuration:
-// User explicitly instructed: "ye menu ke permissions rahe sare bas delete ka permission na rahe"
-const APP_PERMISSIONS: RolePermissions = {
-  canViewSale: true,
-  canCreateSale: true,
-  canEditSale: true,
-  canDeleteSale: false, // NO DELETE PERMISSION
+function computeAppPermissions(appPerms?: Record<string, boolean>): RolePermissions {
+  const p = appPerms || {
+    sale: true,
+    purchase: true,
+    receipt: true,
+    payment: true,
+    contra: true,
+    ledger: true,
+    delete: false,
+  };
+  return {
+    canViewSale: p.sale !== false,
+    canCreateSale: p.sale !== false,
+    canEditSale: p.sale !== false,
+    canDeleteSale: !!p.delete,
 
-  canViewPurchase: true,
-  canCreatePurchase: true,
-  canEditPurchase: true,
-  canDeletePurchase: false, // NO DELETE PERMISSION
+    canViewPurchase: p.purchase !== false,
+    canCreatePurchase: p.purchase !== false,
+    canEditPurchase: p.purchase !== false,
+    canDeletePurchase: !!p.delete,
 
-  canViewReceipt: true,
-  canCreateReceipt: true,
-  canEditReceipt: true,
-  canDeleteReceipt: false, // NO DELETE PERMISSION
+    canViewReceipt: p.receipt !== false,
+    canCreateReceipt: p.receipt !== false,
+    canEditReceipt: p.receipt !== false,
+    canDeleteReceipt: !!p.delete,
 
-  canViewPayment: true,
-  canCreatePayment: true,
-  canEditPayment: true,
-  canDeletePayment: false, // NO DELETE PERMISSION
+    canViewPayment: p.payment !== false,
+    canCreatePayment: p.payment !== false,
+    canEditPayment: p.payment !== false,
+    canDeletePayment: !!p.delete,
 
-  canViewContra: true,
-  canCreateContra: true,
-  canEditContra: true,
-  canDeleteContra: false, // NO DELETE PERMISSION
+    canViewContra: p.contra !== false,
+    canCreateContra: p.contra !== false,
+    canEditContra: p.contra !== false,
+    canDeleteContra: !!p.delete,
 
-  canViewLedger: true,
-  canCreateLedger: true,
-  canEditLedger: true,
-  canDeleteLedger: false, // NO DELETE PERMISSION
-};
+    canViewLedger: p.ledger !== false,
+    canCreateLedger: p.ledger !== false,
+    canEditLedger: p.ledger !== false,
+    canDeleteLedger: !!p.delete,
+  };
+}
+
+const DEFAULT_PERMISSIONS: RolePermissions = computeAppPermissions();
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [company, setCompany] = useState<Company | null>(null);
+  const [permissions, setPermissions] = useState<RolePermissions>(DEFAULT_PERMISSIONS);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   const refreshProfile = async () => {
@@ -61,6 +73,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!token) {
         setUser(null);
         setCompany(null);
+        setPermissions(DEFAULT_PERMISSIONS);
         setIsLoading(false);
         return;
       }
@@ -71,7 +84,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           username: data.name,
           role: data.role,
           name: data.name,
+          access_type: data.access_type,
+          app_perms: data.app_perms,
         } as any);
+
+        setPermissions(computeAppPermissions(data.app_perms));
 
         try {
           const comps = await AuthService.getCompanies();
@@ -83,10 +100,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else {
         setUser(null);
         setCompany(null);
+        setPermissions(DEFAULT_PERMISSIONS);
       }
     } catch {
       setUser(null);
       setCompany(null);
+      setPermissions(DEFAULT_PERMISSIONS);
     } finally {
       setIsLoading(false);
     }
@@ -102,6 +121,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const res = await AuthService.login(u, p);
       if (res && res.token) {
         await setAuthToken(res.token);
+        if (res.app_perms) {
+          setPermissions(computeAppPermissions(res.app_perms));
+        }
         try {
           await AuthService.selectCompany(res.company_id || 1);
         } catch {}
@@ -132,7 +154,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         user,
         company,
-        permissions: APP_PERMISSIONS,
+        permissions,
         isLoading,
         login,
         logout,

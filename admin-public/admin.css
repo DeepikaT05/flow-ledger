@@ -287,3 +287,16 @@ input[type="checkbox"]:disabled { cursor: not-allowed; }
   margin-left: auto; flex: none; font-size: .7rem; font-weight: 600; color: var(--muted);
   border: 1px dashed var(--border); border-radius: 999px; padding: 0 7px; white-space: nowrap; align-self: center;
 }
+
+/* ---- platform badges & app perms */
+.badge.app { background: #e0f2fe; color: #0284c7; }
+.badge.web { background: #f1f5f9; color: #475569; }
+.badge.both { background: #dcfce7; color: #16a34a; }
+.pill-list { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.pill { font-size: .7rem; padding: 1px 6px; border-radius: 4px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text); }
+.pill.del-off { color: #991b1b; font-weight: 600; background: #fee2e2; border-color: #fecaca; }
+.pill.del-on { color: #166534; font-weight: 600; background: #dcfce7; border-color: #bbf7d0; }
+.apk-box { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-top: 10px; }
+.apk-title { font-size: .86rem; font-weight: 700; color: var(--text); margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; }
+.apk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
+.apk-check { display: flex; align-items: center; gap: 6px; font-size: .84rem; font-weight: 500; cursor: pointer; }

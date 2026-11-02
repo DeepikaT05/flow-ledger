@@ -72,56 +72,72 @@ export const DashboardScreen: React.FC<{ navigation: any }> = ({ navigation }) =
     loadStats();
   }, []);
 
-  const menuItems = [
+  const delBadge = permissions.canDeleteSale ? 'Active (Del Allowed)' : 'Active (No Delete)';
+
+  const allMenuItems = [
     {
+      id: 'sale',
+      enabled: permissions.canViewSale,
       title: 'SALE',
       sub: 'Sale Invoices, Counter & Returns',
-      badge: 'Active (No Delete)',
+      badge: delBadge,
       icon: '🛒',
       color: '#00796b',
       route: 'SaleList',
     },
     {
+      id: 'purchase',
+      enabled: permissions.canViewPurchase,
       title: 'PURCHASE',
       sub: 'Inward Bills & Supplier Invoices',
-      badge: 'Active (No Delete)',
+      badge: delBadge,
       icon: '📥',
       color: '#0288d1',
       route: 'PurchaseList',
     },
     {
+      id: 'receipt',
+      enabled: permissions.canViewReceipt,
       title: 'RECEIPT',
       sub: 'Customer Collections & Cash In',
-      badge: 'Active (No Delete)',
+      badge: delBadge,
       icon: '💵',
       color: '#2e7d32',
       route: 'ReceiptList',
     },
     {
+      id: 'payment',
+      enabled: permissions.canViewPayment,
       title: 'PAYMENT',
       sub: 'Vendor Payments & Expenses',
-      badge: 'Active (No Delete)',
+      badge: delBadge,
       icon: '💸',
       color: '#c2185b',
       route: 'PaymentList',
     },
     {
+      id: 'contra',
+      enabled: permissions.canViewContra,
       title: 'CONTRA',
       sub: 'Cash ↔ Bank Internal Transfers',
-      badge: 'Active (No Delete)',
+      badge: delBadge,
       icon: '🔄',
       color: '#f57c00',
       route: 'ContraList',
     },
     {
+      id: 'ledger',
+      enabled: permissions.canViewLedger,
       title: 'LEDGER',
       sub: 'Party Statements & Accounts',
-      badge: 'Active (No Delete)',
+      badge: delBadge,
       icon: '📑',
       color: '#512da8',
       route: 'LedgerList',
     },
   ];
+
+  const menuItems = allMenuItems.filter((m) => m.enabled);
 
   return (
     <View style={styles.container}>

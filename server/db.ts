@@ -364,6 +364,8 @@ CREATE TABLE IF NOT EXISTS companies (
 );
 `);
 try { sysDb.exec('ALTER TABLE users ADD COLUMN role_id INTEGER REFERENCES roles(id)'); } catch { /* already there */ }
+try { sysDb.exec("ALTER TABLE users ADD COLUMN access_type TEXT NOT NULL DEFAULT 'BOTH'"); } catch { /* already there */ }
+try { sysDb.exec("ALTER TABLE users ADD COLUMN app_perms TEXT NOT NULL DEFAULT '{}'"); } catch { /* already there */ }
 // COMPANY CREATION's other fields (phone, licences, working style …) as JSON.
 try { sysDb.exec("ALTER TABLE companies ADD COLUMN details TEXT NOT NULL DEFAULT '{}'"); } catch { /* already there */ }
 export const SEED_DEMO = process.env.SEED_DEMO === 'true';

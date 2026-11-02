@@ -12,7 +12,18 @@ import {
 import { GRANTABLE, featurePerms } from '../shared/menuPerms.ts';
 
 /** perms = feature permissions derived from the role's ticks; menu = the ticked menu items + special powers. */
-export interface AuthCtx { userId: number; name: string; role: string; isSuper: boolean; perms: Set<string>; menu: string[]; companyId?: number; yearId?: number }
+export interface AuthCtx {
+  userId: number;
+  name: string;
+  role: string;
+  isSuper: boolean;
+  accessType: 'BOTH' | 'APP' | 'WEB';
+  appPerms: Record<string, boolean>;
+  perms: Set<string>;
+  menu: string[];
+  companyId?: number;
+  yearId?: number;
+}
 
 // Ensure sessions table exists in sysDb for persistence across server restarts
 sysDb.exec(`
@@ -83,12 +94,36 @@ function deleteSessionFromDb(token: string) {
 const today = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 
 function loadUser(userId: number): AuthCtx | null {
-  const u = sysDb.prepare(`SELECT u.id, u.name, r.name AS role, r.is_super, r.perms
+  const u = sysDb.prepare(`SELECT u.id, u.name, u.access_type, u.app_perms, r.name AS role, r.is_super, r.perms
     FROM users u JOIN roles r ON r.id=u.role_id WHERE u.id=?`).get(userId) as
-    { id: number; name: string; role: string; is_super: number; perms: string } | undefined;
+    { id: number; name: string; access_type?: string; app_perms?: string; role: string; is_super: number; perms: string } | undefined;
   if (!u) return null;
   const menu = JSON.parse(u.perms) as string[];
-  return { userId: u.id, name: u.name, role: u.role, isSuper: !!u.is_super, perms: new Set(featurePerms(menu)), menu };
+  let appPerms: Record<string, boolean> = {
+    sale: true,
+    purchase: true,
+    receipt: true,
+    payment: true,
+    contra: true,
+    ledger: true,
+    delete: false,
+  };
+  try {
+    if (u.app_perms && u.app_perms !== '{}') {
+      appPerms = { ...appPerms, ...JSON.parse(u.app_perms) };
+    }
+  } catch {}
+  const accessType = (u.access_type === 'APP' || u.access_type === 'WEB' || u.access_type === 'BOTH') ? u.access_type : 'BOTH';
+  return {
+    userId: u.id,
+    name: u.name,
+    role: u.role,
+    isSuper: !!u.is_super,
+    accessType,
+    appPerms,
+    perms: new Set(featurePerms(menu)),
+    menu
+  };
 }
 
 export const authOf = (req: Request) => (req as unknown as { auth: AuthCtx }).auth;
@@ -283,6 +318,8 @@ export function registerAuthRoutes(app: Express, h: (fn: H) => (req: Request, re
     name: a.name,
     role: a.role,
     is_super: a.isSuper,
+    access_type: a.accessType,
+    app_perms: a.appPerms,
     perms: a.isSuper ? PERM_KEYS : [...a.perms],
     menu: a.isSuper ? [...GRANTABLE] : a.menu,
     company_id: a.companyId,
@@ -292,11 +329,20 @@ export function registerAuthRoutes(app: Express, h: (fn: H) => (req: Request, re
 
   app.get('/api/login/users', h(() => sysDb.prepare('SELECT name FROM users ORDER BY name').all()));
   app.post('/api/login', h((req, res) => {
-    const { name, password } = req.body ?? {};
+    const { name, password, platform } = req.body ?? {};
     const u = sysDb.prepare('SELECT * FROM users WHERE name=?').get(String(name ?? '')) as
-      { id: number; salt: string; hash: string } | undefined;
+      { id: number; salt: string; hash: string; access_type?: string } | undefined;
     if (!u || !checkPassword(String(password ?? ''), u.salt, u.hash)) {
       res.status(401).json({ error: 'Invalid User Name or Password' });
+      return;
+    }
+    const accessType = u.access_type || 'BOTH';
+    if (platform === 'app' && accessType === 'WEB') {
+      res.status(403).json({ error: 'This user account is configured for Web only. APK / Mobile App access is disabled.' });
+      return;
+    }
+    if (platform !== 'app' && accessType === 'APP') {
+      res.status(403).json({ error: 'This user account is configured for Mobile App (APK) only. Web access is disabled.' });
       return;
     }
     const a = loadUser(u.id);
@@ -357,22 +403,54 @@ export function registerAuthRoutes(app: Express, h: (fn: H) => (req: Request, re
   const superCount = () => (sysDb.prepare('SELECT COUNT(*) AS c FROM users u JOIN roles r ON r.id=u.role_id WHERE r.is_super=1').get() as { c: number }).c;
   const isSuperUser = (id: string | number) => !!(sysDb.prepare('SELECT r.is_super FROM users u JOIN roles r ON r.id=u.role_id WHERE u.id=?').get(id) as { is_super: number } | undefined)?.is_super;
 
-  app.get('/api/users', h(() => sysDb.prepare(`SELECT u.id, u.name, u.role_id, r.name AS role, r.is_super
-    FROM users u LEFT JOIN roles r ON r.id=u.role_id ORDER BY r.is_super DESC, u.name`).all()));
+  app.get('/api/users', h(() => (sysDb.prepare(`SELECT u.id, u.name, u.role_id, u.access_type, u.app_perms, r.name AS role, r.is_super
+    FROM users u LEFT JOIN roles r ON r.id=u.role_id ORDER BY r.is_super DESC, u.name`).all() as any[]).map((u) => {
+      let parsedAppPerms: Record<string, boolean> = {
+        sale: true,
+        purchase: true,
+        receipt: true,
+        payment: true,
+        contra: true,
+        ledger: true,
+        delete: false,
+      };
+      try {
+        if (u.app_perms && u.app_perms !== '{}') {
+          parsedAppPerms = { ...parsedAppPerms, ...JSON.parse(u.app_perms) };
+        }
+      } catch {}
+      return {
+        ...u,
+        access_type: u.access_type || 'BOTH',
+        app_perms: parsedAppPerms,
+      };
+    })));
   app.post('/api/users', h((req) => {
-    const { name, password, role_id } = req.body ?? {};
+    const { name, password, role_id, access_type, app_perms } = req.body ?? {};
     if (!name || !password) throw new Error('User name and password are required');
     if (!sysDb.prepare('SELECT 1 FROM roles WHERE id=?').get(role_id)) throw new Error('Select a role');
+    const validAccess = ['BOTH', 'APP', 'WEB'].includes(access_type) ? access_type : 'BOTH';
+    const permsJson = typeof app_perms === 'object' ? JSON.stringify(app_perms) : (typeof app_perms === 'string' ? app_perms : '{}');
     const { salt, hash } = hashPassword(String(password));
-    const r = sysDb.prepare('INSERT INTO users (name,salt,hash,role_id) VALUES (?,?,?,?)').run(String(name).trim().toUpperCase(), salt, hash, role_id);
+    const r = sysDb.prepare('INSERT INTO users (name,salt,hash,role_id,access_type,app_perms) VALUES (?,?,?,?,?,?)')
+      .run(String(name).trim().toUpperCase(), salt, hash, role_id, validAccess, permsJson);
     return { id: Number(r.lastInsertRowid) };
   }));
   app.put('/api/users/:id', h((req) => {
-    const { role_id } = req.body ?? {};
+    const { role_id, access_type, app_perms } = req.body ?? {};
     const role = sysDb.prepare('SELECT is_super FROM roles WHERE id=?').get(role_id) as { is_super: number } | undefined;
     if (!role) throw new Error('Select a role');
     if (isSuperUser(req.params.id) && !role.is_super && superCount() <= 1) throw new Error('This is the last SuperAdmin — create another SuperAdmin first');
-    sysDb.prepare('UPDATE users SET role_id=? WHERE id=?').run(role_id, req.params.id);
+    const validAccess = ['BOTH', 'APP', 'WEB'].includes(access_type) ? access_type : undefined;
+    const permsJson = app_perms !== undefined ? (typeof app_perms === 'object' ? JSON.stringify(app_perms) : String(app_perms)) : undefined;
+
+    if (validAccess !== undefined && permsJson !== undefined) {
+      sysDb.prepare('UPDATE users SET role_id=?, access_type=?, app_perms=? WHERE id=?').run(role_id, validAccess, permsJson, req.params.id);
+    } else if (validAccess !== undefined) {
+      sysDb.prepare('UPDATE users SET role_id=?, access_type=? WHERE id=?').run(role_id, validAccess, req.params.id);
+    } else {
+      sysDb.prepare('UPDATE users SET role_id=? WHERE id=?').run(role_id, req.params.id);
+    }
     return { ok: true };
   }));
   app.put('/api/users/:id/password', h((req) => {

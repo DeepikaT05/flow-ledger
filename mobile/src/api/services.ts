@@ -8,16 +8,27 @@ export const AuthService = {
       id: number;
       name: string;
       role: string;
+      access_type?: string;
+      app_perms?: Record<string, boolean>;
       perms: string[];
       company_id?: number;
     }>('/login', {
       name: username.trim().toUpperCase(),
       password,
       company_id: 1,
+      platform: 'app',
     });
   },
   getMe: async () => {
-    return api.get<{ id: number; name: string; role: string; perms: string[]; company_id?: number }>('/me');
+    return api.get<{
+      id: number;
+      name: string;
+      role: string;
+      access_type?: string;
+      app_perms?: Record<string, boolean>;
+      perms: string[];
+      company_id?: number;
+    }>('/me');
   },
   getCompanies: async () => {
     return api.get<Company[]>('/companies');
