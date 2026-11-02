@@ -33,7 +33,7 @@ interface SessionRecord {
   yearId?: number;
 }
 
-const SESSION_TTL = 12 * 3600 * 1000; // 12 hours
+const SESSION_TTL = 7 * 24 * 3600 * 1000; // 7 days (prevents premature session expiration)
 /** Memory cache of active sessions — synced with sysDb so server restarts never lose sessions. */
 const sessions = new Map<string, SessionRecord>();
 
@@ -224,7 +224,7 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction) 
       sessions.delete(token);
       deleteSessionFromDb(token);
     }
-    res.status(401).json({ error: 'Session expired — please log in again (Ctrl+U)' });
+    res.status(401).json({ error: 'Session expired — please log in again' });
     return;
   }
   const a = loadUser(s.userId);

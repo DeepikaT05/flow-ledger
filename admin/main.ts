@@ -73,8 +73,7 @@ async function api<T = unknown>(path: string, method = 'GET', body?: unknown): P
   const data = (await res.json().catch(() => ({}))) as T & { error?: string };
   if (res.status === 401 && me) {
     signOut();
-    toast(data.error ?? 'Session expired — please sign in again', 'err');
-    throw new Error(data.error ?? 'Session expired');
+    throw new Error('Session expired');
   }
   if (!res.ok) throw new Error(data.error ?? `Server error ${res.status}`);
   return data;
@@ -88,7 +87,11 @@ function toast(msg: string, kind: 'ok' | 'err' = 'ok') {
   clearTimeout(toastTimer);
   toastTimer = window.setTimeout(() => { t.className = ''; }, 3500);
 }
-const fail = (e: unknown) => toast((e as Error).message, 'err');
+const fail = (e: unknown) => {
+  const msg = (e as Error)?.message || '';
+  if (msg.toLowerCase().includes('session expired')) return;
+  toast(msg, 'err');
+};
 
 // ---------------------------------------------------------------- modals
 function openModal(title: string, body: Node, foot: Node[], onClose?: () => void) {
@@ -174,6 +177,8 @@ function signOut() {
   me = null;
   dirty = false;
   store.del('margAdmin.me');
+  const t = document.getElementById('toast');
+  if (t) { t.className = ''; t.textContent = ''; }
   render();
 }
 async function logout() {
