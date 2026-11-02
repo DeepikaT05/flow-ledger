@@ -106,6 +106,7 @@ function loadUser(userId: number): AuthCtx | null {
     payment: true,
     contra: true,
     ledger: true,
+    edit: true,
     delete: false,
   };
   try {
@@ -412,6 +413,7 @@ export function registerAuthRoutes(app: Express, h: (fn: H) => (req: Request, re
         payment: true,
         contra: true,
         ledger: true,
+        edit: true,
         delete: false,
       };
       try {

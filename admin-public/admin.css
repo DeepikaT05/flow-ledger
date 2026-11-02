@@ -294,6 +294,8 @@ input[type="checkbox"]:disabled { cursor: not-allowed; }
 .badge.both { background: #dcfce7; color: #16a34a; }
 .pill-list { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
 .pill { font-size: .7rem; padding: 1px 6px; border-radius: 4px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text); }
+.pill.edit-on { color: #0284c7; font-weight: 600; background: #e0f2fe; border-color: #bae6fd; }
+.pill.edit-off { color: #64748b; font-weight: 600; background: #f1f5f9; border-color: #cbd5e1; }
 .pill.del-off { color: #991b1b; font-weight: 600; background: #fee2e2; border-color: #fecaca; }
 .pill.del-on { color: #166534; font-weight: 600; background: #dcfce7; border-color: #bbf7d0; }
 .apk-box { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-top: 10px; }

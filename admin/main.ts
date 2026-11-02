@@ -427,6 +427,7 @@ async function usersView(root: HTMLElement) {
       payment: true,
       contra: true,
       ledger: true,
+      edit: true,
       delete: false,
     };
 
@@ -437,6 +438,7 @@ async function usersView(root: HTMLElement) {
       payment: h('input', { type: 'checkbox', checked: existingApp.payment !== false }),
       contra: h('input', { type: 'checkbox', checked: existingApp.contra !== false }),
       ledger: h('input', { type: 'checkbox', checked: existingApp.ledger !== false }),
+      edit: h('input', { type: 'checkbox', checked: existingApp.edit !== false }),
       delete: h('input', { type: 'checkbox', checked: !!existingApp.delete }),
     };
 
@@ -452,6 +454,7 @@ async function usersView(root: HTMLElement) {
         h('label', { class: 'apk-check' }, checks.payment, h('span', {}, 'Payment')),
         h('label', { class: 'apk-check' }, checks.contra, h('span', {}, 'Contra')),
         h('label', { class: 'apk-check' }, checks.ledger, h('span', {}, 'Ledger')),
+        h('label', { class: 'apk-check', style: 'color: #0284c7; font-weight: 600;' }, checks.edit, h('span', {}, 'Allow Edit in APK')),
         h('label', { class: 'apk-check', style: 'color: #dc2626; font-weight: 600;' }, checks.delete, h('span', {}, 'Allow Delete in APK'))
       )
     );
@@ -524,6 +527,7 @@ async function usersView(root: HTMLElement) {
         payment: checks.payment.checked,
         contra: checks.contra.checked,
         ledger: checks.ledger.checked,
+        edit: checks.edit.checked,
         delete: checks.delete.checked,
       };
 
@@ -585,6 +589,8 @@ async function usersView(root: HTMLElement) {
       if (ap.payment !== false) pills.push(h('span', { class: 'pill' }, 'Pay'));
       if (ap.contra !== false) pills.push(h('span', { class: 'pill' }, 'Contra'));
       if (ap.ledger !== false) pills.push(h('span', { class: 'pill' }, 'Ledger'));
+      if (ap.edit !== false) pills.push(h('span', { class: 'pill edit-on' }, 'Edit Allowed'));
+      else pills.push(h('span', { class: 'pill edit-off' }, 'No Edit'));
       if (ap.delete) pills.push(h('span', { class: 'pill del-on' }, 'Del Allowed'));
       else pills.push(h('span', { class: 'pill del-off' }, 'No Delete'));
     }
