@@ -17,8 +17,19 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#003366"
-      }
-    }
+      },
+      "permissions": [
+        "CAMERA"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Flow Ledger uses the camera to scan item QR codes and barcodes.",
+          "recordAudioAndroidEnabled": false
+        }
+      ]
+    ]
   }
 }
-

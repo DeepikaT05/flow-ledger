@@ -22,6 +22,7 @@ import { GroupEntryScreen } from '../screens/GroupEntryScreen';
 import { PartyStatusScreen } from '../screens/PartyStatusScreen';
 import { ReportScreen } from '../screens/ReportScreen';
 import { StockScreen } from '../screens/StockScreen';
+import { ItemEntryScreen } from '../screens/ItemEntryScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -60,6 +61,7 @@ export const AppNavigator: React.FC = () => {
             <Stack.Screen name="PartyStatus" component={PartyStatusScreen} />
             <Stack.Screen name="Report" component={ReportScreen} />
             <Stack.Screen name="Stock" component={StockScreen} />
+            <Stack.Screen name="ItemEntry" component={ItemEntryScreen} />
           </>
         )}
       </Stack.Navigator>

@@ -5,6 +5,8 @@ import {
 } from '../components/ui';
 import { LineEditor, EditLine, lineCalc } from '../components/LineEditor';
 import { ItemCart } from '../components/ItemCart';
+import { Scanner } from '../components/Scanner';
+import { findByCode } from '../utils/codes';
 import { allocate, fifoOrder } from '../utils/fifo';
 import { shareInvoice } from '../utils/invoice';
 import { BillService, LedgerService, ItemService } from '../api/services';
@@ -93,14 +95,67 @@ export const BillEntryScreen: React.FC<{ navigation: any; route: any }> = ({ nav
     })();
   }, []);
 
-  // Back from "New Ledger" → the new party shows in the picker.
+  // Back from "New Ledger" / "New Item" → the new party shows in the picker, the new item goes on the bill.
   useEffect(() => navigation.addListener('focus', () => {
-    if (!loading) LedgerService.list().then(setLedgers).catch(() => {});
-  }), [navigation, loading]);
+    if (loading) return;
+    LedgerService.list().then(setLedgers).catch(() => {});
+    const code = pendingCode.current;
+    if (code) {
+      pendingCode.current = '';
+      ItemService.list().then((all) => { setItems(all); const it = findByCode(all, code); if (it) setCartQty(it, (cur) => cur + 1); }).catch(() => {});
+    }
+  }), [navigation, loading, lines]);
 
+  // Items & Stock ▸ "+ Stock": open the purchase with that item already on it.
+  useEffect(() => {
+    const addId = route.params?.addItemId;
+    if (loading || !addId) return;
+    ItemService.list().then((all) => { setItems(all); const it = all.find((i) => i.id === addId); if (it) setCartQty(it, 1); }).catch(() => {});
+  }, [loading]);
+
+  const loadItems = async () => {
+    if (items.length) return items;
+    const all = await ItemService.list().catch(() => [] as Item[]);
+    setItems(all);
+    return all;
+  };
   const openItems = async () => {
-    setPicker(kind.inward ? 'item' : 'cart');
-    if (!items.length) setItems(await ItemService.list().catch(() => []));
+    setPicker('cart');
+    await loadItems();
+  };
+
+  // ---------------------------------------------------------------- QR / barcode scan
+  const [scanning, setScanning] = useState(false);
+  const [scanMsg, setScanMsg] = useState('');
+  const [linkCode, setLinkCode] = useState('');   // unknown code waiting to be linked to an item
+  const pendingCode = React.useRef('');
+  const onScan = async (code: string) => {
+    const all = await loadItems();
+    const it = findByCode(all, code);
+    if (it) {
+      setCartQty(it, (cur) => cur + 1);
+      setScanMsg(`✓ ${it.name} · qty ${qtyOf(it.id) + 1}`);
+      return;
+    }
+    setScanning(false);
+    Alert.alert('New code', `No item has code ${code} yet. Link it once — next time a scan adds the item directly.`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Link to an item', onPress: () => setLinkCode(code) },
+      { text: 'Create new item', onPress: () => { pendingCode.current = code; navigation.navigate('ItemEntry', { barcode: code }); } },
+    ]);
+  };
+  const linkTo = async (it: Item) => {
+    const code = linkCode;
+    setLinkCode('');
+    try {
+      await ItemService.setBarcode(it.id, code);
+      const linked = { ...it, details: JSON.stringify({ ...JSON.parse(it.details || '{}'), barcode: code }) };
+      setItems((all) => all.map((i) => (i.id === it.id ? linked : i)));
+      setCartQty(linked, (cur) => cur + 1);
+      Alert.alert('Linked ✓', `${code} now adds ${it.name}.`);
+    } catch (e: any) {
+      Alert.alert('Could not link', e.message);
+    }
   };
 
   // ---------------------------------------------------------------- item → batch → line
@@ -125,18 +180,25 @@ export const BillEntryScreen: React.FC<{ navigation: any; route: any }> = ({ nav
     setPicker('batch');
   };
 
-  // ---------------------------------------------------------------- outward: cart + FIFO
-  const outRate = (it: Item, b?: Batch) => Number(type === 'PURCHASE_RETURN'
-    ? (b?.purchase_rate ?? it.purchase_rate ?? 0)
+  // ---------------------------------------------------------------- cart lines: rate, GST and batch are automatic
+  // Purchase side bills at purchase rate, sale side at sale rate. Outward bills take batches FIFO on
+  // save; inward bills go into the item's latest batch (batch no. and expiry are not typed on mobile).
+  const outRate = (it: Item, b?: Batch) => Number(type.startsWith('PURCHASE')
+    ? (b?.purchase_rate || it.purchase_rate || 0)
     : (b?.rate || it.sale_rate || 0));
+  const latestBatch = (bs: Batch[]) => [...bs].filter((b) => b.id)
+    .sort((a, b) => String(b.invoice_date ?? '').localeCompare(String(a.invoice_date ?? '')) || b.id - a.id)[0];
   const qtyOf = (itemId: number) => lines.filter((l) => l.fifo && l.item_id === itemId).reduce((s, l) => s + Number(l.qty), 0);
   const batchesOf = async (itemId: number) => {
     if (!batchCache.current[itemId]) batchCache.current[itemId] = await ItemService.batches(itemId).catch(() => [] as Batch[]);
     return batchCache.current[itemId];
   };
-  const setCartQty = (it: Item, qty: number) => {
+  /** qty, or a function of the current qty (scans add 1 even when they arrive faster than a re-render). */
+  const setCartQty = (it: Item, want: number | ((cur: number) => number)) => {
+    let qty = typeof want === 'number' ? want : 1;
     setLines((ls) => {
       const i = ls.findIndex((l) => l.fifo && l.item_id === it.id);
+      if (typeof want === 'function') qty = want(i >= 0 ? Number(ls[i].qty) : 0);
       if (qty <= 0) return i >= 0 ? ls.filter((_, j) => j !== i) : ls;
       if (i >= 0) return ls.map((l, j) => (j === i ? { ...l, qty } : l));
       return [...ls, {
@@ -144,12 +206,15 @@ export const BillEntryScreen: React.FC<{ navigation: any; route: any }> = ({ nav
         qty, free: 0, rate: outRate(it), disc_pct: 0, gst_rate: Number(it.gst_rate ?? 0), stock: Number(it.stock ?? 0), fifo: true,
       }];
     });
-    // Rate of the first FIFO batch (falls back to the item's sale rate).
+    // Rate of the batch the stock comes from / goes into (falls back to the item's rate).
     if (qty > 0) batchesOf(it.id).then((bs) => {
-      const first = fifoOrder(bs)[0];
-      if (!first) return;
+      const b = kind.inward ? latestBatch(bs) : fifoOrder(bs)[0];
+      if (!b) return;
       setLines((ls) => ls.map((l) => (l.fifo && l.item_id === it.id && l.rate === outRate(it)
-        ? { ...l, rate: outRate(it, first), mrp: Number(first.mrp) || l.mrp } : l)));
+        ? {
+          ...l, rate: outRate(it, b) || l.rate, mrp: Number(b.mrp) || l.mrp,
+          ...(kind.inward ? { batch_id: b.id, batch: b.batch, expiry: b.expiry ?? '' } : {}),
+        } : l)));
     });
   };
   const stepLine = (idx: number, qty: number) => {
@@ -193,7 +258,7 @@ export const BillEntryScreen: React.FC<{ navigation: any; route: any }> = ({ nav
       type, no: no.trim(), date, party_id: party.id, narration,
       mode: payMode ? 'CASH' : 'CREDIT',
       payments: kind.takesPayment && payMode ? [{ ledger_id: payMode, amount: t.net, remark: '', detail: '' }] : [],
-      ref_no: refNo.trim(), ref_date: refDate, reason: reason.trim(),
+      ref_no: refNo.trim(), ref_date: refDate || date, reason: reason.trim(),
       walkin_name: walkin.name.trim(), walkin_mobile: walkin.mobile.trim(), walkin_gstin: '', walkin_address: '',
       cd_pct: Number(cdPct) || 0, freight: Number(freight) || 0, other_charges: Number(other) || 0,
       lines: outLines,
@@ -262,7 +327,7 @@ export const BillEntryScreen: React.FC<{ navigation: any; route: any }> = ({ nav
             {kind.hasRef ? (
               <View style={{ flexDirection: 'row', gap: 10 }}>
                 <Field label="Party Inv. No." value={refNo} onChangeText={setRefNo} autoCapitalize="characters" style={{ flex: 1 }} />
-                <DateField label="Party Inv. Date" value={refDate || date} onChange={setRefDate} style={{ flex: 1.2 }} />
+                <LockedField label="Party Inv. Date" value={dmy(refDate || date)} style={{ flex: 1 }} />
               </View>
             ) : null}
             {type === 'SALE_RETURN' || type === 'PURCHASE_RETURN' ? (
@@ -283,7 +348,7 @@ export const BillEntryScreen: React.FC<{ navigation: any; route: any }> = ({ nav
                   <View style={{ flex: 1 }}>
                     <Text style={st.itemName} numberOfLines={1}>{l.item_name}</Text>
                     <Text style={st.meta} numberOfLines={1}>
-                      ₹{amt(l.rate)}{l.free ? ` · +${l.free} free` : ''}{l.disc_pct ? ` −${l.disc_pct}%` : ''} · GST {l.gst_rate}%{l.fifo ? ' · FIFO' : l.batch ? ` · ${l.batch}` : ''}
+                      ₹{amt(l.rate)}{l.free ? ` · +${l.free} free` : ''}{l.disc_pct ? ` −${l.disc_pct}%` : ''} · GST {l.gst_rate}%{l.fifo && !kind.inward ? ' · FIFO' : l.batch ? ` · Batch ${l.batch}` : ''}
                     </Text>
                     <Text style={[st.lineAmt, { color: accent.dark, marginLeft: 0, marginTop: 3 }]}>{money(c.amount)}</Text>
                   </View>
@@ -292,9 +357,15 @@ export const BillEntryScreen: React.FC<{ navigation: any; route: any }> = ({ nav
               </View>
             );
           })}
-          <TouchableOpacity style={[st.addBtn, { borderColor: accent.main }]} onPress={openItems} activeOpacity={0.7}>
-            <Text style={{ color: accent.main, fontWeight: '800', fontSize: 15 }}>＋ Add Item</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <TouchableOpacity style={[st.addBtn, { borderColor: accent.main, flex: 1 }]} onPress={openItems} activeOpacity={0.7}>
+              <Text style={{ color: accent.main, fontWeight: '800', fontSize: 15 }}>＋ Add Item</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[st.addBtn, { borderColor: accent.main, borderStyle: 'solid', backgroundColor: accent.main, flex: 1 }]}
+              onPress={() => { setScanMsg(''); setScanning(true); loadItems(); }} activeOpacity={0.8}>
+              <Text style={{ color: C.white, fontWeight: '800', fontSize: 15 }}>📷 Scan QR</Text>
+            </TouchableOpacity>
+          </View>
 
           {kind.takesPayment ? (
             <>
@@ -431,6 +502,32 @@ export const BillEntryScreen: React.FC<{ navigation: any; route: any }> = ({ nav
               <Text style={st.meta}>Exp {b.expiry || '—'} · MRP ₹{amt(b.mrp)} · Rate ₹{amt(b.rate)}</Text>
             </View>
             <Badge label={`Stk ${b.stock}`} color={b.stock > 0 ? C.cr : C.danger} soft />
+          </View>
+        )}
+      />
+
+      <Scanner
+        visible={scanning}
+        accent={accent}
+        continuous
+        title="Scan items onto the bill"
+        status={scanMsg}
+        onCode={onScan}
+        onClose={() => setScanning(false)}
+      />
+
+      <PickerModal<Item>
+        visible={!!linkCode}
+        title={`Link ${linkCode} to…`}
+        items={items}
+        keyOf={(i) => i.id}
+        search={(i) => `${i.name} ${i.company ?? ''} ${i.pack ?? ''}`}
+        onClose={() => setLinkCode('')}
+        onPick={linkTo}
+        render={(i) => (
+          <View>
+            <Text style={st.pickName}>{i.name}</Text>
+            <Text style={st.meta}>{[i.company, i.pack].filter(Boolean).join(' · ')} · Stk {i.stock ?? 0}</Text>
           </View>
         )}
       />

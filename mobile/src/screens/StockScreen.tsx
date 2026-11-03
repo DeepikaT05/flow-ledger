@@ -1,16 +1,21 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, FlatList, RefreshControl, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, FlatList, RefreshControl, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { Screen, TopBar, SearchBar, StatStrip, Segmented, Badge, Empty, ErrorBox, Loading } from '../components/ui';
+import { Screen, TopBar, SearchBar, StatStrip, Segmented, Badge, Empty, ErrorBox, Loading, Btn } from '../components/ui';
+import { Scanner } from '../components/Scanner';
+import { useAuth } from '../context/AuthContext';
+import { codeOf, findByCode } from '../utils/codes';
 import { ItemService } from '../api/services';
 import { Batch, Item } from '../types';
 import { MODULE, C, R } from '../theme';
 import { amt, money } from '../utils/format';
 import { fifoOrder } from '../utils/fifo';
 
-/** Every item with its stock, rates and GST; tap one for its batches in FIFO order. */
+/** Items & Stock: every item with stock, rates, GST and QR code; new items, add stock, batches FIFO. */
 export const StockScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   const accent = MODULE.sale;
+  const { can } = useAuth();
+  const [scan, setScan] = useState(false);
   const [items, setItems] = useState<Item[]>([]);
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState('all');
@@ -39,15 +44,19 @@ export const StockScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
     const st = Number(i.stock ?? 0);
     if (filter === 'in' && st <= 0) return false;
     if (filter === 'out' && st > 0) return false;
-    return words.every((w) => `${i.name} ${i.company ?? ''} ${i.pack ?? ''} ${i.hsn ?? ''}`.toLowerCase().includes(w));
+    return words.every((w) => `${i.name} ${i.company ?? ''} ${i.pack ?? ''} ${i.hsn ?? ''} ${codeOf(i)}`.toLowerCase().includes(w));
   });
   const units = shown.reduce((s, i) => s + Math.max(0, Number(i.stock ?? 0)), 0);
   const value = shown.reduce((s, i) => s + Math.max(0, Number(i.stock ?? 0)) * Number(i.sale_rate ?? 0), 0);
 
   return (
     <Screen accent={accent}>
-      <TopBar title="Stock / Items" subtitle="Stock · rate · MRP · GST · batches" accent={accent} onBack={() => navigation.goBack()}>
-        <View style={{ marginTop: 12 }}><SearchBar value={q} onChange={setQ} placeholder="Item, company, pack, HSN…" onDark /></View>
+      <TopBar title="Items & Stock" subtitle="Stock · rate · GST · QR code · batches" accent={accent} onBack={() => navigation.goBack()}
+        right={can(['masters.item']) ? { label: '+ New Item', onPress: () => navigation.navigate('ItemEntry', {}) } : undefined}>
+        <View style={{ marginTop: 12, flexDirection: 'row', gap: 8 }}>
+          <View style={{ flex: 1 }}><SearchBar value={q} onChange={setQ} placeholder="Item, company, pack, code…" onDark /></View>
+          <TouchableOpacity onPress={() => setScan(true)} style={st.scanBtn}><Text style={{ fontSize: 20 }}>📷</Text></TouchableOpacity>
+        </View>
         <StatStrip items={[{ label: 'Items', value: String(shown.length) }, { label: 'Units', value: String(units) }, { label: 'Sale Value', value: money(value) }]} />
       </TopBar>
       <View style={{ paddingHorizontal: 14, paddingTop: 12 }}>
@@ -71,6 +80,7 @@ export const StockScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
                     <Text style={st.name} numberOfLines={2}>{i.name}</Text>
                     <Text style={st.meta}>{[i.company, i.pack, i.hsn && `HSN ${i.hsn}`].filter(Boolean).join(' · ')}</Text>
                     <Text style={st.meta}>Rate ₹{amt(i.sale_rate)} · MRP ₹{amt(i.mrp)} · GST {i.gst_rate ?? 0}%</Text>
+                    {codeOf(i) ? <Text style={[st.meta, { color: accent.dark, fontWeight: '700' }]}>▣ {codeOf(i)}</Text> : null}
                   </View>
                   <View style={{ alignItems: 'flex-end' }}>
                     <Text style={[st.stock, { color: stock > 0 ? C.cr : C.danger }]}>{stock}</Text>
@@ -79,6 +89,13 @@ export const StockScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
                 </View>
                 {open === i.id ? (
                   <View style={st.batches}>
+                    <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
+                      <Btn small ghost label="▣ QR / Edit" color={accent.main} style={{ flex: 1 }} onPress={() => navigation.navigate('ItemEntry', { id: i.id })} />
+                      {can(['purchase.bill']) ? (
+                        <Btn small label="+ Stock (Purchase)" color={MODULE.purchase.main} style={{ flex: 1.3 }}
+                          onPress={() => navigation.navigate('BillEntry', { type: 'PURCHASE', addItemId: i.id })} />
+                      ) : null}
+                    </View>
                     <Text style={st.bHead}>Batches (FIFO — billed in this order)</Text>
                     {!batches[i.id] ? <Text style={st.meta}>Loading…</Text> : !bs.length ? <Text style={st.meta}>No stock in any batch</Text> : bs.map((b, n) => (
                       <View key={`${b.id}-${b.batch}`} style={st.bRow}>
@@ -96,11 +113,26 @@ export const StockScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
           ListEmptyComponent={!loading && !error ? <Empty icon="📦" title="No items" sub="Try another search or filter." /> : null}
         />
       )}
+      <Scanner
+        visible={scan}
+        accent={accent}
+        title="Scan to find item"
+        onClose={() => setScan(false)}
+        onCode={(code) => {
+          const it = findByCode(items, code);
+          if (it) { setQ(''); setFilter('all'); toggle(it); setQ(it.name); return; }
+          Alert.alert('Not found', `No item has code ${code}.`, [
+            { text: 'Cancel', style: 'cancel' },
+            ...(can(['masters.item']) ? [{ text: 'Create New Item', onPress: () => navigation.navigate('ItemEntry', { barcode: code }) }] : []),
+          ]);
+        }}
+      />
     </Screen>
   );
 };
 
 const st = StyleSheet.create({
+  scanBtn: { width: 46, borderRadius: R.md, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
   row: { backgroundColor: C.white, borderRadius: R.md, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: C.line },
   name: { fontSize: 15, fontWeight: '800', color: C.text },
   meta: { fontSize: 12, color: C.sub, marginTop: 2 },

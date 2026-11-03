@@ -71,6 +71,10 @@ export const LedgerService = {
 
 export const ItemService = {
   list: () => api.get<Item[]>('/items'),
+  get: (id: number) => api.get<Item>(`/items/${id}`),
+  create: (it: Record<string, unknown>) => api.post<{ id: number }>('/items', it),
+  update: (id: number, it: Record<string, unknown>) => api.put<{ ok: boolean }>(`/items/${id}`, it),
+  setBarcode: (id: number, barcode: string) => api.put<{ ok: boolean; barcode: string }>(`/items/${id}/barcode`, { barcode }),
   batches: (itemId: number) => api.get<Batch[]>(`/items/${itemId}/batches`),
 };
 

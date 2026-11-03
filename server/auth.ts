@@ -171,6 +171,8 @@ function needsFor(req: Request, a: AuthCtx): { need: Need | null; backdate?: { d
   }
   if (/^\/items/.test(p)) {
     if (/\/(stock-)?register$/.test(p)) return { need: [['reports.stock', 'masters.item']] };
+    // Scanning a product's code while billing links it to the item.
+    if (/\/barcode$/.test(p) && m === 'PUT') return { need: [['masters.item', 'purchase.bill', 'purchase.challan', 'sale.bill', 'sale.counter']] };
     if (/\/batches$/.test(p) && m === 'POST') return { need: [['masters.item', 'purchase.bill', 'purchase.challan']] };
     if (m === 'POST' || m === 'PUT') return { need: [['masters.item']] };
     if (m === 'DELETE') return { need: [['masters.item'], ['feature.delete']] };

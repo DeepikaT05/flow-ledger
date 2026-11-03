@@ -84,6 +84,10 @@ export interface Item {
   purchase_rate?: number | null;
   gst_rate?: number;
   stock?: number;
+  opening_stock?: number;
+  min_stock?: number;
+  /** JSON from the product form; `barcode` = the code its QR / barcode carries */
+  details?: string;
 }
 
 export interface Batch {

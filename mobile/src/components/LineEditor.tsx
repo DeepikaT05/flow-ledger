@@ -48,15 +48,8 @@ export const LineEditor: React.FC<Props> = ({ visible, line, inward, batches, ac
 
   const save = () => {
     if (draft.qty + n(f.free ?? '') <= 0) return;
-    const batch = (f.batch ?? '').trim().toUpperCase();
-    // Typed a different batch on an inward bill → server creates / finds that batch.
-    const sameBatch = batches.find((b) => b.batch.toUpperCase() === batch);
-    onSave({
-      ...line, ...draft, free: n(f.free ?? ''),
-      batch, expiry: (f.expiry ?? '').trim(), mrp: n(f.mrp ?? ''),
-      batch_id: inward ? (sameBatch && sameBatch.id ? sameBatch.id : null) : line.batch_id,
-      ...c,
-    });
+    // Batch no. and expiry are locked on mobile, so the line keeps the batch it was given.
+    onSave({ ...line, ...draft, free: n(f.free ?? ''), mrp: n(f.mrp ?? ''), ...c });
   };
 
   return (
@@ -76,23 +69,10 @@ export const LineEditor: React.FC<Props> = ({ visible, line, inward, batches, ac
           <ScrollView keyboardShouldPersistTaps="handled">
             {inward ? (
               <>
-                {batches.filter((b) => b.id).length ? (
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }} contentContainerStyle={{ gap: 8 }}>
-                    {batches.filter((b) => b.id).map((b) => (
-                      <TouchableOpacity
-                        key={b.id}
-                        style={[st.bchip, f.batch?.toUpperCase() === b.batch.toUpperCase() && { borderColor: accent.main, backgroundColor: accent.soft }]}
-                        onPress={() => setF((o) => ({ ...o, batch: b.batch, expiry: b.expiry || o.expiry, mrp: str(b.mrp) || o.mrp }))}
-                      >
-                        <Text style={{ fontWeight: '700', color: C.text, fontSize: 12.5 }}>{b.batch}</Text>
-                        <Text style={{ color: C.sub, fontSize: 11 }}>{b.expiry || '—'} · ₹{b.mrp}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                ) : null}
+                {/* Batch no. and expiry are taken from the item (latest batch) — not typed on mobile. */}
                 <View style={st.row}>
-                  <Field label="Batch" value={f.batch} onChangeText={set('batch')} autoCapitalize="characters" style={{ flex: 1.3 }} />
-                  <Field label="Expiry (MM/YY)" value={f.expiry} onChangeText={set('expiry')} placeholder="12/27" style={{ flex: 1 }} />
+                  <LockedField label="Batch" value={f.batch || 'Auto'} style={{ flex: 1.2 }} />
+                  <LockedField label="Expiry" value={f.expiry || '—'} style={{ flex: 1 }} />
                   <Field label="M.R.P." value={f.mrp} onChangeText={set('mrp')} keyboardType="decimal-pad" style={{ flex: 1 }} />
                 </View>
               </>

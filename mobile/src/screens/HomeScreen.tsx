@@ -108,7 +108,7 @@ export const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
               ))}
               <TouchableOpacity style={st.quickBtn} onPress={() => navigation.navigate('Stock')} activeOpacity={0.75}>
                 <View style={[st.quickIcon, { backgroundColor: C.navy3 }]}><Text style={{ fontSize: 20 }}>📋</Text></View>
-                <Text style={st.quickLbl}>Stock</Text>
+                <Text style={st.quickLbl}>Items</Text>
               </TouchableOpacity>
             </View>
           </>

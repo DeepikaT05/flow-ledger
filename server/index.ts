@@ -371,6 +371,17 @@ app.post('/api/items', h((req) => {
   }
   return { id: itemId };
 }));
+/** Link a scanned barcode / QR (or a generated FL… code) to an item — stored as the product form's BARCODE. */
+app.put('/api/items/:id/barcode', h((req) => {
+  const code = String(req.body?.barcode ?? '').trim();
+  if (!code) throw new Error('Barcode is empty');
+  const it = db.prepare('SELECT id, details FROM items WHERE id=?').get(req.params.id) as { id: number; details: string } | undefined;
+  if (!it) throw new Error('Item not found');
+  const other = db.prepare("SELECT name, pack FROM items WHERE json_extract(details,'$.barcode')=? AND id<>?").get(code, it.id) as Row | undefined;
+  if (other) throw new Error(`Code ${code} already belongs to ${other.name}${other.pack ? ` ${other.pack}` : ''}`);
+  db.prepare('UPDATE items SET details=? WHERE id=?').run(itemDetails({ details: { barcode: code } }, it.details), it.id);
+  return { ok: true, barcode: code };
+}));
 app.put('/api/items/:id', h((req) => {
   const body = { ...req.body };
   checkItemUnique(body, req.params.id);
