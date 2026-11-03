@@ -610,7 +610,7 @@ async function usersView(root: HTMLElement) {
       else pills.push(h('span', { class: 'pill del-off' }, 'No Delete'));
     }
     if (!u.is_super && u.company_ids?.length) {
-      pills.push(h('span', { class: 'pill' }, `🏢 ${u.company_ids.map((id) => companies.find((c) => c.id === id)?.name ?? id).join(', ')}`));
+      pills.push(h('span', { class: 'pill' }, `Companies: ${u.company_ids.map((id) => companies.find((c) => c.id === id)?.name ?? id).join(', ')}`));
     }
 
     return h('li', { class: 'user-row' },
