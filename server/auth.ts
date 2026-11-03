@@ -21,6 +21,8 @@ export interface AuthCtx {
   appPerms: Record<string, boolean>;
   perms: Set<string>;
   menu: string[];
+  /** Companies this user may open; null = all (SuperAdmin, or none ticked). */
+  companyIds: number[] | null;
   companyId?: number;
   yearId?: number;
 }
@@ -94,9 +96,9 @@ function deleteSessionFromDb(token: string) {
 const today = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 
 function loadUser(userId: number): AuthCtx | null {
-  const u = sysDb.prepare(`SELECT u.id, u.name, u.access_type, u.app_perms, r.name AS role, r.is_super, r.perms
+  const u = sysDb.prepare(`SELECT u.id, u.name, u.access_type, u.app_perms, u.company_ids, r.name AS role, r.is_super, r.perms
     FROM users u JOIN roles r ON r.id=u.role_id WHERE u.id=?`).get(userId) as
-    { id: number; name: string; access_type?: string; app_perms?: string; role: string; is_super: number; perms: string } | undefined;
+    { id: number; name: string; access_type?: string; app_perms?: string; company_ids?: string; role: string; is_super: number; perms: string } | undefined;
   if (!u) return null;
   const menu = JSON.parse(u.perms) as string[];
   let appPerms: Record<string, boolean> = {
@@ -115,6 +117,7 @@ function loadUser(userId: number): AuthCtx | null {
     }
   } catch {}
   const accessType = (u.access_type === 'APP' || u.access_type === 'WEB' || u.access_type === 'BOTH') ? u.access_type : 'BOTH';
+  const ids = parseCompanyIds(u.company_ids);
   return {
     userId: u.id,
     name: u.name,
@@ -123,9 +126,14 @@ function loadUser(userId: number): AuthCtx | null {
     accessType,
     appPerms,
     perms: new Set(featurePerms(menu)),
-    menu
+    menu,
+    companyIds: u.is_super || !ids.length ? null : ids,
   };
 }
+
+export const parseCompanyIds = (s: unknown) => String(s ?? '').split(',').map(Number).filter((n) => n > 0);
+/** May this user open company `id`? */
+export const canOpenCompany = (a: AuthCtx | undefined, id: number) => !!a && (!a.companyIds || a.companyIds.includes(Number(id)));
 
 export const authOf = (req: Request) => (req as unknown as { auth: AuthCtx }).auth;
 export const can = (a: AuthCtx | undefined, key: string) => !!a && (a.isSuper || (key !== SUPER && a.perms.has(key)));
@@ -280,7 +288,7 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction) 
   (req as unknown as { auth: AuthCtx }).auth = a;
   if (!NO_COMPANY.test(req.path)) {
     if (!s.companyId) {
-      const first = sysDb.prepare('SELECT id FROM companies ORDER BY id LIMIT 1').get() as { id: number } | undefined;
+      const first = (sysDb.prepare('SELECT id FROM companies ORDER BY id').all() as { id: number }[]).find((c) => canOpenCompany(a, c.id));
       if (first) {
         s.companyId = first.id;
         a.companyId = first.id;
@@ -334,6 +342,7 @@ export function registerAuthRoutes(app: Express, h: (fn: H) => (req: Request, re
     perms: a.isSuper ? PERM_KEYS : [...a.perms],
     menu: a.isSuper ? [...GRANTABLE] : a.menu,
     company_id: a.companyId,
+    company_ids: a.companyIds,
     year_id: a.yearId,
     ...(token ? { token } : {}),
   });
@@ -360,7 +369,8 @@ export function registerAuthRoutes(app: Express, h: (fn: H) => (req: Request, re
     if (!a) { res.status(401).json({ error: 'User has no role' }); return; }
     const token = randomBytes(32).toString('hex');
     // Ctrl+U (change user) keeps the company and year that are open.
-    const companyId = companyRow(req.body?.company_id)?.id;
+    const wanted = companyRow(req.body?.company_id)?.id;
+    const companyId = wanted && canOpenCompany(a, wanted) ? wanted : undefined;
     const sess: SessionRecord = {
       userId: u.id,
       seen: Date.now(),
@@ -411,10 +421,12 @@ export function registerAuthRoutes(app: Express, h: (fn: H) => (req: Request, re
   }));
 
   // ---- users (SuperAdmin only, except changing your own password)
+  /** company_ids from the admin form ([1,3]) → "1,3"; undefined when not sent. */
+  const companyIdsOf = (v: unknown) => (Array.isArray(v) ? v.map(Number).filter((n) => n > 0).join(',') : undefined);
   const superCount = () => (sysDb.prepare('SELECT COUNT(*) AS c FROM users u JOIN roles r ON r.id=u.role_id WHERE r.is_super=1').get() as { c: number }).c;
   const isSuperUser = (id: string | number) => !!(sysDb.prepare('SELECT r.is_super FROM users u JOIN roles r ON r.id=u.role_id WHERE u.id=?').get(id) as { is_super: number } | undefined)?.is_super;
 
-  app.get('/api/users', h(() => (sysDb.prepare(`SELECT u.id, u.name, u.role_id, u.access_type, u.app_perms, r.name AS role, r.is_super
+  app.get('/api/users', h(() => (sysDb.prepare(`SELECT u.id, u.name, u.role_id, u.access_type, u.app_perms, u.company_ids, r.name AS role, r.is_super
     FROM users u LEFT JOIN roles r ON r.id=u.role_id ORDER BY r.is_super DESC, u.name`).all() as any[]).map((u) => {
       let parsedAppPerms: Record<string, boolean> = {
         sale: true,
@@ -435,6 +447,7 @@ export function registerAuthRoutes(app: Express, h: (fn: H) => (req: Request, re
         ...u,
         access_type: u.access_type || 'BOTH',
         app_perms: parsedAppPerms,
+        company_ids: parseCompanyIds(u.company_ids),
       };
     })));
   app.post('/api/users', h((req) => {
@@ -444,8 +457,8 @@ export function registerAuthRoutes(app: Express, h: (fn: H) => (req: Request, re
     const validAccess = ['BOTH', 'APP', 'WEB'].includes(access_type) ? access_type : 'BOTH';
     const permsJson = typeof app_perms === 'object' ? JSON.stringify(app_perms) : (typeof app_perms === 'string' ? app_perms : '{}');
     const { salt, hash } = hashPassword(String(password));
-    const r = sysDb.prepare('INSERT INTO users (name,salt,hash,role_id,access_type,app_perms) VALUES (?,?,?,?,?,?)')
-      .run(String(name).trim().toUpperCase(), salt, hash, role_id, validAccess, permsJson);
+    const r = sysDb.prepare('INSERT INTO users (name,salt,hash,role_id,access_type,app_perms,company_ids) VALUES (?,?,?,?,?,?,?)')
+      .run(String(name).trim().toUpperCase(), salt, hash, role_id, validAccess, permsJson, companyIdsOf(req.body?.company_ids) ?? '');
     return { id: Number(r.lastInsertRowid) };
   }));
   app.put('/api/users/:id', h((req) => {
@@ -463,6 +476,8 @@ export function registerAuthRoutes(app: Express, h: (fn: H) => (req: Request, re
     } else {
       sysDb.prepare('UPDATE users SET role_id=? WHERE id=?').run(role_id, req.params.id);
     }
+    const cos = companyIdsOf(req.body?.company_ids);
+    if (cos !== undefined) sysDb.prepare('UPDATE users SET company_ids=? WHERE id=?').run(cos, req.params.id);
     return { ok: true };
   }));
   app.put('/api/users/:id/password', h((req) => {

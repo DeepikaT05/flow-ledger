@@ -141,6 +141,42 @@ export const DateField: React.FC<{ label: string; value: string; onChange: (iso:
     );
   };
 
+/** Value the user can see but not change (serial no., today's date, M.R., GST %). */
+export const LockedField: React.FC<{ label: string; value: string; style?: StyleProp<ViewStyle> }> = ({ label, value, style }) => (
+  <View style={[{ marginBottom: 12 }, style]}>
+    <Text style={s.label}>{label}</Text>
+    <View style={[s.input, s.select, { backgroundColor: '#EEF2F8' }]}>
+      <Text style={{ flex: 1, fontSize: 15, fontWeight: '700', color: C.text }} numberOfLines={1}>{value || '—'}</Text>
+      <Text style={{ fontSize: 12 }}>🔒</Text>
+    </View>
+  </View>
+);
+
+/** − qty + buttons. */
+export const Stepper: React.FC<{ value: number; onChange: (n: number) => void; color: string; min?: number; big?: boolean }> =
+  ({ value, onChange, color, min = 0, big }) => {
+    const sz = big ? 40 : 32;
+    return (
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <TouchableOpacity
+          onPress={() => onChange(Math.max(min, value - 1))}
+          style={{ width: sz, height: sz, borderRadius: sz / 2, borderWidth: 1.5, borderColor: color, alignItems: 'center', justifyContent: 'center' }}
+          hitSlop={6}
+        >
+          <Text style={{ color, fontSize: big ? 22 : 18, fontWeight: '900', marginTop: -2 }}>−</Text>
+        </TouchableOpacity>
+        <Text style={{ minWidth: big ? 52 : 38, textAlign: 'center', fontSize: big ? 20 : 16, fontWeight: '900', color: C.text }}>{value}</Text>
+        <TouchableOpacity
+          onPress={() => onChange(value + 1)}
+          style={{ width: sz, height: sz, borderRadius: sz / 2, backgroundColor: color, alignItems: 'center', justifyContent: 'center' }}
+          hitSlop={6}
+        >
+          <Text style={{ color: C.white, fontSize: big ? 22 : 18, fontWeight: '900', marginTop: -2 }}>+</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
 export const Segmented: React.FC<{ options: { key: string; label: string }[]; value: string; onChange: (k: string) => void; color?: string }> =
   ({ options, value, onChange, color = C.navy2 }) => (
     <View style={s.seg}>

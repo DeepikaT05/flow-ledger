@@ -42,6 +42,7 @@ export const MENUS: Record<ModuleKey, MenuNode[]> = {
         { label: 'Return Challan', icon: '📄', soon: true },
       ],
     },
+    { label: 'Stock / Items', icon: '📋', hint: 'Every item · stock · rate · batches', go: { screen: 'Stock' } },
     { label: 'Party Transaction', icon: '👥', hint: 'All bills of one party', go: parties('Party Transaction', 'Sundry Debtors', 'txn'), perm: ['books.ledger'] },
     {
       label: 'Sale Reports', icon: '📊', hint: 'Books, registers & profit', children: [
@@ -87,6 +88,7 @@ export const MENUS: Record<ModuleKey, MenuNode[]> = {
         },
       ],
     },
+    { label: 'Stock / Items', icon: '📋', hint: 'Every item · stock · rate · batches', go: { screen: 'Stock' } },
     { label: 'Supplier Transaction', icon: '🏭', hint: 'All bills of one supplier', go: parties('Supplier Transaction', 'Sundry Creditors', 'txn'), perm: ['books.ledger'] },
     {
       label: 'Purchase Reports', icon: '📊', children: [

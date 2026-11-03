@@ -15,6 +15,7 @@ interface User {
   is_super: number | null;
   access_type?: 'BOTH' | 'APP' | 'WEB';
   app_perms?: Record<string, boolean>;
+  company_ids?: number[];
 }
 interface Role { id: number; name: string; is_super: number; perms: string[]; users: number }
 type Tab = 'companies' | 'users' | 'roles';
@@ -371,7 +372,7 @@ async function companiesView(root: HTMLElement) {
 // ---------------------------------------------------------------- users
 async function usersView(root: HTMLElement) {
   root.replaceChildren(pageHead('Users', 'Who can sign in, platform access (Web / APK) and permissions.'), loading());
-  const [users, roles] = await Promise.all([api<User[]>('/users'), api<Role[]>('/roles')]);
+  const [users, roles, companies] = await Promise.all([api<User[]>('/users'), api<Role[]>('/roles'), api<Company[]>('/companies')]);
   const roleOptions = roles.map((r) => ({ value: String(r.id), label: r.is_super ? `${r.name} (full access)` : r.name }));
   const defaultRole = String((roles.find((r) => r.name === 'ADMIN') ?? roles.find((r) => !r.is_super) ?? roles[0])?.id ?? '');
 
@@ -459,6 +460,17 @@ async function usersView(root: HTMLElement) {
       )
     );
 
+    // Company access: none ticked = every company. The user can switch between the ticked ones (web F1 and APK).
+    const allowed = new Set(userToEdit?.company_ids ?? []);
+    const coChecks = companies.map((c) => ({ id: c.id, el: h('input', { type: 'checkbox', checked: allowed.has(c.id) }) as HTMLInputElement, name: c.name }));
+    const coBox = h('div', { class: 'apk-box' },
+      h('div', { class: 'apk-title' },
+        h('span', {}, 'Company Access'),
+        h('small', { class: 'muted' }, 'None ticked = all companies')
+      ),
+      h('div', { class: 'apk-grid' }, coChecks.map((c) => h('label', { class: 'apk-check' }, c.el, h('span', {}, c.name))))
+    );
+
     const updateApkVis = () => {
       apkBox.hidden = accessSelect.value === 'WEB';
     };
@@ -498,6 +510,7 @@ async function usersView(root: HTMLElement) {
         h('small', {}, 'Role used for Web ERP menu permissions')
       ),
       apkBox,
+      coBox,
       err
     );
 
@@ -538,6 +551,7 @@ async function usersView(root: HTMLElement) {
             role_id: Number(roleSelect.value),
             access_type: accessSelect.value,
             app_perms: appPermsData,
+            company_ids: coChecks.filter((c) => c.el.checked).map((c) => c.id),
           });
           toast(`Permissions updated for ${userToEdit!.name}`);
         } else {
@@ -547,6 +561,7 @@ async function usersView(root: HTMLElement) {
             role_id: Number(roleSelect.value),
             access_type: accessSelect.value,
             app_perms: appPermsData,
+            company_ids: coChecks.filter((c) => c.el.checked).map((c) => c.id),
           });
           toast(`User ${name} created successfully`);
         }
@@ -593,6 +608,9 @@ async function usersView(root: HTMLElement) {
       else pills.push(h('span', { class: 'pill edit-off' }, 'No Edit'));
       if (ap.delete) pills.push(h('span', { class: 'pill del-on' }, 'Del Allowed'));
       else pills.push(h('span', { class: 'pill del-off' }, 'No Delete'));
+    }
+    if (!u.is_super && u.company_ids?.length) {
+      pills.push(h('span', { class: 'pill' }, `🏢 ${u.company_ids.map((id) => companies.find((c) => c.id === id)?.name ?? id).join(', ')}`));
     }
 
     return h('li', { class: 'user-row' },

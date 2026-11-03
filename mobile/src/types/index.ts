@@ -16,8 +16,11 @@ export interface Company {
   name: string;
   station?: string;
   address1?: string;
+  address2?: string;
   gstin?: string;
   state?: string;
+  /** JSON: phone, email, dl_no … from COMPANY CREATION */
+  details?: string;
 }
 
 export type ModuleKey = 'sale' | 'purchase' | 'receipt' | 'payment' | 'contra' | 'ledger';
@@ -92,6 +95,7 @@ export interface Batch {
   rate: number;
   purchase_rate?: number | null;
   stock: number;
+  invoice_date?: string;
 }
 
 export interface BillLine {
@@ -140,6 +144,7 @@ export interface Bill {
   against_bill_id?: number | null;
   walkin_name?: string;
   walkin_mobile?: string;
+  mr_name?: string | null;
   lines?: BillLine[];
   payments?: BillPayment[];
   received?: number;

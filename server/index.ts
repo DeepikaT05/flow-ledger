@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { mkdirSync } from 'node:fs';
 import type { SQLInputValue } from 'node:sqlite';
 import { db, sysDb, tx, sysLedger, SYS, dataDir, companyRow, companyDb, currentFy, hashPassword, type Row } from './db.ts';
-import { authMiddleware, registerAuthRoutes, maskCost, authOf, can, bindCompany, setSessionCompany, setSessionYear } from './auth.ts';
+import { authMiddleware, registerAuthRoutes, maskCost, authOf, can, bindCompany, setSessionCompany, setSessionYear, canOpenCompany } from './auth.ts';
 
 const app = express();
 app.use(express.json());
@@ -61,7 +61,9 @@ app.get('/api/licence', h(() => {
   const c = sysDb.prepare('SELECT name FROM companies ORDER BY id LIMIT 1').get() as { name: string } | undefined;
   return { user: c?.name ?? '' };
 }));
-app.get('/api/companies', h(() => (sysDb.prepare('SELECT * FROM companies ORDER BY name').all() as Row[]).map((c) => {
+// Only the companies this user may open (SuperAdmin ▸ Users ▸ Company access).
+app.get('/api/companies', h((req) => (sysDb.prepare('SELECT * FROM companies ORDER BY name').all() as Row[])
+  .filter((c) => canOpenCompany(authOf(req), Number(c.id))).map((c) => {
   const { pw_salt: _s, pw_hash: _h, ...det } = JSON.parse(String(c.details ?? '{}')) as Record<string, string>;
   return { ...c, details: JSON.stringify({ ...det, has_password: _h ? '1' : '' }) };
 })));
@@ -143,6 +145,7 @@ app.post('/api/companies/:id/new-year', h((req) => {
 app.post('/api/session/company', h((req) => {
   const c = companyRow(req.body?.id);
   if (!c) throw new Error('Company not found');
+  if (!canOpenCompany(authOf(req), Number(c.id))) throw new Error('You do not have access to this company');
   const d = companyDb(c);
   setSessionCompany(req, c.id);
   const latestYear = d.prepare('SELECT id FROM company_years ORDER BY fy_end DESC LIMIT 1').get() as { id: number } | undefined;
@@ -455,7 +458,8 @@ app.get('/api/bills', h((req) => {
     ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY b.date DESC, b.id DESC`).all(...args);
 }));
 app.get('/api/bills/:id', h((req) => {
-  const bill = db.prepare('SELECT b.*, l.name AS party FROM bills b JOIN ledgers l ON l.id=b.party_id WHERE b.id=?').get(req.params.id);
+  const bill = db.prepare(`SELECT b.*, l.name AS party, s.name AS mr_name FROM bills b JOIN ledgers l ON l.id=b.party_id
+    LEFT JOIN salesmen s ON s.id=b.mr_id WHERE b.id=?`).get(req.params.id);
   if (!bill) throw new Error('Bill not found');
   const lines = db.prepare(`SELECT bi.*, i.name AS item_name, i.unit, i.pack, i.hsn, i.gst_rate AS item_gst FROM bill_items bi JOIN items i ON i.id=bi.item_id
     WHERE bill_id=? ORDER BY bi.id`).all(req.params.id) as any[];
@@ -655,8 +659,17 @@ function saveBill(body: BillIn, id?: number) {
     return { id: billId, no, net: c.net };
   });
 }
-app.post('/api/bills', h((req) => saveBill(req.body)));
-app.put('/api/bills/:id', h((req) => saveBill(req.body, Number(req.params.id))));
+/** Mobile app: the M.R. on the bill is always the user making it (a salesman of the same name). */
+function withAutoMr(req: Request) {
+  const b = req.body ?? {};
+  if (!b.mr_auto) return b;
+  const name = String(authOf(req).name).toUpperCase();
+  const found = db.prepare('SELECT id FROM salesmen WHERE name=?').get(name) as { id: number } | undefined;
+  const mrId = found?.id ?? Number(db.prepare('INSERT INTO salesmen (name,area) VALUES (?,?)').run(name, '').lastInsertRowid);
+  return { ...b, mr_id: mrId };
+}
+app.post('/api/bills', h((req) => saveBill(withAutoMr(req))));
+app.put('/api/bills/:id', h((req) => saveBill(withAutoMr(req), Number(req.params.id))));
 app.delete('/api/bills/:id', h((req) => tx(() => {
   db.prepare("DELETE FROM ledger_entries WHERE source='BILL' AND source_id=?").run(req.params.id);
   db.prepare('DELETE FROM bills WHERE id=?').run(req.params.id);

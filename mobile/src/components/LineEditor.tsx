@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, Modal, ScrollView, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
-import { Field, Btn, KV, ui } from './ui';
+import { Field, Btn, KV, LockedField, Stepper, ui } from './ui';
 import { Batch, BillLine } from '../types';
 import { C, R, Accent } from '../theme';
 import { money, r2 } from '../utils/format';
 
-/** A bill line being edited; `stock` / `name` are for display only. */
-export interface EditLine extends BillLine { item_name: string; stock?: number }
+/** A bill line being edited; `stock` / `name` are for display only. `fifo` = batch is taken FIFO on save. */
+export interface EditLine extends BillLine { item_name: string; stock?: number; fifo?: boolean }
 
 export const lineCalc = (l: Pick<BillLine, 'qty' | 'rate' | 'disc_pct' | 'gst_rate'>) => {
   const gross = r2((Number(l.qty) || 0) * (Number(l.rate) || 0));
@@ -67,7 +67,7 @@ export const LineEditor: React.FC<Props> = ({ visible, line, inward, batches, ac
             <View style={{ flex: 1 }}>
               <Text style={[ui.sheetTitle, { marginBottom: 2 }]} numberOfLines={2}>{line.item_name}</Text>
               <Text style={{ color: C.sub, fontSize: 12.5 }}>
-                {line.pack ? `${line.pack} · ` : ''}{!inward && line.batch ? `Batch ${line.batch} · ` : ''}
+                {line.pack ? `${line.pack} · ` : ''}{!inward ? (line.batch_id || line.batch ? `Batch ${line.batch || '—'} · ` : 'Batch: FIFO auto · ') : ''}
                 {line.stock !== undefined ? `Stock ${line.stock}` : ''}
               </Text>
             </View>
@@ -97,8 +97,12 @@ export const LineEditor: React.FC<Props> = ({ visible, line, inward, batches, ac
                 </View>
               </>
             ) : null}
+            <View style={[st.row, { alignItems: 'center', marginBottom: 12 }]}>
+              <Text style={[ui.label, { marginBottom: 0, flex: 1 }]}>Qty</Text>
+              <Stepper big value={n(f.qty ?? '')} min={1} color={over ? C.danger : accent.main} onChange={(v) => set('qty')(String(v))} />
+            </View>
             <View style={st.row}>
-              <Field label="Qty" value={f.qty} onChangeText={set('qty')} keyboardType="decimal-pad" autoFocus style={{ flex: 1 }}
+              <Field label="Qty (type)" value={f.qty} onChangeText={set('qty')} keyboardType="decimal-pad" style={{ flex: 1 }}
                 inputStyle={[{ fontSize: 18, fontWeight: '800' }, over && { borderColor: C.danger }]} />
               <Field label="Free" value={f.free} onChangeText={set('free')} keyboardType="decimal-pad" style={{ flex: 1 }} />
               <Field label="Rate (excl. GST)" value={f.rate} onChangeText={set('rate')} keyboardType="decimal-pad" style={{ flex: 1.4 }}
@@ -107,16 +111,8 @@ export const LineEditor: React.FC<Props> = ({ visible, line, inward, batches, ac
             {over ? <Text style={{ color: C.danger, fontSize: 12, marginTop: -6, marginBottom: 8 }}>⚠ More than stock ({line.stock})</Text> : null}
             <View style={st.row}>
               <Field label="Disc %" value={f.disc} onChangeText={set('disc')} keyboardType="decimal-pad" style={{ flex: 1 }} />
-              <View style={{ flex: 2 }}>
-                <Text style={ui.label}>GST %</Text>
-                <View style={{ flexDirection: 'row', gap: 6 }}>
-                  {['0', '5', '12', '18', '28'].map((g) => (
-                    <TouchableOpacity key={g} onPress={() => set('gst')(g)} style={[st.gst, Number(f.gst) === Number(g) && { backgroundColor: accent.main, borderColor: accent.main }]}>
-                      <Text style={{ fontWeight: '800', color: Number(f.gst) === Number(g) ? C.white : C.sub }}>{g}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
+              {/* GST comes from the item master; it is not chosen on the bill. */}
+              <LockedField label="GST % (from item)" value={`${n(f.gst ?? '')}%`} style={{ flex: 1 }} />
             </View>
             <View style={st.calc}>
               <KV k="Taxable" v={money(c.taxable)} />
@@ -136,7 +132,6 @@ export const LineEditor: React.FC<Props> = ({ visible, line, inward, batches, ac
 
 const st = StyleSheet.create({
   row: { flexDirection: 'row', gap: 10 },
-  gst: { flex: 1, paddingVertical: 11, borderRadius: R.sm, borderWidth: 1.2, borderColor: C.line, alignItems: 'center', backgroundColor: C.white },
   calc: { backgroundColor: C.white, borderRadius: R.md, padding: 12, borderWidth: 1, borderColor: C.line },
   bchip: { borderWidth: 1.2, borderColor: C.line, borderRadius: R.sm, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: C.white },
 });

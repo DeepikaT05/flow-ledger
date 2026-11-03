@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import {
-  Screen, TopBar, Card, Field, SelectField, DateField, SectionTitle, KV, Btn, Loading, PickerModal, Badge, ui,
+  Screen, TopBar, Card, Field, SelectField, DateField, SectionTitle, KV, Btn, Loading, PickerModal, Badge, LockedField, ui,
 } from '../components/ui';
 import { VoucherService, LedgerService } from '../api/services';
 import { Ledger, PendingBill, VoucherType } from '../types';
@@ -191,9 +191,10 @@ export const VoucherEntryScreen: React.FC<{ navigation: any; route: any }> = ({ 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={{ padding: 14, paddingBottom: 120 }} keyboardShouldPersistTaps="handled">
           <Card>
+            {/* Serial voucher number and date are set by the system; they cannot be changed on mobile. */}
             <View style={{ flexDirection: 'row', gap: 10 }}>
-              <Field label="Voucher No." value={no} onChangeText={setNo} autoCapitalize="characters" style={{ flex: 1 }} />
-              <DateField label="Date" value={date} onChange={setDate} style={{ flex: 1.2 }} />
+              <LockedField label="Voucher No." value={no || 'Auto'} style={{ flex: 1 }} />
+              <LockedField label="Date" value={dmy(date)} style={{ flex: 1 }} />
             </View>
 
             {simple ? (

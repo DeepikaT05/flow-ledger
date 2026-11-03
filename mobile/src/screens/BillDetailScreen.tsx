@@ -8,6 +8,7 @@ import { BILL, accentOf } from '../labels';
 import { useAuth } from '../context/AuthContext';
 import { C, R } from '../theme';
 import { money, dmy, amt } from '../utils/format';
+import { shareInvoice } from '../utils/invoice';
 
 const MODIFY_PERM: Record<string, string> = {
   SALE: 'sale.modify', SALE_CHALLAN: 'sale.modify', COUNTER_SALE: 'sale.modify', SALE_RETURN: 'return.sale',
@@ -19,6 +20,7 @@ export const BillDetailScreen: React.FC<{ navigation: any; route: any }> = ({ na
   const { can, user } = useAuth();
   const [bill, setBill] = useState<Bill | null>(null);
   const [error, setError] = useState('');
+  const [sharing, setSharing] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   useFocusEffect(useCallback(() => {
@@ -93,6 +95,7 @@ export const BillDetailScreen: React.FC<{ navigation: any; route: any }> = ({ na
             {bill.ref_no ? <Text style={st.meta}>Party Inv. {bill.ref_no}{bill.ref_date ? ` · ${dmy(bill.ref_date)}` : ''}</Text> : null}
             {bill.reason ? <Text style={st.meta}>Reason: {bill.reason}</Text> : null}
             {bill.narration ? <Text style={st.meta}>📝 {bill.narration}</Text> : null}
+            {bill.mr_name ? <Text style={st.meta}>M.R. / Billed by: <Text style={{ fontWeight: '800', color: C.text }}>{bill.mr_name}</Text></Text> : null}
           </Card>
 
           <SectionTitle>Items ({lines.length})</SectionTitle>
@@ -136,8 +139,18 @@ export const BillDetailScreen: React.FC<{ navigation: any; route: any }> = ({ na
             </>
           ) : null}
 
+          <Btn
+            label="📤  Share PDF (WhatsApp)"
+            color={C.cr}
+            busy={sharing}
+            onPress={async () => {
+              setSharing(true);
+              try { await shareInvoice(id); } catch (e: any) { Alert.alert('Share failed', e.message); } finally { setSharing(false); }
+            }}
+            style={{ marginTop: 18 }}
+          />
           {canEdit ? (
-            <Btn label="✏️  Modify this entry" color={accent.main} onPress={() => navigation.navigate('BillEntry', { type: bill.type, id })} style={{ marginTop: 18 }} />
+            <Btn label="✏️  Modify this entry" color={accent.main} onPress={() => navigation.navigate('BillEntry', { type: bill.type, id })} style={{ marginTop: 10 }} />
           ) : null}
           {canDelete ? (
             <Btn label="🗑️  Delete this entry" color={C.dr} busy={deleting} onPress={confirmDelete} style={{ marginTop: 10 }} />

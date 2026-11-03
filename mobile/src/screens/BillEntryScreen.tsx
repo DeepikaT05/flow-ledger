@@ -1,15 +1,18 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import {
-  Screen, TopBar, Card, Field, SelectField, DateField, Segmented, SectionTitle, KV, Btn, Loading, PickerModal, Badge,
+  Screen, TopBar, Card, Field, SelectField, DateField, Segmented, SectionTitle, KV, Btn, Loading, PickerModal, Badge, LockedField, Stepper,
 } from '../components/ui';
 import { LineEditor, EditLine, lineCalc } from '../components/LineEditor';
+import { ItemCart } from '../components/ItemCart';
+import { allocate, fifoOrder } from '../utils/fifo';
+import { shareInvoice } from '../utils/invoice';
 import { BillService, LedgerService, ItemService } from '../api/services';
 import { Batch, BillType, Item, Ledger } from '../types';
 import { BILL, accentOf } from '../labels';
 import { C, R } from '../theme';
 import { useAuth } from '../context/AuthContext';
-import { money, today, r2, drcr, amt } from '../utils/format';
+import { money, today, r2, drcr, amt, dmy } from '../utils/format';
 
 /** New / modify any bill type: Sale, Challan, Counter Sale, Sale Return, Purchase, Purchase Challan, Purchase Return. */
 export const BillEntryScreen: React.FC<{ navigation: any; route: any }> = ({ navigation, route }) => {
@@ -47,7 +50,9 @@ export const BillEntryScreen: React.FC<{ navigation: any; route: any }> = ({ nav
   const [allParties, setAllParties] = useState(false);
   const [modes, setModes] = useState<Ledger[]>([]);
   const [items, setItems] = useState<Item[]>([]);
-  const [picker, setPicker] = useState<'' | 'party' | 'item' | 'batch'>('');
+  const [picker, setPicker] = useState<'' | 'party' | 'item' | 'batch' | 'cart'>('');
+  // Batches of each item on the bill, for FIFO (outward bills never show a batch window).
+  const batchCache = React.useRef<Record<number, Batch[]>>({});
   const [batches, setBatches] = useState<Batch[]>([]);
   const [pendingItem, setPendingItem] = useState<Item | null>(null);
   const [editing, setEditing] = useState<{ line: EditLine; index: number } | null>(null);
@@ -94,7 +99,7 @@ export const BillEntryScreen: React.FC<{ navigation: any; route: any }> = ({ nav
   }), [navigation, loading]);
 
   const openItems = async () => {
-    setPicker('item');
+    setPicker(kind.inward ? 'item' : 'cart');
     if (!items.length) setItems(await ItemService.list().catch(() => []));
   };
 
@@ -120,6 +125,38 @@ export const BillEntryScreen: React.FC<{ navigation: any; route: any }> = ({ nav
     setPicker('batch');
   };
 
+  // ---------------------------------------------------------------- outward: cart + FIFO
+  const outRate = (it: Item, b?: Batch) => Number(type === 'PURCHASE_RETURN'
+    ? (b?.purchase_rate ?? it.purchase_rate ?? 0)
+    : (b?.rate || it.sale_rate || 0));
+  const qtyOf = (itemId: number) => lines.filter((l) => l.fifo && l.item_id === itemId).reduce((s, l) => s + Number(l.qty), 0);
+  const batchesOf = async (itemId: number) => {
+    if (!batchCache.current[itemId]) batchCache.current[itemId] = await ItemService.batches(itemId).catch(() => [] as Batch[]);
+    return batchCache.current[itemId];
+  };
+  const setCartQty = (it: Item, qty: number) => {
+    setLines((ls) => {
+      const i = ls.findIndex((l) => l.fifo && l.item_id === it.id);
+      if (qty <= 0) return i >= 0 ? ls.filter((_, j) => j !== i) : ls;
+      if (i >= 0) return ls.map((l, j) => (j === i ? { ...l, qty } : l));
+      return [...ls, {
+        item_id: it.id, item_name: it.name, pack: it.pack, unit: it.unit, batch_id: null, batch: '', expiry: '', mrp: Number(it.mrp ?? 0),
+        qty, free: 0, rate: outRate(it), disc_pct: 0, gst_rate: Number(it.gst_rate ?? 0), stock: Number(it.stock ?? 0), fifo: true,
+      }];
+    });
+    // Rate of the first FIFO batch (falls back to the item's sale rate).
+    if (qty > 0) batchesOf(it.id).then((bs) => {
+      const first = fifoOrder(bs)[0];
+      if (!first) return;
+      setLines((ls) => ls.map((l) => (l.fifo && l.item_id === it.id && l.rate === outRate(it)
+        ? { ...l, rate: outRate(it, first), mrp: Number(first.mrp) || l.mrp } : l)));
+    });
+  };
+  const stepLine = (idx: number, qty: number) => {
+    if (qty <= 0) { setLines((ls) => ls.filter((_, i) => i !== idx)); return; }
+    setLines((ls) => ls.map((l, i) => (i === idx ? { ...l, qty } : l)));
+  };
+
   const saveLine = (l: EditLine) => {
     setLines((ls) => (editing && editing.index >= 0 ? ls.map((x, i) => (i === editing.index ? l : x)) : [...ls, l]));
     setEditing(null);
@@ -142,22 +179,30 @@ export const BillEntryScreen: React.FC<{ navigation: any; route: any }> = ({ nav
     if (!party) { Alert.alert('Select party', `Choose the ${kind.partyLabel.toLowerCase()} first.`); return; }
     if (!lines.length) { Alert.alert('No items', 'Add at least one item.'); return; }
     if (kind.needsReason && !reason.trim()) { Alert.alert('Reason required', 'Enter the reason for this return.'); return; }
+    const outLines: Record<string, unknown>[] = [];
+    for (const l of lines) {
+      const base = { item_id: l.item_id, rate: l.rate, disc_pct: l.disc_pct, gst_rate: l.gst_rate };
+      if (l.fifo && !kind.inward) {
+        for (const a of allocate(Number(l.qty), Number(l.free || 0), await batchesOf(l.item_id))) outLines.push({ ...base, ...a, mrp: a.mrp || l.mrp });
+      } else {
+        outLines.push({ ...base, batch_id: l.batch_id || undefined, batch: l.batch, expiry: l.expiry, qty: l.qty, free: l.free, mrp: l.mrp });
+      }
+    }
     const body = {
+      mr_auto: true,   // server puts the logged-in user as the bill's M.R.
       type, no: no.trim(), date, party_id: party.id, narration,
       mode: payMode ? 'CASH' : 'CREDIT',
       payments: kind.takesPayment && payMode ? [{ ledger_id: payMode, amount: t.net, remark: '', detail: '' }] : [],
       ref_no: refNo.trim(), ref_date: refDate, reason: reason.trim(),
       walkin_name: walkin.name.trim(), walkin_mobile: walkin.mobile.trim(), walkin_gstin: '', walkin_address: '',
       cd_pct: Number(cdPct) || 0, freight: Number(freight) || 0, other_charges: Number(other) || 0,
-      lines: lines.map((l) => ({
-        item_id: l.item_id, batch_id: l.batch_id || undefined, batch: l.batch, expiry: l.expiry,
-        qty: l.qty, free: l.free, rate: l.rate, disc_pct: l.disc_pct, gst_rate: l.gst_rate, mrp: l.mrp,
-      })),
+      lines: outLines,
     };
     setSaving(true);
     try {
       const res = editId ? await BillService.update(editId, body) : await BillService.create(body);
       Alert.alert('Saved ✓', `${kind.title} ${res.no} saved — ${money(res.net)}`, [
+        { text: 'Share PDF', onPress: () => { shareInvoice(res.id).catch((e) => Alert.alert('Share failed', e.message)); navigation.replace('BillDetail', { id: res.id }); } },
         { text: 'View', onPress: () => navigation.replace('BillDetail', { id: res.id }) },
         ...(editId ? [] : [{ text: 'New Entry', onPress: () => navigation.replace('BillEntry', { type }) }]),
         { text: 'Done', onPress: () => navigation.goBack() },
@@ -185,9 +230,11 @@ export const BillEntryScreen: React.FC<{ navigation: any; route: any }> = ({ nav
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={{ padding: 14, paddingBottom: 120 }} keyboardShouldPersistTaps="handled">
           <Card>
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              <Field label="Bill No." value={no} onChangeText={setNo} autoCapitalize="characters" style={{ flex: 1 }} />
-              <DateField label="Date" value={date} onChange={setDate} style={{ flex: 1.2 }} />
+            {/* Serial number, date and M.R. are set by the system; they cannot be changed on mobile. */}
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <LockedField label="Bill No." value={no || 'Auto'} style={{ flex: 1.1 }} />
+              <LockedField label="Date" value={dmy(date)} style={{ flex: 1.2 }} />
+              <LockedField label="M.R." value={user?.name ?? ''} style={{ flex: 0.9 }} />
             </View>
             <SelectField
               label={kind.partyLabel}
@@ -227,19 +274,22 @@ export const BillEntryScreen: React.FC<{ navigation: any; route: any }> = ({ nav
           {lines.map((l, i) => {
             const c = lineCalc(l);
             return (
-              <TouchableOpacity key={i} style={st.line} activeOpacity={0.7} onPress={async () => {
-                setBatches(await ItemService.batches(l.item_id).catch(() => []));
-                setEditing({ line: l, index: i });
-              }}>
-                <View style={[st.lineNo, { backgroundColor: accent.soft }]}><Text style={{ color: accent.dark, fontWeight: '800' }}>{i + 1}</Text></View>
-                <View style={{ flex: 1 }}>
-                  <Text style={st.itemName} numberOfLines={1}>{l.item_name}</Text>
-                  <Text style={st.meta} numberOfLines={1}>
-                    {l.qty}{l.free ? `+${l.free}` : ''} × ₹{amt(l.rate)}{l.disc_pct ? ` −${l.disc_pct}%` : ''} · GST {l.gst_rate}%{l.batch ? ` · ${l.batch}` : ''}
-                  </Text>
-                </View>
-                <Text style={[st.lineAmt, { color: accent.dark }]}>{money(c.amount)}</Text>
-              </TouchableOpacity>
+              <View key={i} style={st.line}>
+                <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }} activeOpacity={0.7} onPress={async () => {
+                  setBatches(await batchesOf(l.item_id));
+                  setEditing({ line: l, index: i });
+                }}>
+                  <View style={[st.lineNo, { backgroundColor: accent.soft }]}><Text style={{ color: accent.dark, fontWeight: '800' }}>{i + 1}</Text></View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={st.itemName} numberOfLines={1}>{l.item_name}</Text>
+                    <Text style={st.meta} numberOfLines={1}>
+                      ₹{amt(l.rate)}{l.free ? ` · +${l.free} free` : ''}{l.disc_pct ? ` −${l.disc_pct}%` : ''} · GST {l.gst_rate}%{l.fifo ? ' · FIFO' : l.batch ? ` · ${l.batch}` : ''}
+                    </Text>
+                    <Text style={[st.lineAmt, { color: accent.dark, marginLeft: 0, marginTop: 3 }]}>{money(c.amount)}</Text>
+                  </View>
+                </TouchableOpacity>
+                <Stepper value={Number(l.qty)} onChange={(v) => stepLine(i, v)} color={accent.main} />
+              </View>
             );
           })}
           <TouchableOpacity style={[st.addBtn, { borderColor: accent.main }]} onPress={openItems} activeOpacity={0.7}>
@@ -383,6 +433,17 @@ export const BillEntryScreen: React.FC<{ navigation: any; route: any }> = ({ nav
             <Badge label={`Stk ${b.stock}`} color={b.stock > 0 ? C.cr : C.danger} soft />
           </View>
         )}
+      />
+
+      <ItemCart
+        visible={picker === 'cart'}
+        items={items}
+        loading={!items.length}
+        accent={accent}
+        qtyOf={qtyOf}
+        rateOf={(it) => lines.find((l) => l.fifo && l.item_id === it.id)?.rate ?? outRate(it)}
+        onSet={setCartQty}
+        onClose={() => setPicker('')}
       />
 
       <LineEditor

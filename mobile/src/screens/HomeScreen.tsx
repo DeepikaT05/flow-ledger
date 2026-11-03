@@ -51,10 +51,14 @@ export const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
           <View style={st.heroTop}>
             <View style={{ flex: 1 }}>
               <Text style={st.hello}>{hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'}, {user?.name}</Text>
-              <TouchableOpacity onPress={companies.length > 1 ? changeCompany : undefined} activeOpacity={0.7}>
-                <Text style={st.company} numberOfLines={1}>{company?.name}{companies.length > 1 ? '  ⇅' : ''}</Text>
-              </TouchableOpacity>
+              <Text style={st.company} numberOfLines={1}>{company?.name}</Text>
               <Text style={st.role}>{user?.role}{company?.station ? ` · ${company.station}` : ''}</Text>
+              {/* Only the companies SuperAdmin gave this user are listed (server filters /companies). */}
+              {companies.length > 1 ? (
+                <TouchableOpacity onPress={changeCompany} activeOpacity={0.75} style={st.switchCo}>
+                  <Text style={st.switchTxt}>🏢 Switch Company ({companies.length})</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
             <TouchableOpacity
               style={st.logout}
@@ -102,6 +106,10 @@ export const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
                   <Text style={st.quickLbl}>+ {q.label}</Text>
                 </TouchableOpacity>
               ))}
+              <TouchableOpacity style={st.quickBtn} onPress={() => navigation.navigate('Stock')} activeOpacity={0.75}>
+                <View style={[st.quickIcon, { backgroundColor: C.navy3 }]}><Text style={{ fontSize: 20 }}>📋</Text></View>
+                <Text style={st.quickLbl}>Stock</Text>
+              </TouchableOpacity>
             </View>
           </>
         ) : null}
@@ -148,6 +156,8 @@ const st = StyleSheet.create({
   heroTop: { flexDirection: 'row', alignItems: 'flex-start' },
   hello: { color: 'rgba(255,255,255,0.75)', fontSize: 13 },
   company: { color: C.gold, fontSize: 23, fontWeight: '900', marginTop: 3, letterSpacing: 0.3 },
+  switchCo: { alignSelf: 'flex-start', marginTop: 8, backgroundColor: 'rgba(255,201,60,0.18)', borderWidth: 1, borderColor: C.gold, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 5 },
+  switchTxt: { color: C.gold, fontWeight: '800', fontSize: 12 },
   role: { color: 'rgba(255,255,255,0.6)', fontSize: 12, marginTop: 2 },
   logout: { width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(255,255,255,0.14)', alignItems: 'center', justifyContent: 'center' },
   kpis: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginTop: 14 },
