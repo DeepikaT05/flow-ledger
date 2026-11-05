@@ -6,6 +6,7 @@ import { api, esc, h, toast, confirmBox } from './ui.ts';
 import { margPop, margConfirm } from './margui.ts';
 import { seeCost } from './session.ts';
 import type { Item } from './masters.ts';
+import { isJewellery } from './jewellery.ts';
 
 type Kind = 'text' | 'num' | 'sel';
 interface Fld { k: string; label: string; kind: Kind; opts?: string[]; dec?: number; w?: string; upper?: boolean; small?: boolean; ro?: boolean; after?: Fld[]; sep?: string }
@@ -49,6 +50,20 @@ const COLS: (Fld | null)[][] = [
 // SCHEDULE H sits in the middle column's last line.
 COLS[1].push(S('schedule_h', 'SCHEDULE H', NOYES, '58px', { small: true }));
 
+// JEWELLERY business: the item's own jewellery detail (as in MARG's jewellery item setup —
+// purity, making "charge on", polish, weight, Diamond / Stone Yes-No, tray). The sale / purchase
+// DESCRIPTION window starts from these. Kept in items.details like the other extra fields.
+/** Three columns, as the block above (Enter walks down each column). */
+const JW_COLS: Fld[][] = [
+  [S('jw_purity_unit', 'PURITY ON', ['%', 'K']), S('jw_making_unit', 'MAKING ON', ['GM', '%', 'PCS', 'FIX'], '68px'), S('jw_polish_unit', 'POLISH ON', ['%', 'GWt'], '68px'), T('jw_tray', 'TRAY NAME', { w: '150px' })],
+  [N('jw_purity', 'PURITY', 3), N('jw_making', 'MAKING', 2), N('jw_polish', 'POLISH', 3)],
+  [N('jw_weight', 'WEIGHT (GM)', 3, { small: true }), S('jw_diamond', 'DIAMOND', NOYES), S('jw_stone', 'STONE', NOYES)],
+];
+const JW_DEFAULTS: Record<string, string> = {
+  jw_purity_unit: '%', jw_purity: '100', jw_making_unit: '%', jw_making: '0', jw_polish_unit: '%', jw_polish: '0',
+  jw_weight: '0', jw_diamond: 'No', jw_stone: 'No', jw_tray: '',
+};
+
 const DEFAULTS: Record<string, string> = {
   status: 'CONTINUE', type: 'NORMAL', hide: 'NO', unit: 'PCS', decimal: 'No', color_type: 'NORMAL', item_type: '1 NORMAL',
   company_on: 'Yes', salt_on: 'Yes', hsn_on: 'Yes', local: 'Taxable', central: 'Taxable', narcotic: 'No', negative: 'No',
@@ -59,12 +74,14 @@ const ITEM_COLS = ['name', 'company', 'unit', 'pack', 'hsn', 'mrp', 'sale_rate',
 const fmt = (v: unknown, dec: number) => (Number(v) || 0).toFixed(dec);
 
 /** Opens NEW PRODUCT (no id) or MODIFY PRODUCT; resolves the saved item, or null on Esc. */
-export function productScreen(existing?: Partial<Item> & { details?: string }): Promise<Item | null> {
+export async function productScreen(existing?: Partial<Item> & { details?: string }): Promise<Item | null> {
+  const company = await api<{ business_type?: string }>('/company').catch(() => ({} as { business_type?: string }));
+  const jewel = isJewellery(company.business_type);
   return new Promise((resolve) => {
     const isNew = !existing?.id;
     let det: Record<string, string> = {};
     try { det = JSON.parse(existing?.details || '{}'); } catch { /* bad JSON: start empty */ }
-    const v: Record<string, string> = { ...DEFAULTS, ...det };
+    const v: Record<string, string> = { ...DEFAULTS, ...(jewel ? JW_DEFAULTS : {}), ...det };
     for (const k of ITEM_COLS) if (existing && (existing as Record<string, unknown>)[k] != null) v[k] = String((existing as Record<string, unknown>)[k]);
     const gst = Number(existing?.gst_rate ?? 0);
     v.igst = String(gst); v.sgst = String(gst / 2); v.cgst = String(gst / 2);
@@ -104,6 +121,12 @@ export function productScreen(existing?: Partial<Item> & { details?: string }): 
     const bottom = h('div', { class: 'pf-bottom' });
     bottom.innerHTML = COLS.map((c) => `<div class="pf-col">${c.map((f) => cell(f)).join('')}</div>`).join('');
     p.body.append(top, bottom);
+    if (jewel) {
+      const jw = h('div', { class: 'pf-jw' });
+      jw.innerHTML = `<div class="pf-jw-h">JEWELLERY DETAIL</div><div class="pf-bottom">${
+        JW_COLS.map((c) => `<div class="pf-col">${c.map((f) => cell(f)).join('')}</div>`).join('')}</div>`;
+      p.body.append(jw);
+    }
 
     const inputs = [...p.body.querySelectorAll('input:not([readonly]), select')] as (HTMLInputElement | HTMLSelectElement)[];
     const byKey = (k: string) => p.body.querySelector(`[data-k="${k}"]`) as HTMLInputElement | HTMLSelectElement;

@@ -1784,3 +1784,33 @@ table.marg-grid tr.sel td input::placeholder { color: rgba(255, 255, 255, .78); 
 tr.sel .batch-new-cell { color: #ffff00 !important; }
 tr.row-new-batch { background: #eefbf2 !important; border-bottom: 1px dashed #7bc299 !important; }
 tr.row-new-batch.sel { background: #005a2e !important; color: #ffffff !important; }
+
+/* ---- JEWELLERY business: DESCRIPTION / STONE DETAIL windows (sale & purchase line) ---- */
+.jw-pop .marg-body, .jw-desc { background: #e4f0fb; }
+.jw-desc { font-family: "Courier New", Consolas, monospace; font-size: 17px; padding: 8px 18px 12px; color: var(--marg-lbl); }
+.jw-desc .jw-grid { display: flex; flex-direction: column; gap: 1px; }
+.jw-desc .jw-row { display: grid; grid-template-columns: 175px 72px 120px 30px 120px 72px 120px; align-items: center; column-gap: 6px; }
+.jw-desc .jw-row > div:nth-child(3) { grid-column: 3; }
+.jw-desc .jw-row > div:nth-child(4) { grid-column: 5; }
+.jw-desc .jw-row > div:nth-child(5) { grid-column: 6; }
+.jw-desc .jw-row > div:nth-child(6) { grid-column: 7; }
+.jw-desc .jw-row.wide { grid-template-columns: 175px 72px 1fr; }
+.jw-desc .jw-row.wide > div:nth-child(3) { grid-column: 3; }
+.jw-desc .lbl { color: #1b2f4a; white-space: nowrap; }
+.jw-desc .lbl::after { content: " :"; }
+.jw-desc .lbl:empty::after { content: ""; }
+.jw-desc .lbl sup { font-size: 10px; color: var(--marg-red); }
+.jw-desc .lbl.red { color: var(--marg-red); font-weight: bold; }
+.jw-desc input { font: inherit; width: 100%; border: none; background: transparent; color: var(--marg-lbl); text-align: right; padding: 1px 4px; }
+.jw-desc input.txt { text-align: left; text-transform: uppercase; }
+.jw-desc input[readonly] { color: var(--marg-red); font-weight: bold; }
+.jw-desc input:focus, .jw-desc select:focus { background: var(--marg-sel); color: #fff; outline: none; }
+.jw-desc select { font: 12px Arial, sans-serif; border: 1px solid #9fb4c8; background: #fff; padding: 0 2px; max-width: 70px; }
+.jw-desc .jw-sub { margin: 10px -18px 6px; background: var(--marg-bar); color: #fff; font-weight: bold; padding: 3px 12px; font-family: Arial, sans-serif; font-size: 13px; }
+.jw-stone { background: #e4f0fb; min-height: 300px; display: flex; flex-direction: column; }
+.jw-stone table { flex: 0 0 auto; }
+.jw-stone-tot { margin-top: auto; border-top: 1px solid #8aa; padding: 6px 12px; font-size: 16px; color: var(--marg-lbl); font-family: "Courier New", Consolas, monospace; }
+table.jw-grid-bill td, table.jw-grid-bill th { font-size: 16px; }
+/* JEWELLERY business: the item master's JEWELLERY DETAIL block */
+.marg-prod .pf-jw { border-top: 1px solid #6c7a86; }
+.marg-prod .pf-jw-h { background: var(--marg-bar); color: #fff; font-weight: bold; font-size: 13px; padding: 3px 12px; font-family: Arial, sans-serif; }

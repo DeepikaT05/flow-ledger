@@ -264,6 +264,7 @@ model BillItem {
   tax      Float
   amount   Float
   mrp      Float   @default(0)
+  jw       String? // JEWELLERY: weights, purity, making, stone detail (JSON)
 
   bill     Bill    @relation(fields: [billId], references: [id], onDelete: Cascade)
   item     Item    @relation(fields: [itemId], references: [id])

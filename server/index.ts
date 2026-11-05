@@ -291,6 +291,24 @@ app.get('/api/items', h(() => db.prepare(`${STOCK_SQL} ORDER BY i.name`).all()))
 // ITEM REGISTER (Current Stock → Enter): opening, every bill in the period with RECEIVE /
 // ISSUE / running BALANCE, and the Opening / Sales-S/R / Purchase-P/R / Other / Balance box.
 // Cost-based values sit under "value" so roles without the cost power get them masked.
+// JEWELLERY: stock by weight — SET / DIAMOND_WT / STONE_WT / GROSS_WT / PURE_WT per item (in − out, from the lines' DESCRIPTION).
+app.get('/api/items/jewel-stock', h(() => {
+  const sum = (types: string) => `SELECT bi.item_id, SUM(bi.qty) AS sets,
+      SUM(COALESCE(json_extract(bi.jw,'$.diamondWt'),0)) AS dmnd, SUM(COALESCE(json_extract(bi.jw,'$.stoneWt'),0)) AS stone,
+      SUM(COALESCE(json_extract(bi.jw,'$.gross'),0)) AS gross, SUM(COALESCE(json_extract(bi.jw,'$.pure'),0)) AS pure
+    FROM bill_items bi JOIN bills b ON b.id=bi.bill_id WHERE bi.jw IS NOT NULL AND b.type IN (${types}) GROUP BY bi.item_id`;
+  const map = new Map<number, Record<string, number>>();
+  const add = (rows: Record<string, number>[], sign: number) => {
+    for (const r of rows) {
+      const m = map.get(r.item_id) ?? { item_id: r.item_id, sets: 0, dmnd: 0, stone: 0, gross: 0, pure: 0 };
+      for (const k of ['sets', 'dmnd', 'stone', 'gross', 'pure']) m[k] = r2(m[k] + sign * num(r[k]));
+      map.set(r.item_id, m);
+    }
+  };
+  add(db.prepare(sum(IN_TYPES)).all() as Record<string, number>[], 1);
+  add(db.prepare(sum(OUT_TYPES)).all() as Record<string, number>[], -1);
+  return [...map.values()];
+}));
 app.get('/api/items/:id/stock-register', h((req) => {
   const { from = '0000-01-01', to = '9999-12-31' } = req.query as Record<string, string>;
   const item = db.prepare(`${STOCK_SQL} WHERE i.id=?`).get(req.params.id) as Row & { opening_stock: number; purchase_rate: number };
@@ -490,7 +508,12 @@ app.get('/api/bills/:id', h((req) => {
   return { ...bill, lines, payments, received };
 }));
 
-interface BillLineIn { item_id: number; batch_id?: number; batch?: string; expiry?: string; qty: number; free?: number; rate: number; disc_pct?: number; gst_rate?: number; mrp?: number }
+interface BillLineIn { item_id: number; batch_id?: number; batch?: string; expiry?: string; qty: number; free?: number; rate: number; disc_pct?: number; gst_rate?: number; mrp?: number; jw?: unknown }
+/** JEWELLERY line: the DESCRIPTION window's figures; its `amount` is the line value (metal + making + stone …). */
+function jwOf(v: unknown): Record<string, unknown> | null {
+  if (!v) return null;
+  try { const o = typeof v === 'string' ? JSON.parse(v) : v; return o && typeof o === 'object' ? o as Record<string, unknown> : null; } catch { return null; }
+}
 interface PaymentIn { ledger_id: number; amount: number; remark?: string; detail?: string }
 interface BillIn {
   type: string; no?: string; date: string; party_id: number; mode?: string; narration?: string; lines: BillLineIn[];
@@ -501,17 +524,18 @@ interface BillIn {
 }
 
 function computeBill(b: BillIn) {
-  const lines = b.lines.filter((l) => l.item_id && num(l.qty) + num(l.free) > 0).map((l) => {
+  const lines = b.lines.filter((l) => l.item_id && (num(l.qty) + num(l.free) > 0 || num(jwOf(l.jw)?.gross) > 0)).map((l) => {
     let gst = num(l.gst_rate);
     if (!gst) {
       const it = db.prepare('SELECT gst_rate FROM items WHERE id=?').get(l.item_id) as { gst_rate: number } | undefined;
       if (it?.gst_rate) gst = num(it.gst_rate);
     }
     const qty = num(l.qty), rate = num(l.rate), disc = num(l.disc_pct);
-    const gross = r2(qty * rate);
+    const jw = jwOf(l.jw);
+    const gross = jw ? r2(num(jw.amount)) : r2(qty * rate);
     const taxable = r2(gross * (1 - disc / 100));
     const tax = r2(taxable * gst / 100);
-    return { ...l, qty, free: num(l.free), rate, disc_pct: disc, gst_rate: gst, gross, taxable, tax, amount: r2(taxable + tax) };
+    return { ...l, jw: jw ? JSON.stringify(jw) : null, qty, free: num(l.free), rate, disc_pct: disc, gst_rate: gst, gross, taxable, tax, amount: r2(taxable + tax) };
   });
   if (!lines.length) throw new Error('Bill has no items');
   const gross = r2(lines.reduce((s, l) => s + l.gross, 0));
@@ -612,8 +636,8 @@ function saveBill(body: BillIn, id?: number) {
         mr_id,sale_type,walkin_name,walkin_gstin,walkin_mobile,walkin_address,ref_no,ref_date,reason,against_bill_id,calc_type)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(...args).lastInsertRowid);
     }
-    const insL = db.prepare(`INSERT INTO bill_items (bill_id,item_id,batch_id,batch,expiry,qty,free,rate,disc_pct,gst_rate,mrp,taxable,tax,amount)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+    const insL = db.prepare(`INSERT INTO bill_items (bill_id,item_id,batch_id,batch,expiry,qty,free,rate,disc_pct,gst_rate,mrp,taxable,tax,amount,jw)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
     // Purchase / purchase challan / sale return: a batch typed on the bill becomes a batch of the item
     // (the same batch + M.R.P. is reused), so it shows in the BATCH window at sale time.
     if (IN_TYPES.includes(`'${body.type}'`)) {
@@ -660,7 +684,7 @@ function saveBill(body: BillIn, id?: number) {
       }
     }
     for (const l of c.lines) {
-      insL.run(billId, l.item_id, l.batch_id ?? null, l.batch ?? '', l.expiry ?? '', l.qty, l.free, l.rate, l.disc_pct, l.gst_rate, num(l.mrp), l.taxable, l.tax, l.amount);
+      insL.run(billId, l.item_id, l.batch_id ?? null, l.batch ?? '', l.expiry ?? '', l.qty, l.free, l.rate, l.disc_pct, l.gst_rate, num(l.mrp), l.taxable, l.tax, l.amount, l.jw);
     }
     const insP = db.prepare('INSERT INTO bill_payments (bill_id,ledger_id,amount,remark,detail) VALUES (?,?,?,?,?)');
     for (const p of body.payments ?? []) {

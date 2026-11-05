@@ -6,6 +6,7 @@ import { margBar, margPop, popList, margConfirm, margNumber, margAsk } from './m
 import { billDetails, pickBillItems, pickSold, saveInBox, type ReturnInfo } from './salereturn.ts';
 import { ledgerForm, itemForm, type Ledger, type Item } from './masters.ts';
 import { canAction, seeCost, canBackdate, session, NO_DATE } from './session.ts';
+import { isJewellery, pickJewelItem, jewelDetail, type JwLine } from './jewellery.ts';
 
 /** Run `fn` only if the role may do `action`; otherwise say so. */
 function allowed(action: string, what: string): boolean {
@@ -37,6 +38,8 @@ interface Row {
   item_id?: number; name?: string; pack?: string; batch_id?: number; batch?: string; expiry?: string;
   qty: number; free: number; rate: number; disc: number; gst: number; mrp?: number; cost?: number;
   stock?: number; unit?: string;
+  /** JEWELLERY company: the line's DESCRIPTION window. */
+  jw?: JwLine;
 }
 interface Payment { ledger_id: number; ledger: string; amount: number; remark: string; detail: string }
 
@@ -77,7 +80,7 @@ function parseExpiry(e: string): string | null {
   return null;
 }
 function calc(r: Row) {
-  const gross = r2(r.qty * r.rate);
+  const gross = r.jw ? r2(r.jw.amount) : r2(r.qty * r.rate);
   const taxable = r2(gross * (1 - r.disc / 100));
   const tax = r2(taxable * r.gst / 100);
   return { gross, taxable, tax, amount: r2(taxable + tax) };
@@ -91,6 +94,17 @@ const GRID_COLS: { key: keyof Row; label: string; w: string; num?: boolean; edit
   { key: 'qty', label: 'QTY', w: '9%', num: true, edit: true },
   { key: 'rate', label: 'RATE', w: '10%', num: true, edit: true },
   { key: 'disc', label: 'DIS1%', w: '8%', num: true, edit: true },
+];
+/** JEWELLERY business type: the grid of a MARG jewellery company's sale / purchase. */
+const JW_COLS: { label: string; w: string; get: (j: JwLine) => string; num?: boolean }[] = [
+  { label: 'DESCRIPTION', w: '25%', get: () => '' },
+  { label: 'SET', w: '6%', get: (j) => (j.sets ? String(j.sets) : ''), num: true },
+  { label: 'DMND', w: '8%', get: (j) => (j.diamondWt ? j.diamondWt.toFixed(3) : ''), num: true },
+  { label: 'STONE', w: '8%', get: (j) => (j.stone ? j.stone.toFixed(3) : ''), num: true },
+  { label: 'GROSS', w: '9%', get: (j) => j.gross.toFixed(3), num: true },
+  { label: 'PURE%', w: '8%', get: (j) => (j.purityUnit === 'K' ? `${j.purity}K` : j.purity.toFixed(2)), num: true },
+  { label: 'PURE', w: '9%', get: (j) => j.pure.toFixed(3), num: true },
+  { label: 'RATE', w: '9%', get: (j) => f2(j.rate), num: true },
 ];
 const TOOLS = ['SALE', 'PURC', 'SC', 'PC', 'SR', 'PR', 'O/S', 'CASH', 'CHG', 'VOU', 'SAVE'];
 const TOOL_TYPE: Record<string, string> = { SALE: 'SALE', PURC: 'PURCHASE', SC: 'SALE_CHALLAN', PC: 'PURCHASE_CHALLAN', SR: 'SALE_RETURN', PR: 'PURCHASE_RETURN' };
@@ -375,6 +389,8 @@ async function chooseBatch(item: Item, style: string): Promise<Batch | null> {
 // ------------------------------------------------------------------ the screen
 export async function saleEntry(type = 'SALE', billId?: number) {
   const [company, modes] = await Promise.all([api<any>('/company'), api<Ledger[]>('/payment-modes')]);
+  // JEWELLERY business: weight-based grid + DESCRIPTION window instead of batch / expiry / qty.
+  const jewel = isJewellery(company.business_type);
   let rows: Row[] = [blank()];
   let party: Ledger | null = null;
   let walkin: Walkin = { name: '', gstin: '', mobile: '', address: '' };
@@ -408,8 +424,8 @@ export async function saleEntry(type = 'SALE', billId?: number) {
         : '<label>Bill No.</label><div><input class="val" data-f="no" size="10"> <span style="color:var(--marg-lbl)">M.R.:</span> <input class="val" data-f="mr" readonly size="10"></div>'}
       <label>Type</label><input class="val" data-f="type" readonly>
     </div>
-    <div class="marg-rows"><table class="marg-grid"><thead><tr>
-      ${GRID_COLS.map((c) => `<th class="${c.num ? 'n' : ''}${c.center ? ' c' : ''}" style="width:${c.w};${c.center ? 'text-align:center;' : ''}">${c.key === 'rate' && isPurchase(type) ? 'P.RATE' : c.label}</th>`).join('')}
+    <div class="marg-rows"><table class="marg-grid${jewel ? ' jw-grid-bill' : ''}"><thead><tr>
+      ${jewel ? JW_COLS.map((c) => `<th class="${c.num ? 'n' : ''}" style="width:${c.w}">${c.label}</th>`).join('') : GRID_COLS.map((c) => `<th class="${c.num ? 'n' : ''}${c.center ? ' c' : ''}" style="width:${c.w};${c.center ? 'text-align:center;' : ''}">${c.key === 'rate' && isPurchase(type) ? 'P.RATE' : c.label}</th>`).join('')}
       <th class="n">AMOUNT</th></tr></thead><tbody></tbody></table></div>
     <div class="marg-foot">
       <div class="info1"></div><div class="info2"></div><div class="info3"></div>
@@ -434,6 +450,14 @@ export async function saleEntry(type = 'SALE', billId?: number) {
   // ---------------------------------------------------------------- painting
   function renderRows() {
     const filler = Math.max(0, 12 - rows.length);
+    if (jewel) {
+      tbody.innerHTML = rows.map((r, i) => `<tr data-r="${i}"><td><input data-r="${i}" data-c="name" value="${esc(r.name ?? '')}" autocomplete="off"></td>
+          ${JW_COLS.slice(1).map((c) => `<td class="${c.num ? 'n' : ''}">${r.jw ? esc(c.get(r.jw)) : ''}</td>`).join('')}
+          <td class="n">${r.item_id ? f2(calc(r).amount) : ''}</td></tr>`).join('')
+        + Array.from({ length: filler }, () => `<tr>${JW_COLS.map(() => '<td></td>').join('')}<td></td></tr>`).join('');
+      renderTotals();
+      return;
+    }
     const cell = (r: Row, i: number, c: typeof GRID_COLS[number]) => {
       const v = r[c.key];
       if (c.key === 'name') {
@@ -471,12 +495,45 @@ export async function saleEntry(type = 'SALE', billId?: number) {
     const subtotal = r2(taxable + tax - effectiveCd + freight + otherCharges);
     const roundOff = manualRoundOff != null ? manualRoundOff : r2(Math.round(subtotal) - subtotal);
     const net = r2(subtotal + roundOff);
-    const mrpValue = r2(live.reduce((s, r) => s + r.qty * (r.mrp ?? 0), 0));
+    const mrpValue = r2(live.reduce((s, r) => s + (r.jw ? r.jw.mrp * (r.jw.sets || 1) : r.qty * (r.mrp ?? 0)), 0));
     return { live, gross, taxable, tax, cdPct, cdAmt: effectiveCd, freight, otherCharges, roundOff, net, mrpValue };
   }
   function renderTotals() {
     const { live, gross, taxable, tax, net, mrpValue, cdPct: cdp, cdAmt: cda, freight: fr, otherCharges: ot, roundOff: ro } = totals();
     const cur = rows[curRow];
+    if (jewel) {
+      const sum = (f: (j: JwLine) => number) => r2(live.reduce((s, r) => s + (r.jw ? f(r.jw) : 0), 0));
+      const w3 = (f: (j: JwLine) => number) => live.reduce((s, r) => s + (r.jw ? f(r.jw) : 0), 0).toFixed(3);
+      screen.querySelector('.info1')!.innerHTML = `
+        <div><span class="k">Store</span>: <b>MAIN STORE</b></div>
+        <div><span class="k">Ref.</span>: <b>${esc(cur?.name ?? '')}</b> &nbsp; <span class="k">BOX</span>:</div>
+        <div><span class="k">Chall.</span>: &nbsp; Date :</div>
+        <div><span class="k">Gr/Net</span>: <b>${w3((j) => j.gross)}</b> / <b>${w3((j) => j.net)}</b></div>`;
+      screen.querySelector('.info2')!.innerHTML = `
+        <div class="kv"><span class="k">MRP Value :</span><b>${f2(mrpValue)}</b></div>
+        <div class="kv"><span class="k">Amount :</span><b>${f2(sum((j) => j.metalAmt))}</b></div>
+        <div class="kv"><span class="k">Making :</span><b>${f2(sum((j) => j.makingAmt))}</b></div>
+        <div class="kv"><span class="k">Extra Good :</span><b>${f2(sum((j) => j.extra))}</b></div>
+        <div class="kv"><span class="k">Balance :</span><b>${party ? f2(Math.abs(party.balance + (PARTY_DR.has(type) ? net : -net))) : '0.00'}</b></div>
+        <div class="kv"><span class="k">Gold :</span><b>${w3((j) => j.pure)}</b></div>`;
+      screen.querySelector('.info3')!.innerHTML = `
+        <div class="kv"><span class="k">VALUE OF GOODS</span><b>${f2(taxable)}</b></div>
+        <div class="kv"><span class="k">DISCOUNT</span><b>${f2(gross - taxable)}</b></div>
+        <div class="kv"><span class="k">GST%</span><b>${f2(tax)}</b></div>
+        <div class="kv"><span class="k">${isPurchase(type) ? 'CASH PURCHASE' : 'PURCHASE TAX CAR'}</span><b>0.00</b></div>
+        <div class="kv clickable" data-fld="cd" title="Click or Press F8 to edit Cash Discount"><span class="k">CASH DISCOUNT ${cdp ? `(${cdp}%)` : ''}</span><b>${f2(cda)}</b></div>
+        <div class="kv clickable" data-fld="round" title="Click to edit Round Off"><span class="k">ROUND OFF</span><b>${f2(ro)}</b></div>`;
+      void fr; void ot;
+      screen.querySelectorAll('.info3 .clickable').forEach((el) => el.addEventListener('click', () => billAdjustmentsWindow((el as HTMLElement).dataset.fld as any)));
+      screen.querySelector('.cal')!.textContent = `Cal:2,${live.length + 1},P`;
+      screen.querySelector('.inv')!.textContent = f2(net);
+      tbody.querySelectorAll('tr').forEach((tr, i) => {
+        const r = rows[i];
+        const td = tr.lastElementChild as HTMLElement | null;
+        if (td && r) td.textContent = r.item_id ? f2(calc(r).amount) : '';
+      });
+      return;
+    }
     screen.querySelector('.info1')!.innerHTML = `
       <div><span class="k">Item</span>: <b>${esc(cur?.name ?? '')}</b></div>
       <div><span class="k">Batch</span>: <b>${esc(cur?.batch ?? '')}</b></div>
@@ -575,6 +632,7 @@ export async function saleEntry(type = 'SALE', billId?: number) {
           const loaded: Row[] = lines.map((l: any) => ({
             item_id: l.item_id, name: String(l.item_name).toUpperCase(), pack: (l.pack ?? '').toUpperCase(), batch_id: l.batch_id ?? undefined,
             batch: l.batch ?? '', expiry: l.expiry ?? '', qty: l.qty, free: 0, rate: l.rate, disc: l.disc_pct ?? 0, gst: l.gst_rate ?? 0, mrp: l.mrp, unit: l.unit,
+            ...(l.jw ? { jw: typeof l.jw === 'string' ? JSON.parse(l.jw) : l.jw } : {}),
           }));
           const first = rows.filter((x) => x.item_id).length;
           rows = [...rows.filter((x) => x.item_id), ...loaded, blank()];
@@ -594,6 +652,19 @@ export async function saleEntry(type = 'SALE', billId?: number) {
     if (busy) return;
     busy = true;
     try {
+      if (jewel) {
+        const it = await pickJewelItem(typed);
+        if (!it) { focusCell(rowIdx, 'name'); return; }
+        const jw = await jewelDetail(it, isPurchase(type));
+        if (!jw) { focusCell(rowIdx, 'name'); return; }
+        rows[rowIdx] = {
+          item_id: it.id, name: it.name.toUpperCase(), pack: (it.pack ?? '').toUpperCase(), qty: jw.sets, free: 0,
+          rate: jw.rate, disc: 0, gst: it.gst_rate, mrp: jw.mrp, cost: it.purchase_rate, unit: it.unit, jw,
+        };
+        if (rowIdx === rows.length - 1) rows.push(blank());
+        dirty = true; renderRows(); focusCell(rowIdx + 1, 'name');
+        return;
+      }
       if (isRet && party && retInfo?.batchSel === 'Select From Sold') {
         const s = await pickSold(party.id, typed);
         if (!s) { focusCell(rowIdx, 'name'); return; }
@@ -678,6 +749,7 @@ export async function saleEntry(type = 'SALE', billId?: number) {
       lines: t.live.map((r) => ({
         item_id: r.item_id, batch_id: r.batch_id, batch: r.batch, expiry: r.expiry,
         qty: r.qty, free: r.free, rate: r.rate, disc_pct: r.disc, gst_rate: r.gst, mrp: r.mrp,
+        ...(r.jw ? { jw: r.jw } : {}),
       })),
     };
   }
@@ -1132,6 +1204,15 @@ export async function saleEntry(type = 'SALE', billId?: number) {
           if (rows.filter((r) => r.item_id).length) finishBill(); else productStep(ri, '');
           return true;
         }
+        if (k === 'Enter' && rows[ri].item_id && jewel) {
+          const r = rows[ri];
+          api<Item>(`/items/${r.item_id}`).then(async (it) => {
+            const jw = await jewelDetail(it, isPurchase(type), r.jw);
+            if (jw) { r.jw = jw; r.qty = jw.sets; r.rate = jw.rate; r.mrp = jw.mrp; dirty = true; renderRows(); }
+            focusCell(jw ? Math.min(ri + 1, rows.length - 1) : ri, 'name');
+          }).catch((err) => toast((err as Error).message, true));
+          return true;
+        }
         if (k === 'Enter' && rows[ri].item_id) {
           if (isPurchase(type)) {
             if (!rows[ri].batch) focusCell(ri, 'batch');
@@ -1234,6 +1315,7 @@ export async function saleEntry(type = 'SALE', billId?: number) {
     rows = b.lines.map((l: any) => ({
       item_id: l.item_id, name: String(l.item_name).toUpperCase(), pack: (l.pack ?? '').toUpperCase(), batch_id: l.batch_id,
       batch: l.batch, expiry: l.expiry, qty: l.qty, free: l.free, rate: l.rate, disc: l.disc_pct, gst: l.gst_rate, mrp: l.mrp, unit: l.unit,
+      ...(l.jw ? { jw: JSON.parse(l.jw) as JwLine } : {}),
     }));
     rows.push(blank());
     dirty = false;

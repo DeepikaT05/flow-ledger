@@ -157,6 +157,8 @@ const COMPANY_ALTERS = [
   'ALTER TABLE bills ADD COLUMN cd_amt REAL NOT NULL DEFAULT 0',
   'ALTER TABLE bills ADD COLUMN freight REAL NOT NULL DEFAULT 0',
   'ALTER TABLE bills ADD COLUMN other_charges REAL NOT NULL DEFAULT 0',
+  // JEWELLERY business: the line's DESCRIPTION window (gross / stone / diamond / purity / making …), as JSON.
+  'ALTER TABLE bill_items ADD COLUMN jw TEXT',
 ];
 
 export const SYS = {

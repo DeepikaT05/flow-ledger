@@ -44,6 +44,7 @@ export async function billList(type: string) {
   };
 }
 import { inWords } from './receipt.ts';
+import { isJewellery, type JwLine } from './jewellery.ts';
 
 // ------------------------------------------------------------------ print
 async function billHtml(id: number) {
@@ -145,6 +146,65 @@ async function billHtml(id: number) {
   const minRows = 8;
   const fillerCount = Math.max(0, minRows - b.lines.length);
 
+  // JEWELLERY company: the item table is by weight (gross / stone / net / purity / pure), with
+  // the gold rate, making and stone value — as a MARG jewellery invoice — and no batch / expiry.
+  const jwOf = (l: any): JwLine | null => { try { return l.jw ? JSON.parse(l.jw) : null; } catch { return null; } };
+  const jewel = isJewellery(c.business_type) && b.lines.some((l: any) => jwOf(l));
+  const w3 = (n: unknown) => Number(n || 0).toFixed(3);
+  const jwSum = (f: (j: JwLine) => number) => b.lines.reduce((t: number, l: any) => { const j = jwOf(l); return t + (j ? f(j) : 0); }, 0);
+  const jwHead = `
+            <tr>
+              <th style="width:20px">SN.</th>
+              <th style="width:22%;text-align:left">DESCRIPTION</th>
+              <th style="width:6%">HSN</th>
+              <th style="width:4%">PCS</th>
+              <th style="width:7%;text-align:right">GROSS WT</th>
+              <th style="width:7%;text-align:right">STONE WT</th>
+              <th style="width:7%;text-align:right">NET WT</th>
+              <th style="width:6%;text-align:right">PURITY</th>
+              <th style="width:7%;text-align:right">PURE WT</th>
+              <th style="width:7%;text-align:right">RATE</th>
+              <th style="width:7%;text-align:right">MAKING</th>
+              <th style="width:7%;text-align:right">STONE AMT</th>
+              <th style="width:9%;text-align:right">AMOUNT</th>
+            </tr>`;
+  const jwBody = b.lines.map((l: any, i: number) => {
+    const j = jwOf(l);
+    if (!j) return `<tr><td style="text-align:center">${i + 1}.</td><td style="text-align:left;font-weight:bold" colspan="11">${esc(String(l.item_name).toUpperCase())}</td><td style="text-align:right;font-weight:bold">${Number(l.taxable).toFixed(2)}</td></tr>`;
+    const extra = [j.description, j.diamondAmt ? `DIAMOND ${w3(j.diamondWt)} CT ${Number(j.diamondAmt).toFixed(2)}` : '', j.extra ? `EXTRA ${Number(j.extra).toFixed(2)}` : '']
+      .filter(Boolean).map((x) => esc(String(x))).join(' · ');
+    return `
+              <tr>
+                <td style="text-align:center">${i + 1}.</td>
+                <td style="text-align:left;font-weight:bold">${esc(String(l.item_name).toUpperCase())}${extra ? `<div style="font-weight:normal;font-size:10px">${extra}</div>` : ''}</td>
+                <td style="text-align:center">${esc(l.hsn || '')}</td>
+                <td style="text-align:center;font-weight:bold">${j.sets}</td>
+                <td style="text-align:right">${w3(j.gross)}</td>
+                <td style="text-align:right">${j.stone ? `${w3(j.stone)}${j.stoneUnit === 'Crt' ? ' ct' : ''}` : ''}</td>
+                <td style="text-align:right">${w3(j.net)}</td>
+                <td style="text-align:right">${j.purityUnit === 'K' ? `${j.purity}K` : Number(j.purity).toFixed(2)}</td>
+                <td style="text-align:right;font-weight:bold">${w3(j.pure)}</td>
+                <td style="text-align:right">${Number(j.rate).toFixed(2)}</td>
+                <td style="text-align:right">${Number(j.makingAmt).toFixed(2)}</td>
+                <td style="text-align:right">${j.stoneAmt ? Number(j.stoneAmt).toFixed(2) : ''}</td>
+                <td style="text-align:right;font-weight:bold">${Number(l.taxable).toFixed(2)}</td>
+              </tr>`;
+  }).join('') + Array.from({ length: fillerCount }, () => `<tr class="blank-row"><td>&nbsp;</td>${'<td></td>'.repeat(12)}</tr>`).join('');
+  const jwFoot = `
+            <tr class="inv-tot-row">
+              <td colspan="3" class="tot-lbl">TOTAL</td>
+              <td style="text-align:center">${jwSum((j) => j.sets)}</td>
+              <td style="text-align:right">${w3(jwSum((j) => j.gross))}</td>
+              <td></td>
+              <td style="text-align:right">${w3(jwSum((j) => j.net))}</td>
+              <td></td>
+              <td style="text-align:right">${w3(jwSum((j) => j.pure))}</td>
+              <td></td>
+              <td style="text-align:right">${jwSum((j) => j.makingAmt).toFixed(2)}</td>
+              <td style="text-align:right">${jwSum((j) => j.stoneAmt).toFixed(2)}</td>
+              <td class="tot-val">${Number(b.net).toFixed(2)}</td>
+            </tr>`;
+
   const html = `
     <div class="inv-page">
       <!-- HEADER -->
@@ -179,7 +239,7 @@ async function billHtml(id: number) {
       <!-- ITEMS GRID -->
       <div class="inv-grid-wrap">
         <table class="inv-tbl">
-          <thead>
+          <thead>${jewel ? jwHead : `
             <tr>
               <th style="width:20px">SN.</th>
               <th style="width:33%;text-align:left">PRODUCT NAME &amp; PACKING</th>
@@ -192,10 +252,10 @@ async function billHtml(id: number) {
               <th style="width:6%;text-align:right">SGST</th>
               <th style="width:6%;text-align:right">CGST</th>
               <th style="width:11%;text-align:right">AMOUNT</th>
-            </tr>
+            </tr>`}
           </thead>
           <tbody>
-            ${b.lines.map((l: any, i: number) => `
+            ${jewel ? jwBody : `${b.lines.map((l: any, i: number) => `
               <tr>
                 <td style="text-align:center">${i + 1}.</td>
                 <td style="text-align:left;font-weight:bold">${esc(String(l.item_name).toUpperCase())} ${esc((l.pack ?? '').toUpperCase())}</td>
@@ -212,18 +272,18 @@ async function billHtml(id: number) {
             ${Array.from({ length: fillerCount }, () => `
               <tr class="blank-row">
                 <td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
-              </tr>`).join('')}
+              </tr>`).join('')}`}
           </tbody>
-          <tfoot>
+          <tfoot>${jewel ? jwFoot : `
             <tr class="inv-tot-row">
               <td colspan="10" class="tot-lbl">TOTAL BALANCE</td>
               <td class="tot-val">${Number(b.net).toFixed(2)}</td>
-            </tr>
+            </tr>`}
           </tfoot>
         </table>
 
         <!-- Healthcare QR Overlay inside blank area if lines <= 3 -->
-        ${b.lines.length <= 3 ? `
+        ${b.lines.length <= 3 && !jewel ? `
         <div class="inv-qr-overlay">
           <div class="qr-vert"><span>Body Checkup</span> <span>Health Offers</span></div>
           <div class="qr-card">
@@ -298,6 +358,7 @@ async function billHtml(id: number) {
         <div class="b-box box1">
           <div class="tc-title"><u>Terms &amp; Conditions</u></div>
           <div>Goods once sold will not be taken back or exchanged.</div>
+          ${jewel ? '<div>Weights in grams. Stone / diamond weight is deducted from gross weight.</div>' : ''}
           <div>Bills not paid due date will attract 24% interest.</div>
         </div>
         <div class="b-box box2">
@@ -314,7 +375,7 @@ async function billHtml(id: number) {
         </div>
       </div>
     </div>
-    <div class="inv-footer-note">Get well soon. Scan the Healthcare QR Code for complete health services, insurance, and government benefits.</div>`;
+    ${jewel ? '' : `<div class="inv-footer-note">Get well soon. Scan the Healthcare QR Code for complete health services, insurance, and government benefits.</div>`}`;
 
   return { b, html };
 }
