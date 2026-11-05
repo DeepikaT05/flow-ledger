@@ -65,7 +65,21 @@ export async function boot(): Promise<User> {
     u = await login();
   }
   if (!open) {
-    await chooseCompany(true);
+    const comps = await api<Company[]>('/companies').catch(() => []);
+    if (comps.length === 1) {
+      const c = comps[0];
+      await api('/session/company', { method: 'POST', body: { id: c.id } });
+      const y = await selectYear();
+      if (y) {
+        await api('/session/year', { method: 'POST', body: { id: y.id } });
+        open = { company: c, yearId: y.id };
+        setInfo(c);
+      } else {
+        await chooseCompany(true);
+      }
+    } else {
+      await chooseCompany(true);
+    }
   }
   document.body.classList.remove('boot');
   hint(MAIN_HINT);
@@ -75,6 +89,11 @@ export async function boot(): Promise<User> {
 
 /** F1 — back to LIST OF COMPANIES from the main screen. Resolves true if another company/year was opened. */
 export async function changeCompany(): Promise<boolean> {
+  const comps = await api<Company[]>('/companies').catch(() => []);
+  if (comps.length <= 1) {
+    toast(comps.length === 1 ? `You are restricted to ${comps[0].name} only` : 'No company available', true);
+    return false;
+  }
   booting = true;
   try { return await chooseCompany(false); } finally {
     booting = false;

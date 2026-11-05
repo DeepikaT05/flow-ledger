@@ -460,15 +460,85 @@ async function usersView(root: HTMLElement) {
       )
     );
 
-    // Company access: none ticked = every company. The user can switch between the ticked ones (web F1 and APK).
+    // Company Access: ALL | SINGLE | MULTI
+    const initialCoMode: 'ALL' | 'SINGLE' | 'MULTI' =
+      !userToEdit?.company_ids || userToEdit.company_ids.length === 0
+        ? 'ALL'
+        : userToEdit.company_ids.length === 1
+        ? 'SINGLE'
+        : 'MULTI';
+
+    const coModeSelect = h('select', { id: 'u-co-mode' },
+      h('option', { value: 'ALL', selected: initialCoMode === 'ALL' }, 'All Companies (Full Access)'),
+      h('option', { value: 'SINGLE', selected: initialCoMode === 'SINGLE' }, 'Single Company Only (Locked to 1 company)'),
+      h('option', { value: 'MULTI', selected: initialCoMode === 'MULTI' }, 'Multiple Companies (Can switch between selected)')
+    ) as HTMLSelectElement;
+
+    // Single Company dropdown
+    const singleCoSelect = h('select', { id: 'u-single-co' },
+      h('option', { value: '' }, '-- Select Company --'),
+      companies.map((c) => h('option', {
+        value: String(c.id),
+        selected: userToEdit?.company_ids?.length === 1 && userToEdit.company_ids[0] === c.id
+      }, c.name))
+    ) as HTMLSelectElement;
+
+    const singleBox = h('div', { style: 'margin-top: 8px;' },
+      h('label', { class: 'field', for: 'u-single-co', style: 'margin: 0;' },
+        h('span', { class: 'field-label' }, 'Allowed Company', h('b', { class: 'req' }, ' *')),
+        singleCoSelect,
+        h('small', {}, 'User is locked to this company only on Web and APK (cannot switch).')
+      )
+    );
+
+    // Multiple Companies checkboxes
     const allowed = new Set(userToEdit?.company_ids ?? []);
-    const coChecks = companies.map((c) => ({ id: c.id, el: h('input', { type: 'checkbox', checked: allowed.has(c.id) }) as HTMLInputElement, name: c.name }));
+    const coChecks = companies.map((c) => ({
+      id: c.id,
+      el: h('input', { type: 'checkbox', checked: allowed.has(c.id) }) as HTMLInputElement,
+      name: c.name
+    }));
+
+    const selectAllBtn = h('button', { type: 'button', class: 'btn sm', style: 'padding: 2px 8px; font-size: 11px;' }, 'Select All');
+    selectAllBtn.onclick = () => { coChecks.forEach((c) => { c.el.checked = true; }); };
+    const clearAllBtn = h('button', { type: 'button', class: 'btn sm', style: 'padding: 2px 8px; font-size: 11px;' }, 'Clear All');
+    clearAllBtn.onclick = () => { coChecks.forEach((c) => { c.el.checked = false; }); };
+
+    const multiBox = h('div', { style: 'margin-top: 8px;' },
+      h('div', { style: 'display: flex; gap: 8px; margin-bottom: 6px;' }, selectAllBtn, clearAllBtn),
+      h('div', { class: 'apk-grid' }, coChecks.map((c) => h('label', { class: 'apk-check' }, c.el, h('span', {}, c.name)))),
+      h('small', { class: 'muted', style: 'display: block; margin-top: 4px;' }, 'User can switch between these selected companies on Web (F1) and APK.')
+    );
+
+    const allNotice = h('div', { style: 'margin-top: 8px; color: #059669; font-size: 13px; font-weight: 500; padding: 4px 0;' },
+      'User can open and switch between all current and future companies.'
+    );
+
+    const coContainer = h('div', {});
+
+    const updateCoMode = () => {
+      coContainer.replaceChildren();
+      if (coModeSelect.value === 'ALL') {
+        coContainer.append(allNotice);
+      } else if (coModeSelect.value === 'SINGLE') {
+        coContainer.append(singleBox);
+      } else {
+        coContainer.append(multiBox);
+      }
+    };
+    coModeSelect.addEventListener('change', updateCoMode);
+    updateCoMode();
+
     const coBox = h('div', { class: 'apk-box' },
       h('div', { class: 'apk-title' },
-        h('span', {}, 'Company Access'),
-        h('small', { class: 'muted' }, 'None ticked = all companies')
+        h('span', {}, 'Company Permission & Access'),
+        h('small', { class: 'muted' }, 'Web & Mobile APK')
       ),
-      h('div', { class: 'apk-grid' }, coChecks.map((c) => h('label', { class: 'apk-check' }, c.el, h('span', {}, c.name))))
+      h('label', { class: 'field', for: 'u-co-mode', style: 'margin: 0;' },
+        h('span', { class: 'field-label' }, 'Permission Mode'),
+        coModeSelect
+      ),
+      coContainer
     );
 
     const updateApkVis = () => {
@@ -545,13 +615,34 @@ async function usersView(root: HTMLElement) {
       };
 
       saveBtn.disabled = true;
+      let finalCompanyIds: number[] = [];
+      if (coModeSelect.value === 'SINGLE') {
+        const selId = Number(singleCoSelect.value);
+        if (!selId) {
+          err.textContent = 'Please select 1 company for Single Company mode';
+          singleCoSelect.focus();
+          return;
+        }
+        finalCompanyIds = [selId];
+      } else if (coModeSelect.value === 'MULTI') {
+        finalCompanyIds = coChecks.filter((c) => c.el.checked).map((c) => c.id);
+        if (finalCompanyIds.length === 0) {
+          err.textContent = 'Please select at least 1 company for Multiple Companies mode';
+          return;
+        }
+      } else {
+        // ALL companies
+        finalCompanyIds = [];
+      }
+
+      saveBtn.disabled = true;
       try {
         if (isEdit) {
           await api(`/users/${userToEdit!.id}`, 'PUT', {
             role_id: Number(roleSelect.value),
             access_type: accessSelect.value,
             app_perms: appPermsData,
-            company_ids: coChecks.filter((c) => c.el.checked).map((c) => c.id),
+            company_ids: finalCompanyIds,
           });
           toast(`Permissions updated for ${userToEdit!.name}`);
         } else {
@@ -561,7 +652,7 @@ async function usersView(root: HTMLElement) {
             role_id: Number(roleSelect.value),
             access_type: accessSelect.value,
             app_perms: appPermsData,
-            company_ids: coChecks.filter((c) => c.el.checked).map((c) => c.id),
+            company_ids: finalCompanyIds,
           });
           toast(`User ${name} created successfully`);
         }
@@ -609,8 +700,16 @@ async function usersView(root: HTMLElement) {
       if (ap.delete) pills.push(h('span', { class: 'pill del-on' }, 'Del Allowed'));
       else pills.push(h('span', { class: 'pill del-off' }, 'No Delete'));
     }
-    if (!u.is_super && u.company_ids?.length) {
-      pills.push(h('span', { class: 'pill' }, `Companies: ${u.company_ids.map((id) => companies.find((c) => c.id === id)?.name ?? id).join(', ')}`));
+    if (!u.is_super) {
+      if (u.company_ids?.length === 1) {
+        const cName = companies.find((c) => c.id === u.company_ids![0])?.name ?? u.company_ids[0];
+        pills.push(h('span', { class: 'pill co-single' }, `Single Co: ${cName}`));
+      } else if (u.company_ids && u.company_ids.length > 1) {
+        const cNames = u.company_ids.map((id) => companies.find((c) => c.id === id)?.name ?? id).join(', ');
+        pills.push(h('span', { class: 'pill co-multi' }, `Multi Co (${u.company_ids.length}): ${cNames}`));
+      } else {
+        pills.push(h('span', { class: 'pill co-all' }, 'All Companies'));
+      }
     }
 
     return h('li', { class: 'user-row' },

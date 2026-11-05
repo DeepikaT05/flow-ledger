@@ -56,7 +56,7 @@ export const HomeScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
               {/* Only the companies SuperAdmin gave this user are listed (server filters /companies). */}
               {companies.length > 1 ? (
                 <TouchableOpacity onPress={changeCompany} activeOpacity={0.75} style={st.switchCo}>
-                  <Text style={st.switchTxt}>🏢 Switch Company ({companies.length})</Text>
+                  <Text style={st.switchTxt}>Switch Company ({companies.length})</Text>
                 </TouchableOpacity>
               ) : null}
             </View>

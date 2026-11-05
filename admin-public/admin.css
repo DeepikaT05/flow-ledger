@@ -302,3 +302,7 @@ input[type="checkbox"]:disabled { cursor: not-allowed; }
 .apk-title { font-size: .86rem; font-weight: 700; color: var(--text); margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; }
 .apk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
 .apk-check { display: flex; align-items: center; gap: 6px; font-size: .84rem; font-weight: 500; cursor: pointer; }
+
+.pill.co-single { color: #0284c7; font-weight: 600; background: #e0f2fe; border-color: #bae6fd; }
+.pill.co-multi { color: #166534; font-weight: 600; background: #dcfce7; border-color: #bbf7d0; }
+.pill.co-all { color: #475569; font-weight: 600; background: #f1f5f9; border-color: #cbd5e1; }
