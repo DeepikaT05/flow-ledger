@@ -309,6 +309,69 @@ app.get('/api/items/jewel-stock', h(() => {
   add(db.prepare(sum(OUT_TYPES)).all() as Record<string, number>[], -1);
   return [...map.values()];
 }));
+// JEWELLERY: every piece / lot bought carries a Ref. (tag no., kept in bill_items.batch).
+// Stock of each Ref = what came in on it − what went out on it.
+const JW_REF_SQL = `SELECT bi.item_id, i.name AS item_name, bi.batch AS ref,
+    SUM(CASE WHEN b.type IN (${IN_TYPES}) THEN 1 ELSE -1 END * bi.qty) AS sets,
+    SUM(CASE WHEN b.type IN (${IN_TYPES}) THEN 1 ELSE -1 END * COALESCE(json_extract(bi.jw,'$.gross'),0)) AS gross,
+    SUM(CASE WHEN b.type IN (${IN_TYPES}) THEN 1 ELSE -1 END * COALESCE(json_extract(bi.jw,'$.net'),0)) AS net,
+    SUM(CASE WHEN b.type IN (${IN_TYPES}) THEN 1 ELSE -1 END * COALESCE(json_extract(bi.jw,'$.pure'),0)) AS pure,
+    (SELECT x.jw FROM bill_items x JOIN bills xb ON xb.id=x.bill_id WHERE x.item_id=bi.item_id AND x.batch=bi.batch
+       AND xb.type IN (${IN_TYPES}) AND x.jw IS NOT NULL ORDER BY xb.date DESC, x.id DESC LIMIT 1) AS jw
+  FROM bill_items bi JOIN bills b ON b.id=bi.bill_id JOIN items i ON i.id=bi.item_id
+  WHERE bi.jw IS NOT NULL AND COALESCE(bi.batch,'')<>''`;
+const jwRefRows = (where: string, ...args: SQLInputValue[]) => (db.prepare(`${JW_REF_SQL} ${where} GROUP BY bi.item_id, bi.batch ORDER BY bi.batch DESC`).all(...args) as Row[])
+  .map((r) => ({ ...r, sets: r2(num(r.sets)), gross: r3(num(r.gross)), net: r3(num(r.net)), pure: r3(num(r.pure)) }))
+  .filter((r) => r.gross > 0.0005 || r.sets > 0);
+const r3 = (n: number) => Math.round(n * 1000) / 1000;
+/** AVAILABLE STOCKS of an item: its Refs still in stock. */
+app.get('/api/items/:id/jewel-refs', h((req) => jwRefRows('AND bi.item_id=?', Number(req.params.id))));
+/** A Ref typed / scanned in a bill: the item it belongs to and what is left of it. */
+app.get('/api/jewel/ref/:ref', h((req) => jwRefRows('AND UPPER(bi.batch)=UPPER(?)', String(req.params.ref).trim())[0] ?? null));
+/** Next Ref for a prefix (first letters of the item, e.g. LOCKET → LO001137). */
+app.get('/api/jewel/next-ref', h((req) => {
+  const prefix = String(req.query.prefix ?? '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 2) || 'JW';
+  const rows = db.prepare(`SELECT batch FROM bill_items WHERE jw IS NOT NULL AND UPPER(batch) LIKE ?`).all(`${prefix}%`) as { batch: string }[];
+  const max = rows.reduce((m, r) => Math.max(m, Number(String(r.batch).slice(prefix.length).replace(/\D/g, '')) || 0), 0);
+  return { ref: `${prefix}${String(max + 1).padStart(6, '0')}` };
+}));
+/**
+ * PARTY HISTORY (jewellery bill): purchases / sales this year and month, balance, pending bills,
+ * last payment and last bill, and the party's metal account (Gold / Silver pure weight).
+ */
+app.get('/api/ledgers/:id/jewel-history', h((req) => {
+  const id = Number(req.params.id);
+  const kind = req.query.kind === 'PURCHASE' ? 'PURCHASE' : 'SALE';
+  const l = db.prepare(`${LEDGER_BAL} WHERE l.id=?`).get(id) as Row & { balance: number };
+  if (!l) throw new Error('Ledger not found');
+  const types = kind === 'PURCHASE' ? `'PURCHASE'` : `'SALE','COUNTER_SALE'`;
+  const fy = (db.prepare('SELECT fy_start FROM company WHERE id=1').get() as { fy_start: string } | undefined)?.fy_start ?? '';
+  const month = new Date().toISOString().slice(0, 7);
+  const sum = (extra: string, ...a: SQLInputValue[]) => num((db.prepare(`SELECT COALESCE(SUM(net),0) AS s FROM bills WHERE party_id=? AND type IN (${types}) ${extra}`).get(id, ...a) as { s: number }).s);
+  const bills = pendingBills(id, 0, kind);
+  const last = db.prepare(`SELECT net, date FROM bills WHERE party_id=? AND type IN (${types}) ORDER BY date DESC, id DESC LIMIT 1`).get(id) as { net: number; date: string } | undefined;
+  const [own, vtype] = kind === 'PURCHASE' ? ['debit', 'PAYMENT'] : ['credit', 'RECEIPT'];
+  const pay = db.prepare(`SELECT v.date, vl.${own} AS amount FROM vouchers v JOIN voucher_lines vl ON vl.voucher_id=v.id
+    WHERE v.type=? AND vl.ledger_id=? AND vl.${own}>0 ORDER BY v.date DESC, v.id DESC LIMIT 1`).get(vtype, id) as { date: string; amount: number } | undefined;
+  // Metal account: pure weight sold to the party (+) less pure weight bought from it (−).
+  const metal = (m: string) => r3(num((db.prepare(`SELECT COALESCE(SUM(
+      CASE WHEN b.type IN ('SALE','COUNTER_SALE','PURCHASE_RETURN') THEN 1 WHEN b.type IN ('PURCHASE','SALE_RETURN') THEN -1 ELSE 0 END
+      * COALESCE(json_extract(bi.jw,'$.pure'),0)),0) AS s
+    FROM bill_items bi JOIN bills b ON b.id=bi.bill_id WHERE b.party_id=? AND bi.jw IS NOT NULL
+      AND UPPER(COALESCE(json_extract(bi.jw,'$.metal'),'GOLD'))=?`).get(id, m) as { s: number }).s));
+  let det: Record<string, string> = {};
+  try { det = JSON.parse(String(l.details || '{}')); } catch { /* ignore */ }
+  const challans = num((db.prepare(`SELECT COUNT(*) AS n FROM bills WHERE party_id=? AND type=?`).get(id, kind === 'PURCHASE' ? 'PURCHASE_CHALLAN' : 'SALE_CHALLAN') as { n: number }).n);
+  return {
+    name: l.name, address: l.address ?? '', phone: l.phone ?? '', credit_limit: num(l.credit_limit), balance: r2(num(l.balance)),
+    annual: r2(sum('AND date>=?', fy)), monthly: r2(sum("AND substr(date,1,7)=?", month)),
+    due: r2(bills.reduce((t, b) => t + b.balance, 0)), bill_count: bills.length,
+    bills: bills.map((b) => ({ ref: b.ref, date: b.date, amount: b.balance, days: b.days })),
+    last_pay: pay ? { amount: r2(pay.amount), date: pay.date, days: daysSince(pay.date) } : null,
+    last_bill: last ? { amount: r2(last.net), date: last.date, days: daysSince(last.date) } : null,
+    gold: metal('GOLD'), silver: metal('SILVER'), challans, col_days: det.due_days || det.credit_days || 'All Days',
+  };
+}));
 app.get('/api/items/:id/stock-register', h((req) => {
   const { from = '0000-01-01', to = '9999-12-31' } = req.query as Record<string, string>;
   const item = db.prepare(`${STOCK_SQL} WHERE i.id=?`).get(req.params.id) as Row & { opening_stock: number; purchase_rate: number };
@@ -617,6 +680,20 @@ function saveBill(body: BillIn, id?: number) {
   if (!body.party_id) throw new Error('Select party');
   if (body.type === 'SALE_RETURN' && !String(body.reason ?? '').trim()) throw new Error('Reason for the sale return is required');
   const c = computeBill(body);
+  if (body.type === 'PURCHASE' || body.type === 'PURCHASE_CHALLAN') {
+    const seen = new Set<string>();
+    const used = db.prepare(`SELECT b.no FROM bill_items bi JOIN bills b ON b.id=bi.bill_id
+      WHERE bi.jw IS NOT NULL AND UPPER(bi.batch)=UPPER(?) AND b.type IN ('PURCHASE','PURCHASE_CHALLAN') AND b.id<>? LIMIT 1`);
+    for (const l of c.lines) {
+      if (!l.jw) continue;
+      const ref = String(l.batch ?? '').trim().toUpperCase();
+      if (!ref) throw new Error('Ref. (tag no.) is required on every jewellery purchase line');
+      if (seen.has(ref)) throw new Error(`Ref. ${ref} is used twice in this bill`);
+      seen.add(ref);
+      const hit = used.get(ref, id ?? 0) as { no: string } | undefined;
+      if (hit) throw new Error(`Ref. ${ref} is already used in purchase ${hit.no}`);
+    }
+  }
   return tx(() => {
     const no = body.no?.trim() || nextNo('bills', body.type, BILL_PREFIX[body.type]);
     const args = [body.type, no, body.date, body.party_id, body.mode === 'CASH' ? 'CASH' : 'CREDIT',

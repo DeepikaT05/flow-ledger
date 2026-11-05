@@ -171,7 +171,7 @@ async function billHtml(id: number) {
   const jwBody = b.lines.map((l: any, i: number) => {
     const j = jwOf(l);
     if (!j) return `<tr><td style="text-align:center">${i + 1}.</td><td style="text-align:left;font-weight:bold" colspan="11">${esc(String(l.item_name).toUpperCase())}</td><td style="text-align:right;font-weight:bold">${Number(l.taxable).toFixed(2)}</td></tr>`;
-    const extra = [j.description, j.diamondAmt ? `DIAMOND ${w3(j.diamondWt)} CT ${Number(j.diamondAmt).toFixed(2)}` : '', j.extra ? `EXTRA ${Number(j.extra).toFixed(2)}` : '']
+    const extra = [j.ref ? `REF. ${j.ref}` : '', j.description, j.diamondAmt ? `DIAMOND ${w3(j.diamondWt)} CT ${Number(j.diamondAmt).toFixed(2)}` : '', j.extra ? `EXTRA ${Number(j.extra).toFixed(2)}` : '']
       .filter(Boolean).map((x) => esc(String(x))).join(' · ');
     return `
               <tr>

@@ -12,8 +12,9 @@ import { canAction } from './session.ts';
 /** True when the company was created with Business Type JEWELLERY. */
 export const isJewellery = (business: unknown) => /JEWEL/i.test(String(business ?? ''));
 
+/** STONE DETAIL row. @RATE is shown as "W-L": W = rate per weight / P = per piece; L = less its weight from gross / N = not. */
 export interface Stone {
-  desc: string; on: 'W' | 'P'; pcs: number; weight: number; prate: number; srate: number;
+  desc: string; on: 'W' | 'P'; less?: boolean; pcs: number; weight: number; prate: number; srate: number;
   hc: string; col: string; clear: string; cut: string;
 }
 export interface JwLine {
@@ -30,6 +31,10 @@ export interface JwLine {
   sPolishUnit: 'GWt' | '%'; sPolish: number; sExtra: number; mrp: number; sDiamondAmt: number; stoneRate: number; photo: 'No' | 'Yes';
   // worked out (kept on the line so stock and reports can read the weights)
   stoneWt: number; net: number; pure: number; polishWt: number; metalAmt: number; makingAmt: number; amount: number; sAmount: number;
+  /** Ref. (tag no.) of the piece / lot — LO001137. Kept in bill_items.batch too. */
+  ref: string;
+  /** GOLD / SILVER / OTHER — the party's metal account (Gold / Silver in PARTY HISTORY). */
+  metal: string;
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
@@ -49,6 +54,7 @@ export function itemJw(it: Partial<Item> & { details?: string }) {
     makingUnit: (['GM', '%', 'PCS', 'FIX'].includes(d.jw_making_unit) ? d.jw_making_unit : '') as JwLine['makingUnit'] | '', making: n('jw_making', 0),
     polishUnit: (d.jw_polish_unit === 'GWt' ? 'GWt' : d.jw_polish_unit === '%' ? '%' : '') as JwLine['polishUnit'] | '', polish: n('jw_polish', 0),
     weight: n('jw_weight', 0), diamond: d.jw_diamond === 'Yes', stone: d.jw_stone === 'Yes', tray: d.jw_tray ?? '',
+    metal: (d.jw_metal || 'GOLD').toUpperCase(),
   };
 }
 
@@ -71,6 +77,7 @@ export function blankJw(it: Partial<Item> & { details?: string } = {}, purchase 
     sPolishUnit: m.polishUnit || '%', sPolish: m.polish, sExtra: 0,
     mrp: Number(it.mrp ?? 0), sDiamondAmt: 0, stoneRate: 0, photo: 'No',
     stoneWt: 0, net: 0, pure: 0, polishWt: 0, metalAmt: 0, makingAmt: 0, amount: 0, sAmount: 0,
+    ref: '', metal: m.metal,
   };
 }
 
@@ -84,9 +91,12 @@ function makingAmount(unit: string, making: number, j: { net: number; sets: numb
 
 /** Works out Net / Pure Weight and the line Amount, as the DESCRIPTION window does. */
 export function calcJw(j: JwLine, saleRate = 0): JwLine {
-  const stoneWt = j.stoneUnit === 'Crt' ? j.stone * CRT : j.stone;
+  const toGm = (w: number) => (j.stoneUnit === 'Crt' ? w * CRT : w);
+  const stoneWt = toGm(j.stone);
+  // Only the stones marked L (W-L) in STONE DETAIL are taken off the gross weight.
+  const stoneLess = j.stones?.length ? toGm(j.stones.filter((x) => x.less !== false).reduce((t, x) => t + x.weight, 0)) : stoneWt;
   const diaWt = j.diamondWt * CRT;
-  const less = j.lessWeight === 'Both' ? stoneWt + diaWt : j.lessWeight === 'Stone' ? stoneWt : j.lessWeight === 'Diamond' ? diaWt : 0;
+  const less = j.lessWeight === 'Both' ? stoneLess + diaWt : j.lessWeight === 'Stone' ? stoneLess : j.lessWeight === 'Diamond' ? diaWt : 0;
   const net = r3(Math.max(0, j.gross - j.testing - less));
   const pure = r3(Math.max(0, net * purityFactor(j.purityUnit, j.purity) - j.lessBy));
   const polishWt = r3(j.polishUnit === 'GWt' ? j.polish : (net * j.polish) / 100);
@@ -107,7 +117,8 @@ export function calcJw(j: JwLine, saleRate = 0): JwLine {
 interface JwStock { item_id: number; sets: number; dmnd: number; stone: number; gross: number; pure: number }
 
 /** STORE:MAIN STORE for a jewellery company — DESCRIPTION, SET, DIAMOND_WT, STONE_WT, GROSS_WT, PURE_WT. */
-export async function pickJewelItem(initial: string): Promise<Item | null> {
+/** Returns the item; `ref` is set when a Ref. (tag no.) was typed / scanned instead of a name. */
+export async function pickJewelItem(initial: string): Promise<(Item & { ref?: JwRef }) | null> {
   const load = async () => {
     const [items, stock] = await Promise.all([api<Item[]>('/items'), api<JwStock[]>('/items/jewel-stock')]);
     const by = new Map(stock.map((s) => [s.item_id, s]));
@@ -116,9 +127,19 @@ export async function pickJewelItem(initial: string): Promise<Item | null> {
   type Row = Item & { jw?: JwStock };
   const rows: Row[] = await load();
   const w = (n: unknown) => (Number(n) ? f3(n) : '');
-  return popList<Row>({
+  let refHit: JwRef | null = null;
+  const picked = await popList<Row>({
     title: 'STORE:MAIN STORE', rows, search: (r) => `${r.name} ${r.company}`, width: '1020px', findLabel: 'Find Name ? >>', initial,
     detailCols: 3, showHeader: true,
+    // No item by that name: a Ref. (LO001137 / a scanned tag) brings its item and piece.
+    onEnterNotFound: (typed, pop) => {
+      if (!typed.trim()) return false;
+      findRef(typed).then((r) => {
+        const it = r && rows.find((i) => i.id === r.item_id);
+        if (r && it) { refHit = r; pop.close(it); } else toast(`No item or Ref. "${typed.toUpperCase()}" in stock`, true);
+      });
+      return true;
+    },
     cols: [
       { title: 'D E S C R I P T I O N', get: (r) => r.name.toUpperCase(), width: '40%' },
       { title: 'SET', get: (r) => (r.jw?.sets ? r.jw.sets : ''), num: true, width: '8%' },
@@ -149,15 +170,20 @@ export async function pickJewelItem(initial: string): Promise<Item | null> {
       return false;
     },
   });
+  if (!picked) return null;
+  const { jw: _stock, ...item } = picked;
+  return refHit ? { ...item, ref: refHit } : item;
 }
 
 // ------------------------------------------------------------------ STONE DETAIL
-function stoneDetail(init: Stone[], purchase: boolean, unit: string): Promise<Stone[] | null> {
+const onCode = (s: Stone) => `${s.on}-${s.less === false ? 'N' : 'L'}`;
+function stoneDetail(init: Stone[], purchase: boolean, unit: string, item: Item): Promise<Stone[] | null> {
   return new Promise((resolve) => {
     const p = margPop('STONE DETAIL', '<span><b>Enter</b>-Next</span><span><b>Ctrl+Del</b>-Delete Row</span><span><b>End/F10</b>-Save</span><span><b>Esc</b>-Back</span>', '980px');
-    const rows: Stone[] = init.length ? init.map((s) => ({ ...s })) : [];
-    const blank = (): Stone => ({ desc: '', on: 'W', pcs: 0, weight: 0, prate: 0, srate: 0, hc: '0', col: '-', clear: '', cut: '' });
-    rows.push(blank());
+    const blank = (): Stone => ({ desc: '', on: 'W', less: true, pcs: 0, weight: 0, prate: 0, srate: 0, hc: '0', col: '-', clear: '', cut: '' });
+    // As in MARG, the first line starts with the item itself at its rate.
+    const rows: Stone[] = init.length ? init.map((s) => ({ ...s })) : [{ ...blank(), desc: item.name.toUpperCase(), srate: Number(item.sale_rate ?? 0) }];
+    if (init.length) rows.push(blank());
     const cols: { k: keyof Stone; t: string; num?: boolean; w: string }[] = [
       { k: 'desc', t: 'DESC.', w: '20%' }, { k: 'on', t: '@RATE', w: '7%' }, { k: 'pcs', t: 'PCS', num: true, w: '7%' },
       { k: 'weight', t: 'WEIGHT', num: true, w: '10%' },
@@ -172,7 +198,7 @@ function stoneDetail(init: Stone[], purchase: boolean, unit: string): Promise<St
       const pcs = rows.reduce((t, s) => t + s.pcs, 0), wt = rows.reduce((t, s) => t + s.weight, 0);
       const pa = rows.reduce((t, s) => t + amt(s, s.prate), 0), sa = rows.reduce((t, s) => t + amt(s, s.srate), 0);
       box.innerHTML = `<table class="marg-grid"><thead><tr>${cols.map((c) => `<th class="${c.num ? 'n' : ''}" style="width:${c.w}">${c.t}</th>`).join('')}</tr></thead>
-        <tbody>${rows.map((s, i) => `<tr>${cols.map((c) => `<td class="${c.num ? 'n' : ''}"><input data-r="${i}" data-c="${c.k}" value="${esc(String(s[c.k] ?? ''))}" autocomplete="off"></td>`).join('')}</tr>`).join('')}</tbody></table>
+        <tbody>${rows.map((s, i) => `<tr>${cols.map((c) => `<td class="${c.num ? 'n' : ''}"><input data-r="${i}" data-c="${c.k}" value="${esc(c.k === 'on' ? onCode(s) : String(s[c.k] ?? ''))}" autocomplete="off"></td>`).join('')}</tr>`).join('')}</tbody></table>
         <div class="jw-stone-tot">TOTAL PCS : <b>${pcs}</b> &nbsp; WEIGHT : <b>${f3(wt)}</b> ${esc(unit)} &nbsp; ${purchase ? `P.AMT : <b>${f2(pa)}</b> &nbsp; ` : ''}S.AMT : <b>${f2(sa)}</b></div>`;
       const el = box.querySelector(`input[data-r="${fr}"][data-c="${fc}"]`) as HTMLInputElement | null;
       el?.focus(); el?.select();
@@ -180,7 +206,7 @@ function stoneDetail(init: Stone[], purchase: boolean, unit: string): Promise<St
     const read = (el: HTMLInputElement) => {
       const s = rows[Number(el.dataset.r)], k = el.dataset.c as keyof Stone;
       const v = el.value.trim();
-      if (k === 'on') s.on = v.toUpperCase().startsWith('P') ? 'P' : 'W';
+      if (k === 'on') { const u = v.toUpperCase(); s.on = u.startsWith('P') ? 'P' : 'W'; s.less = !/-?N$/.test(u); }
       else if (['pcs', 'weight', 'prate', 'srate'].includes(k)) (s as any)[k] = Number(v) || 0;
       else (s as any)[k] = k === 'desc' ? v.toUpperCase() : v;
     };
@@ -197,6 +223,14 @@ function stoneDetail(init: Stone[], purchase: boolean, unit: string): Promise<St
         read(el);
         const ci = cols.findIndex((x) => x.k === c);
         if (c === 'desc' && !rows[ri].desc && ri === rows.length - 1) { finish(rows.filter((s) => s.desc || s.pcs || s.weight)); return true; }
+        if (c === 'desc' && k === 'Enter') {
+          // DESC. comes from the item list (stone / diamond items, or the piece itself).
+          pickJewelItem(rows[ri].desc).then((it) => {
+            if (it) { rows[ri].desc = it.name.toUpperCase(); rows[ri].srate = Number(it.sale_rate ?? 0); rows[ri].prate = Number(it.purchase_rate ?? 0); }
+            draw(ri, 'on');
+          });
+          return true;
+        }
         if (ci < cols.length - 1) draw(ri, cols[ci + 1].k);
         else { if (ri === rows.length - 1) rows.push(blank()); draw(ri + 1, 'desc'); }
         return true;
@@ -342,7 +376,7 @@ export function jewelDetail(item: Item, purchase: boolean, init?: JwLine): Promi
         if (el instanceof HTMLInputElement && el.dataset.dec) el.value = (Number(el.value) || 0).toFixed(Number(el.dataset.dec));
         // Stone Pcs = Yes → STONE DETAIL; its total weight and amount fill Stone / Amount.
         if (el.dataset.k === 'stonePcs' && j.stoneYes === 'Yes') {
-          stoneDetail(j.stones, purchase, j.stoneUnit).then((st) => {
+          stoneDetail(j.stones, purchase, j.stoneUnit, item).then((st) => {
             if (st) {
               j.stones = st;
               j.stonePcs = st.reduce((t, s) => t + s.pcs, 0);
@@ -368,5 +402,144 @@ export function jewelDetail(item: Item, purchase: boolean, init?: JwLine): Promi
       }
       return false;
     };
+  });
+}
+
+// ------------------------------------------------------------------ Ref. (tag no.)
+export interface JwRef { item_id: number; item_name: string; ref: string; sets: number; gross: number; net: number; pure: number; jw: string | null }
+const refPrefix = (name: string) => (name.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 2) || 'JW');
+
+/**
+ * PURCHASE: Ref. of the piece / lot being bought. Shows the item's AVAILABLE STOCKS (Refs still
+ * in stock) and the next Ref. (LO001137) ready in the Ref. box; a blank Ref. is not allowed.
+ */
+export async function askPurchaseRef(item: Item, current = '', taken: string[] = []): Promise<string | null> {
+  const [refs, next] = await Promise.all([
+    api<JwRef[]>(`/items/${item.id}/jewel-refs`),
+    current ? Promise.resolve({ ref: current }) : api<{ ref: string }>(`/jewel/next-ref?prefix=${encodeURIComponent(refPrefix(item.name))}`),
+  ]);
+  // Refs already typed on this (unsaved) bill are skipped: LO001137, LO001138 …
+  if (!current) {
+    const m = next.ref.match(/^([A-Z]+)(\d+)$/);
+    while (m && taken.includes(next.ref)) next.ref = `${m[1]}${String(Number(next.ref.slice(m[1].length)) + 1).padStart(m[2].length, '0')}`;
+  }
+  return new Promise((resolve) => {
+    const p = margPop('AVAILABLE STOCKS', '<span><b>Enter</b>-Accept Ref.</span><span><b>F3</b>-Popup List</span><span><b>Esc</b>-Back</span>', '560px');
+    const box = h('div', { class: 'jw-refs' });
+    const stock = (r: JwRef) => (r.gross ? String(Number(r.gross.toFixed(3))) : String(r.sets));
+    box.innerHTML = `<div class="jw-refs-list"><table class="marg-grid"><thead><tr><th>REF.</th><th class="n">STOCK</th></tr></thead>
+      <tbody>${refs.length ? refs.map((r) => `<tr><td>${esc(r.ref)}</td><td class="n">${esc(stock(r))}</td></tr>`).join('') : '<tr><td colspan="2" style="color:#777">No stock yet</td></tr>'}</tbody></table></div>
+      <div class="jw-ref-in"><span>Store :</span><b>MAIN STORE</b><span>Ref. :</span><input value="${esc(next.ref)}" autocomplete="off" spellcheck="false"></div>
+      <div class="jw-ref-msg"></div>`;
+    p.body.append(box);
+    const inp = box.querySelector('input') as HTMLInputElement;
+    const msg = box.querySelector('.jw-ref-msg') as HTMLElement;
+    inp.addEventListener('input', () => { const at = inp.selectionStart; inp.value = inp.value.toUpperCase(); inp.setSelectionRange(at, at); msg.textContent = ''; });
+    setTimeout(() => { inp.focus(); inp.select(); }, 0);
+    let done = false;
+    const finish = (v: string | null) => { if (done) return; done = true; p.close(); resolve(v); };
+    p.onKey = (_e, k) => {
+      if (k === 'Enter') {
+        const v = inp.value.trim().toUpperCase();
+        if (!v) { msg.textContent = 'Blank Not Allowed'; inp.focus(); return true; }
+        if (refs.some((r) => r.ref.toUpperCase() === v) && v !== current.toUpperCase()) { msg.textContent = `Ref. ${v} is already in stock - give a new Ref.`; inp.select(); return true; }
+        finish(v);
+        return true;
+      }
+      if (k === 'F3') {
+        popList<JwRef>({
+          title: 'AVAILABLE STOCKS', rows: refs, search: (r) => r.ref, width: '640px', findLabel: 'Ref ? >>', showHeader: true,
+          cols: [{ title: 'REF.', get: (r) => r.ref, width: '40%' }, { title: 'SET', get: (r) => r.sets, num: true }, { title: 'GROSS', get: (r) => f3(r.gross), num: true }, { title: 'PURE', get: (r) => f3(r.pure), num: true }],
+          foot: '<span><b>Enter</b>-Select</span><span><b>Esc</b>-Back</span>',
+        }).then((r) => { inp.focus(); if (r) msg.textContent = `${r.ref}: Set ${r.sets}, Gross ${f3(r.gross)}, Pure ${f3(r.pure)}`; });
+        return true;
+      }
+      if (k === 'Escape') { finish(null); return true; }
+      return false;
+    };
+  });
+}
+
+/** SALE: which Ref. (tag) of the item is sold. null = Esc (sell without a Ref.); undefined = the item has no Refs. */
+export async function pickSaleRef(item: Item): Promise<JwRef | null | undefined> {
+  const refs = await api<JwRef[]>(`/items/${item.id}/jewel-refs`);
+  if (!refs.length) return undefined;
+  const tray = (r: JwRef) => { try { return r.jw ? String(JSON.parse(r.jw).tray ?? '') : ''; } catch { return ''; } };
+  const picked = await popList<JwRef>({
+    title: `AVAILABLE STOCKS : ${item.name.toUpperCase()}`, rows: refs, search: (r) => `${r.ref} ${tray(r)}`, width: '820px', findLabel: 'Ref ? >>', showHeader: true,
+    cols: [
+      { title: 'REF.', get: (r) => r.ref, width: '24%' }, { title: 'TRAY', get: (r) => tray(r), width: '20%' },
+      { title: 'SET', get: (r) => r.sets, num: true, width: '10%' }, { title: 'GROSS_WT', get: (r) => f3(r.gross), num: true },
+      { title: 'NET_WT', get: (r) => f3(r.net), num: true }, { title: 'PURE_WT', get: (r) => f3(r.pure), num: true },
+    ],
+    foot: '<span><b>Enter</b>-Select Ref.</span><span><b>Esc</b>-Without Ref.</span>',
+  });
+  return picked ?? null;
+}
+
+/** A Ref. typed or scanned in the DESCRIPTION column: its item and stock, or null. */
+export const findRef = (ref: string) => api<JwRef | null>(`/jewel/ref/${encodeURIComponent(ref.trim())}`).catch(() => null);
+
+/** SALE line from a Ref.: the piece's weights and its SALES DESCRIPTION (making, purity, M.R.P. ...). */
+export function jwFromRef(item: Item, r: JwRef): JwLine {
+  const base = blankJw(item, false);
+  let p: Partial<JwLine> = {};
+  try { p = r.jw ? JSON.parse(r.jw) : {}; } catch { /* no purchase detail */ }
+  // Part of a lot may already be sold: stones / diamonds follow the share of gross weight left.
+  const share = p.gross && r.gross < p.gross ? r.gross / p.gross : 1;
+  const k = (n: unknown) => Number(n ?? 0) * share;
+  return {
+    ...base, ref: r.ref, sets: Math.max(0, r.sets) || base.sets, gross: r3(r.gross || base.gross),
+    diamond: p.diamond ?? base.diamond, diamondPcs: p.diamondPcs ?? 0, diamondWt: r3(k(p.diamondWt)), lessWeight: p.lessWeight ?? base.lessWeight,
+    stoneYes: p.stoneYes ?? base.stoneYes, stonePcs: p.stonePcs ?? 0, stoneUnit: p.stoneUnit ?? base.stoneUnit, stone: r3(k(p.stone)),
+    stones: (p.stones ?? []).map((s) => ({ ...s, weight: r3(k(s.weight)) })),
+    stoneAmt: r2(Number(p.stoneRate ?? 0) * k(p.stone)),
+    purityUnit: p.sPurityUnit ?? base.purityUnit, purity: p.sPurity ?? base.purity,
+    makingUnit: p.sMakingUnit ?? base.makingUnit, making: p.sMaking ?? base.making,
+    polishUnit: p.sPolishUnit ?? base.polishUnit, polish: p.sPolish ?? base.polish,
+    extra: p.sExtra ?? 0, diamondAmt: r2(k(p.sDiamondAmt)), mrp: p.mrp ?? base.mrp, tray: p.tray ?? '', metal: p.metal ?? base.metal,
+  };
+}
+
+// ------------------------------------------------------------------ PARTY HISTORY
+interface History {
+  name: string; address: string; phone: string; credit_limit: number; balance: number; annual: number; monthly: number;
+  due: number; bill_count: number; bills: { ref: string; date: string; amount: number; days: number }[];
+  last_pay: { amount: number; date: string; days: number } | null; last_bill: { amount: number; date: string; days: number } | null;
+  gold: number; silver: number; challans: number; col_days: string;
+}
+/** Shown after the party is chosen on a jewellery bill; any key goes on. Resolves the party's Gold / Silver. */
+export async function partyHistory(ledgerId: number, purchase: boolean): Promise<{ gold: number; silver: number } | null> {
+  const hst = await api<History>(`/ledgers/${ledgerId}/jewel-history?kind=${purchase ? 'PURCHASE' : 'SALE'}`).catch(() => null);
+  if (!hst) return null;
+  const dm = (iso: string) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(2, 4)}` : '');
+  const tag = purchase ? 'PURC' : 'SALE';
+  const row = (l: string, v: string) => `<div><span>${l}</span><b>${v}</b></div>`;
+  return new Promise((resolve) => {
+    const p = margPop('PARTY HISTORY', '<span><b>Any key</b>-Continue</span>', '1060px');
+    const box = h('div', { class: 'jw-hist' });
+    box.innerHTML = `<div class="jw-hist-l">
+        ${row(`${tag}-Anu:`, `${Math.round(hst.annual)} &nbsp; B/E: &nbsp; 0 % : 0.00`)}
+        ${row(`${tag}-Mon:`, `${Math.round(hst.monthly)} &nbsp; B/E: &nbsp; 0 % : 0.00`)}
+        ${row('Cr Limit:', hst.credit_limit ? f2(hst.credit_limit) : '')}
+        ${row('Mail to :', esc(hst.name.toUpperCase()))}
+        ${row('&nbsp; &nbsp; &nbsp; &nbsp; :', esc((hst.address || '').toUpperCase()))}
+        ${row('Phone &nbsp; :', esc(hst.phone || ''))}
+        ${row('Gold &nbsp; &nbsp;:', `${f3(hst.gold)} &nbsp;Silver:${f3(hst.silver)}`)}
+        ${row('Challan :', hst.challans ? String(hst.challans) : '-NIL-')}
+        ${row('Balance :', `${Math.round(hst.balance)} &nbsp; Due: ${Math.round(purchase ? -hst.due : hst.due)} &nbsp; Bill: ${hst.bill_count}`)}
+        ${row('LastPymt:', hst.last_pay ? `${Math.round(hst.last_pay.amount)} &nbsp; Dt.: ${dm(hst.last_pay.date)} &nbsp; Days: ${hst.last_pay.days}` : '&nbsp; Dt.: &nbsp; &nbsp; Days:')}
+        ${row(`Last${purchase ? 'Purc' : 'Sale'}:`, hst.last_bill ? `${Math.round(hst.last_bill.amount)} &nbsp; Dt.: ${dm(hst.last_bill.date)} &nbsp; Days: ${hst.last_bill.days}` : '0')}
+        ${row('P.D.C. &nbsp;:', '')}
+        ${row('Col.Days:', esc(String(hst.col_days)))}
+      </div>
+      <div class="jw-hist-r"><table><thead><tr><th>Bill</th><th>Date</th><th class="n">Amount</th><th class="n">Days</th></tr></thead>
+        <tbody>${hst.bills.slice(0, 14).map((b) => `<tr><td>${esc(b.ref)}</td><td>${dm(b.date)}</td><td class="n">${Math.round(b.amount)}</td><td class="n">${b.days}</td></tr>`).join('') || '<tr><td colspan="4">No pending bill</td></tr>'}</tbody></table>
+        <div class="jw-hist-tot">Top ${Math.min(14, hst.bills.length)}/${hst.bills.length} Bills</div></div>`;
+    p.body.append(box);
+    let done = false;
+    const close = () => { if (done) return; done = true; p.close(); resolve({ gold: hst.gold, silver: hst.silver }); };
+    p.onKey = () => { close(); return true; };
+    box.addEventListener('click', close);
   });
 }

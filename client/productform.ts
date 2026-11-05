@@ -57,11 +57,11 @@ COLS[1].push(S('schedule_h', 'SCHEDULE H', NOYES, '58px', { small: true }));
 const JW_COLS: Fld[][] = [
   [S('jw_purity_unit', 'PURITY ON', ['%', 'K']), S('jw_making_unit', 'MAKING ON', ['GM', '%', 'PCS', 'FIX'], '68px'), S('jw_polish_unit', 'POLISH ON', ['%', 'GWt'], '68px'), T('jw_tray', 'TRAY NAME', { w: '150px' })],
   [N('jw_purity', 'PURITY', 3), N('jw_making', 'MAKING', 2), N('jw_polish', 'POLISH', 3)],
-  [N('jw_weight', 'WEIGHT (GM)', 3, { small: true }), S('jw_diamond', 'DIAMOND', NOYES), S('jw_stone', 'STONE', NOYES)],
+  [N('jw_weight', 'WEIGHT (GM)', 3, { small: true }), S('jw_diamond', 'DIAMOND', NOYES), S('jw_stone', 'STONE', NOYES), S('jw_metal', 'METAL', ['GOLD', 'SILVER', 'OTHER'], '88px')],
 ];
 const JW_DEFAULTS: Record<string, string> = {
   jw_purity_unit: '%', jw_purity: '100', jw_making_unit: '%', jw_making: '0', jw_polish_unit: '%', jw_polish: '0',
-  jw_weight: '0', jw_diamond: 'No', jw_stone: 'No', jw_tray: '',
+  jw_weight: '0', jw_diamond: 'No', jw_stone: 'No', jw_tray: '', jw_metal: 'GOLD',
 };
 
 const DEFAULTS: Record<string, string> = {

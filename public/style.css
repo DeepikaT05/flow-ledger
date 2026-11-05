@@ -1814,3 +1814,18 @@ table.jw-grid-bill td, table.jw-grid-bill th { font-size: 16px; }
 /* JEWELLERY business: the item master's JEWELLERY DETAIL block */
 .marg-prod .pf-jw { border-top: 1px solid #6c7a86; }
 .marg-prod .pf-jw-h { background: var(--marg-bar); color: #fff; font-weight: bold; font-size: 13px; padding: 3px 12px; font-family: Arial, sans-serif; }
+/* JEWELLERY: AVAILABLE STOCKS / Ref. and PARTY HISTORY */
+.jw-refs { background: #e4f0fb; font-family: "Courier New", Consolas, monospace; }
+.jw-refs-list { max-height: 330px; overflow: auto; }
+.jw-ref-in { display: grid; grid-template-columns: 70px 1fr; gap: 4px 8px; align-items: center; padding: 8px 14px; border-top: 1px solid #8aa; font-size: 17px; color: var(--marg-lbl); }
+.jw-ref-in input { font: inherit; font-weight: bold; text-transform: uppercase; border: none; background: var(--marg-sel); color: #fff; padding: 2px 6px; }
+.jw-ref-msg { min-height: 18px; padding: 0 14px 8px; color: var(--marg-red); font-weight: bold; font-family: Arial, sans-serif; font-size: 13px; }
+.jw-hist { display: grid; grid-template-columns: 1.35fr 1fr; gap: 14px; background: #e4f0fb; padding: 10px 14px; font-family: "Courier New", Consolas, monospace; font-size: 17px; color: #10243d; }
+.jw-hist-l div { display: grid; grid-template-columns: 130px 1fr; padding: 1px 0; }
+.jw-hist-l span { font-weight: bold; }
+.jw-hist-r { background: #fff; border: 1px solid #9fb4c8; display: flex; flex-direction: column; }
+.jw-hist-r table { width: 100%; border-collapse: collapse; }
+.jw-hist-r th { text-align: left; background: var(--marg-bar); color: #fff; padding: 2px 6px; }
+.jw-hist-r td { color: var(--marg-red); padding: 1px 6px; }
+.jw-hist-r .n { text-align: right; }
+.jw-hist-tot { margin-top: auto; text-align: center; font-size: 14px; padding: 3px; }

@@ -6,7 +6,7 @@ import { margBar, margPop, popList, margConfirm, margNumber, margAsk } from './m
 import { billDetails, pickBillItems, pickSold, saveInBox, type ReturnInfo } from './salereturn.ts';
 import { ledgerForm, itemForm, type Ledger, type Item } from './masters.ts';
 import { canAction, seeCost, canBackdate, session, NO_DATE } from './session.ts';
-import { isJewellery, pickJewelItem, jewelDetail, type JwLine } from './jewellery.ts';
+import { isJewellery, pickJewelItem, jewelDetail, askPurchaseRef, pickSaleRef, jwFromRef, partyHistory, type JwLine, type JwRef } from './jewellery.ts';
 
 /** Run `fn` only if the role may do `action`; otherwise say so. */
 function allowed(action: string, what: string): boolean {
@@ -402,7 +402,10 @@ export async function saleEntry(type = 'SALE', billId?: number) {
   // SALE RETURN: Party No. / Dt (the customer's slip) and the BILL DETAILS answers.
   const isRet = type === 'SALE_RETURN';
   // Sale return and purchase challan carry the party's own slip: Entry No / Party No / Dt.
-  const refEntry = isRet || type === 'PURCHASE_CHALLAN';
+  // A jewellery PURCHASE is headed like MARG's: Entry No / Party No / Dt (the supplier's bill).
+  const refEntry = isRet || type === 'PURCHASE_CHALLAN' || (jewel && type === 'PURCHASE');
+  /** JEWELLERY: the party's metal account from PARTY HISTORY (pure weight; + = with the party). */
+  let metalBal = { gold: 0, silver: 0 };
   let retInfo: ReturnInfo | null = null;
   let cdPct = 0;
   let cdAmt = 0;
@@ -451,7 +454,7 @@ export async function saleEntry(type = 'SALE', billId?: number) {
   function renderRows() {
     const filler = Math.max(0, 12 - rows.length);
     if (jewel) {
-      tbody.innerHTML = rows.map((r, i) => `<tr data-r="${i}"><td><input data-r="${i}" data-c="name" value="${esc(r.name ?? '')}" autocomplete="off"></td>
+      tbody.innerHTML = rows.map((r, i) => `<tr data-r="${i}"><td><input data-r="${i}" data-c="name" value="${esc(r.name ?? '')}" autocomplete="off"${!r.item_id && i === 0 && party ? ' placeholder="← key to change Bill No."' : ''}></td>
           ${JW_COLS.slice(1).map((c) => `<td class="${c.num ? 'n' : ''}">${r.jw ? esc(c.get(r.jw)) : ''}</td>`).join('')}
           <td class="n">${r.item_id ? f2(calc(r).amount) : ''}</td></tr>`).join('')
         + Array.from({ length: filler }, () => `<tr>${JW_COLS.map(() => '<td></td>').join('')}<td></td></tr>`).join('');
@@ -506,16 +509,20 @@ export async function saleEntry(type = 'SALE', billId?: number) {
       const w3 = (f: (j: JwLine) => number) => live.reduce((s, r) => s + (r.jw ? f(r.jw) : 0), 0).toFixed(3);
       screen.querySelector('.info1')!.innerHTML = `
         <div><span class="k">Store</span>: <b>MAIN STORE</b></div>
-        <div><span class="k">Ref.</span>: <b>${esc(cur?.name ?? '')}</b> &nbsp; <span class="k">BOX</span>:</div>
-        <div><span class="k">Chall.</span>: &nbsp; Date :</div>
+        <div><span class="k">Ref.</span>: <b class="jw-ref-cur">${esc(cur?.jw?.ref ?? '')}</b> &nbsp; &nbsp; <span class="k">BOX</span>: <b>${esc(cur?.jw?.tray ?? '')}</b></div>
+        <div><span class="k">Chall.</span>: &nbsp; &nbsp; &nbsp; &nbsp; <span class="k">Date</span> :</div>
         <div><span class="k">Gr/Net</span>: <b>${w3((j) => j.gross)}</b> / <b>${w3((j) => j.net)}</b></div>`;
+      // Party's metal after this bill: a sale puts pure weight with the party, a purchase takes it in.
+      const sign = PARTY_DR.has(type) ? 1 : -1;
+      const metalOf = (m: string) => live.reduce((t, r) => t + (r.jw && (r.jw.metal || 'GOLD') === m ? r.jw.pure : 0), 0);
       screen.querySelector('.info2')!.innerHTML = `
         <div class="kv"><span class="k">MRP Value :</span><b>${f2(mrpValue)}</b></div>
-        <div class="kv"><span class="k">Amount :</span><b>${f2(sum((j) => j.metalAmt))}</b></div>
+        <div class="kv"><span class="k">Amount :</span><b>${f2(sum((j) => j.amount))}</b></div>
         <div class="kv"><span class="k">Making :</span><b>${f2(sum((j) => j.makingAmt))}</b></div>
         <div class="kv"><span class="k">Extra Good :</span><b>${f2(sum((j) => j.extra))}</b></div>
         <div class="kv"><span class="k">Balance :</span><b>${party ? f2(Math.abs(party.balance + (PARTY_DR.has(type) ? net : -net))) : '0.00'}</b></div>
-        <div class="kv"><span class="k">Gold :</span><b>${w3((j) => j.pure)}</b></div>`;
+        <div class="kv"><span class="k">Gold :</span><b>${(metalBal.gold + sign * metalOf('GOLD')).toFixed(3)}</b></div>
+        <div class="kv"><span class="k">Silver :</span><b>${(metalBal.silver + sign * metalOf('SILVER')).toFixed(3)}</b></div>`;
       screen.querySelector('.info3')!.innerHTML = `
         <div class="kv"><span class="k">VALUE OF GOODS</span><b>${f2(taxable)}</b></div>
         <div class="kv"><span class="k">DISCOUNT</span><b>${f2(gross - taxable)}</b></div>
@@ -600,6 +607,11 @@ export async function saleEntry(type = 'SALE', billId?: number) {
         if (wk) walkin = wk;
       }
       if (!noI.value) noI.value = (await api<{ no: string }>(`/bills/next-no?type=${type}`)).no;
+      if (jewel) {
+        const mb = await partyHistory(l.id, isPurchase(type));
+        if (mb) metalBal = mb;
+        if (isPurchase(type)) { renderRows(); if (refEntry && pnoI) { pnoI.focus(); pnoI.select(); } else focusCell(0, 'name'); return; }
+      }
       let partyMR: Salesman | null = null;
       if (l.details) {
         try {
@@ -653,13 +665,37 @@ export async function saleEntry(type = 'SALE', billId?: number) {
     busy = true;
     try {
       if (jewel) {
+        // DESCRIPTION: an item from the list — or a Ref. (tag no.) typed / scanned, which brings its item.
         const it = await pickJewelItem(typed);
         if (!it) { focusCell(rowIdx, 'name'); return; }
-        const jw = await jewelDetail(it, isPurchase(type));
+        const inward = type === 'PURCHASE' || type === 'PURCHASE_CHALLAN';
+        let init: Partial<JwLine> | undefined;
+        if (inward) {
+          // Every piece / lot bought gets a Ref. (AVAILABLE STOCKS, next number ready; blank not allowed).
+          const used = rows.filter((x, i) => i !== rowIdx && x.jw?.ref).map((x) => x.jw!.ref.toUpperCase());
+          let ref: string | null = null;
+          for (;;) {
+            ref = await askPurchaseRef(it, '', used);
+            if (!ref || !used.includes(ref)) break;
+            toast(`Ref. ${ref} is already on this bill`, true);
+          }
+          if (!ref) { focusCell(rowIdx, 'name'); return; }
+          init = { ref };
+        } else if (type !== 'SALE_RETURN') {
+          // Sale: the Ref. being sold (scanned tag, or chosen from AVAILABLE STOCKS) fills the weights.
+          const pick: JwRef | null | undefined = it.ref ?? await pickSaleRef(it);
+          if (pick) {
+            if (rows.some((x, i) => i !== rowIdx && x.jw?.ref && x.jw.ref.toUpperCase() === pick.ref.toUpperCase())) {
+              toast(`Ref. ${pick.ref} is already on this bill`, true); focusCell(rowIdx, 'name'); return;
+            }
+            init = jwFromRef(it, pick);
+          }
+        }
+        const jw = await jewelDetail(it, isPurchase(type) && type !== 'PURCHASE_RETURN', init as JwLine | undefined);
         if (!jw) { focusCell(rowIdx, 'name'); return; }
         rows[rowIdx] = {
           item_id: it.id, name: it.name.toUpperCase(), pack: (it.pack ?? '').toUpperCase(), qty: jw.sets, free: 0,
-          rate: jw.rate, disc: 0, gst: it.gst_rate, mrp: jw.mrp, cost: it.purchase_rate, unit: it.unit, jw,
+          rate: jw.rate, disc: 0, gst: it.gst_rate, mrp: jw.mrp, cost: it.purchase_rate, unit: it.unit, jw, batch: jw.ref || '',
         };
         if (rowIdx === rows.length - 1) rows.push(blank());
         dirty = true; renderRows(); focusCell(rowIdx + 1, 'name');
@@ -1190,6 +1226,8 @@ export async function saleEntry(type = 'SALE', billId?: number) {
     if (t === nameI && (k === 'Enter' || k.length === 1)) { partyStep(); return true; }
     if (t === noI && k === 'Enter') { renderRows(); focusCell(0, 'name'); return true; }
     if (refEntry && t === pnoI) {
+      // MARG jewellery purchase: the supplier's bill no. (Party No) is required.
+      if (k === 'Enter' && jewel && type === 'PURCHASE' && !pnoI.value.trim()) { toast('Party No: Blank Not Allowed', true); return true; }
       if (k === 'Enter') { if (pdtI && !pdtI.value) pdtI.value = dmy(today()); pdtI?.focus(); pdtI?.select(); return true; }
     }
     if (refEntry && t === pdtI && k === 'Enter') { if (isRet) returnDetailsStep(); else { renderRows(); focusCell(0, 'name'); } return true; }
@@ -1207,8 +1245,8 @@ export async function saleEntry(type = 'SALE', billId?: number) {
         if (k === 'Enter' && rows[ri].item_id && jewel) {
           const r = rows[ri];
           api<Item>(`/items/${r.item_id}`).then(async (it) => {
-            const jw = await jewelDetail(it, isPurchase(type), r.jw);
-            if (jw) { r.jw = jw; r.qty = jw.sets; r.rate = jw.rate; r.mrp = jw.mrp; dirty = true; renderRows(); }
+            const jw = await jewelDetail(it, isPurchase(type) && type !== 'PURCHASE_RETURN', r.jw);
+            if (jw) { r.jw = jw; r.qty = jw.sets; r.rate = jw.rate; r.mrp = jw.mrp; r.batch = jw.ref || ''; dirty = true; renderRows(); }
             focusCell(jw ? Math.min(ri + 1, rows.length - 1) : ri, 'name');
           }).catch((err) => toast((err as Error).message, true));
           return true;
