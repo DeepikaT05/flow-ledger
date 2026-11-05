@@ -317,7 +317,13 @@ const JW_REF_SQL = `SELECT bi.item_id, i.name AS item_name, bi.batch AS ref,
     SUM(CASE WHEN b.type IN (${IN_TYPES}) THEN 1 ELSE -1 END * COALESCE(json_extract(bi.jw,'$.net'),0)) AS net,
     SUM(CASE WHEN b.type IN (${IN_TYPES}) THEN 1 ELSE -1 END * COALESCE(json_extract(bi.jw,'$.pure'),0)) AS pure,
     (SELECT x.jw FROM bill_items x JOIN bills xb ON xb.id=x.bill_id WHERE x.item_id=bi.item_id AND x.batch=bi.batch
-       AND xb.type IN (${IN_TYPES}) AND x.jw IS NOT NULL ORDER BY xb.date DESC, x.id DESC LIMIT 1) AS jw
+       AND xb.type IN (${IN_TYPES}) AND x.jw IS NOT NULL ORDER BY xb.date DESC, x.id DESC LIMIT 1) AS jw,
+    (SELECT pl.name FROM bill_items x JOIN bills xb ON xb.id=x.bill_id JOIN ledgers pl ON pl.id=xb.party_id WHERE x.item_id=bi.item_id AND x.batch=bi.batch
+       AND xb.type IN ('PURCHASE','PURCHASE_CHALLAN') ORDER BY xb.date, x.id LIMIT 1) AS supplier,
+    (SELECT COALESCE(NULLIF(xb.ref_no,''), xb.no) FROM bill_items x JOIN bills xb ON xb.id=x.bill_id WHERE x.item_id=bi.item_id AND x.batch=bi.batch
+       AND xb.type IN ('PURCHASE','PURCHASE_CHALLAN') ORDER BY xb.date, x.id LIMIT 1) AS invoice,
+    (SELECT xb.date FROM bill_items x JOIN bills xb ON xb.id=x.bill_id WHERE x.item_id=bi.item_id AND x.batch=bi.batch
+       AND xb.type IN ('PURCHASE','PURCHASE_CHALLAN') ORDER BY xb.date, x.id LIMIT 1) AS inv_date
   FROM bill_items bi JOIN bills b ON b.id=bi.bill_id JOIN items i ON i.id=bi.item_id
   WHERE bi.jw IS NOT NULL AND COALESCE(bi.batch,'')<>''`;
 const jwRefRows = (where: string, ...args: SQLInputValue[]) => (db.prepare(`${JW_REF_SQL} ${where} GROUP BY bi.item_id, bi.batch ORDER BY bi.batch DESC`).all(...args) as Row[])

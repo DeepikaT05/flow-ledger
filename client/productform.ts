@@ -55,7 +55,7 @@ COLS[1].push(S('schedule_h', 'SCHEDULE H', NOYES, '58px', { small: true }));
 // DESCRIPTION window starts from these. Kept in items.details like the other extra fields.
 /** Three columns, as the block above (Enter walks down each column). */
 const JW_COLS: Fld[][] = [
-  [S('jw_purity_unit', 'PURITY ON', ['%', 'K']), S('jw_making_unit', 'MAKING ON', ['GM', '%', 'PCS', 'FIX'], '68px'), S('jw_polish_unit', 'POLISH ON', ['%', 'GWt'], '68px'), T('jw_tray', 'TRAY NAME', { w: '150px' })],
+  [S('jw_purity_unit', 'PURITY ON', ['%', 'K']), S('jw_making_unit', 'MAKING ON', ['GM', '%', 'PCS', 'FIX'], '68px'), S('jw_polish_unit', 'POLISH ON', ['%', 'GWt'], '68px'), T('jw_tray', 'TRAY NAME', { w: '150px' }), T('jw_prefix', 'BARCODE PREFIX', { w: '60px', small: true })],
   [N('jw_purity', 'PURITY', 3), N('jw_making', 'MAKING', 2), N('jw_polish', 'POLISH', 3)],
   [N('jw_weight', 'WEIGHT (GM)', 3, { small: true }), S('jw_diamond', 'DIAMOND', NOYES), S('jw_stone', 'STONE', NOYES), S('jw_metal', 'METAL', ['GOLD', 'SILVER', 'OTHER'], '88px')],
 ];

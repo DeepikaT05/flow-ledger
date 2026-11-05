@@ -6,7 +6,7 @@ import { margBar, margPop, popList, margConfirm, margNumber, margAsk } from './m
 import { billDetails, pickBillItems, pickSold, saveInBox, type ReturnInfo } from './salereturn.ts';
 import { ledgerForm, itemForm, type Ledger, type Item } from './masters.ts';
 import { canAction, seeCost, canBackdate, session, NO_DATE } from './session.ts';
-import { isJewellery, pickJewelItem, jewelDetail, askPurchaseRef, pickSaleRef, jwFromRef, partyHistory, type JwLine, type JwRef } from './jewellery.ts';
+import { isJewellery, pickJewelItem, jewelDetail, askPurchaseRef, pickSaleRef, jwFromRef, partyHistory, partyMetal, type JwLine, type JwRef } from './jewellery.ts';
 
 /** Run `fn` only if the role may do `action`; otherwise say so. */
 function allowed(action: string, what: string): boolean {
@@ -527,12 +527,14 @@ export async function saleEntry(type = 'SALE', billId?: number) {
         <div class="kv"><span class="k">VALUE OF GOODS</span><b>${f2(taxable)}</b></div>
         <div class="kv"><span class="k">DISCOUNT</span><b>${f2(gross - taxable)}</b></div>
         <div class="kv"><span class="k">GST%</span><b>${f2(tax)}</b></div>
-        <div class="kv"><span class="k">${isPurchase(type) ? 'CASH PURCHASE' : 'PURCHASE TAX CAR'}</span><b>0.00</b></div>
-        <div class="kv clickable" data-fld="cd" title="Click or Press F8 to edit Cash Discount"><span class="k">CASH DISCOUNT ${cdp ? `(${cdp}%)` : ''}</span><b>${f2(cda)}</b></div>
-        <div class="kv clickable" data-fld="round" title="Click to edit Round Off"><span class="k">ROUND OFF</span><b>${f2(ro)}</b></div>`;
+        ${isPurchase(type) ? '<div class="kv"><span class="k">CASH PURCHASE</span><b>0.00</b></div>'
+          : '<div class="kv"><span class="k">PURCHASE TAX CAR:</span><b>0.00</b></div><div class="kv"><span class="k">TAX PAID ON PURC:</span><b>0.00</b></div>'}
+        <div class="kv clickable" data-fld="cd" title="Click or Press F8 to edit Cash Discount"><span class="k">CASH DISCOUNT ${cdp ? `(${cdp}%)` : ''}</span><b>${f2(cda)}</b></div>`;
+      void ro;   // round-off is applied in BILL ADJUSTMENT; MARG's jewellery footer does not list it
       void fr; void ot;
       screen.querySelectorAll('.info3 .clickable').forEach((el) => el.addEventListener('click', () => billAdjustmentsWindow((el as HTMLElement).dataset.fld as any)));
-      screen.querySelector('.cal')!.textContent = `Cal:2,${live.length + 1},P`;
+      // As MARG: Cal:2,<line>,Qt:<gross weight>(<lines>)
+      screen.querySelector('.cal')!.textContent = `Cal:2,${live.length + 1},Qt:${Number(w3((j) => j.gross))}(${live.length})`;
       screen.querySelector('.inv')!.textContent = f2(net);
       tbody.querySelectorAll('tr').forEach((tr, i) => {
         const r = rows[i];
@@ -608,9 +610,17 @@ export async function saleEntry(type = 'SALE', billId?: number) {
       }
       if (!noI.value) noI.value = (await api<{ no: string }>(`/bills/next-no?type=${type}`)).no;
       if (jewel) {
-        const mb = await partyHistory(l.id, isPurchase(type));
-        if (mb) metalBal = mb;
-        if (isPurchase(type)) { renderRows(); if (refEntry && pnoI) { pnoI.focus(); pnoI.select(); } else focusCell(0, 'name'); return; }
+        // MARG jewellery: a purchase shows PARTY HISTORY; a sale goes straight to the items.
+        // Neither asks for an M.R.; the party's Gold / Silver show in the footer either way.
+        if (isPurchase(type)) {
+          const mb = await partyHistory(l.id, true);
+          if (mb) metalBal = mb;
+        } else {
+          metalBal = await partyMetal(l.id).catch(() => metalBal);
+        }
+        renderRows();
+        if (refEntry && pnoI) { pnoI.focus(); pnoI.select(); } else focusCell(0, 'name');
+        return;
       }
       let partyMR: Salesman | null = null;
       if (l.details) {
