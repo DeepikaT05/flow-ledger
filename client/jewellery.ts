@@ -7,7 +7,7 @@
 import { api, esc, h, toast } from './ui.ts';
 import { margPop, popList } from './margui.ts';
 import { itemForm, type Item } from './masters.ts';
-import { canAction } from './session.ts';
+import { canAction, seeCost } from './session.ts';
 
 /** True when the company was created with Business Type JEWELLERY. */
 export const isJewellery = (business: unknown) => /JEWEL/i.test(String(business ?? ''));
@@ -92,24 +92,38 @@ function makingAmount(unit: string, making: number, j: { net: number; sets: numb
 /** Works out Net / Pure Weight and the line Amount, as the DESCRIPTION window does. */
 export function calcJw(j: JwLine, saleRate = 0): JwLine {
   const toGm = (w: number) => (j.stoneUnit === 'Crt' ? w * CRT : w);
-  const stoneWt = toGm(j.stone);
+  const stoneWt = toGm(Number(j.stone) || 0);
   // Only the stones marked L (W-L) in STONE DETAIL are taken off the gross weight.
-  const stoneLess = j.stones?.length ? toGm(j.stones.filter((x) => x.less !== false).reduce((t, x) => t + x.weight, 0)) : stoneWt;
-  const diaWt = j.diamondWt * CRT;
+  const stoneLess = j.stones?.length ? toGm(j.stones.filter((x) => x.less !== false).reduce((t, x) => t + (Number(x.weight) || 0), 0)) : stoneWt;
+  const diaWt = (Number(j.diamondWt) || 0) * CRT;
   const less = j.lessWeight === 'Both' ? stoneLess + diaWt : j.lessWeight === 'Stone' ? stoneLess : j.lessWeight === 'Diamond' ? diaWt : 0;
-  const net = r3(Math.max(0, j.gross - j.testing - less));
-  const pure = r3(Math.max(0, net * purityFactor(j.purityUnit, j.purity) - j.lessBy));
-  const polishWt = r3(j.polishUnit === 'GWt' ? j.polish : (net * j.polish) / 100);
-  const metalAmt = r2((pure + polishWt) * j.rate);
-  const makingAmt = r2(makingAmount(j.makingUnit, j.making, { net, sets: j.sets, metalAmt }));
-  const before = metalAmt + makingAmt + j.diamondAmt + j.stoneAmt + j.extra;
-  const disc = j.discUnit === '%' ? (before * j.disc) / 100 : j.disc;
+  const testing = Number(j.testing) || 0;
+  const net = r3(Math.max(0, (Number(j.gross) || 0) - testing - less));
+  const lessBy = Number(j.lessBy) || 0;
+  const pure = r3(Math.max(0, net * purityFactor(j.purityUnit, Number(j.purity) || 0) - lessBy));
+  const polish = Number(j.polish) || 0;
+  const polishWt = r3(j.polishUnit === 'GWt' ? polish : (net * polish) / 100);
+  const metalAmt = r2((pure + polishWt) * (Number(j.rate) || 0));
+  const sets = Number(j.sets) || 1;
+  const making = Number(j.making) || 0;
+  const makingAmt = r2(makingAmount(j.makingUnit, making, { net, sets, metalAmt }));
+  const diamondAmt = Number(j.diamondAmt) || 0;
+  const stoneAmt = Number(j.stoneAmt) || 0;
+  const extra = Number(j.extra) || 0;
+  const before = metalAmt + makingAmt + diamondAmt + stoneAmt + extra;
+  const discVal = Number(j.disc) || 0;
+  const disc = j.discUnit === '%' ? (before * discVal) / 100 : discVal;
   const amount = r2(Math.max(0, before - disc));
   // Purchase: the value it will be sold at (SALES DESCRIPTION).
-  const sPure = net * purityFactor(j.sPurityUnit, j.sPurity);
-  const sPolish = j.sPolishUnit === 'GWt' ? j.sPolish : (net * j.sPolish) / 100;
-  const sMetal = (sPure + sPolish) * saleRate;
-  const sAmount = r2(sMetal + makingAmount(j.sMakingUnit, j.sMaking, { net, sets: j.sets, metalAmt: sMetal }) + j.sExtra + j.sDiamondAmt + j.stoneRate * j.stone);
+  const sPure = net * purityFactor(j.sPurityUnit, Number(j.sPurity) || 0);
+  const sPolish = Number(j.sPolish) || 0;
+  const sPolishWt = j.sPolishUnit === 'GWt' ? sPolish : (net * sPolish) / 100;
+  const sMetal = (sPure + sPolishWt) * saleRate;
+  const sMaking = Number(j.sMaking) || 0;
+  const sExtra = Number(j.sExtra) || 0;
+  const sDiamondAmt = Number(j.sDiamondAmt) || 0;
+  const stoneRate = Number(j.stoneRate) || 0;
+  const sAmount = r2(sMetal + makingAmount(j.sMakingUnit, sMaking, { net, sets, metalAmt: sMetal }) + sExtra + sDiamondAmt + stoneRate * (Number(j.stone) || 0));
   return { ...j, stoneWt: r3(stoneWt), net, pure, polishWt, metalAmt, makingAmt, amount, sAmount };
 }
 
@@ -505,9 +519,9 @@ export async function pickSaleRef(item: Item): Promise<JwRef | null | undefined>
         <div>Diamond: <b>${w(j.diamondWt)}</b></div><div></div><div>Invoice: <b>${esc(r.invoice ?? '')}</b></div>
         <div>Stone &nbsp;: <b>${w(j.stone)}${j.stone ? ` ${esc(j.stoneUnit ?? '')}` : ''}</b></div><div></div><div>Date &nbsp;&nbsp;: <b>${dm(r.inv_date)}</b></div>
         <div>Making : <b>${j.sMaking ? `${f2(j.sMaking)} ${esc(j.sMakingUnit ?? '')}` : ''}</b></div><div></div><div>M.R.P. : <b>${j.mrp ? f2(j.mrp) : ''}</b></div>
-        <div>Cost &nbsp;&nbsp;: <b>${cost ? f2(cost) : ''}</b></div><div></div><div>Desc. &nbsp;: <b>${esc(j.description ?? '')}</b></div>
+        <div>Cost &nbsp;&nbsp;: <b>${seeCost() ? (cost ? f2(cost) : '') : '****'}</b></div><div></div><div>Desc. &nbsp;: <b>${esc(j.description ?? '')}</b></div>
         <div>Sale &nbsp;&nbsp;: <b>${sale ? f2(sale) : ''}</b></div><div></div><div>Pcs/Set: <b>${r.sets}</b></div>
-        <div>Margin : <b>${cost && sale ? `${(((sale - cost) / cost) * 100).toFixed(2)}%` : ''}</b></div><div></div><div>Barcode: <b>${esc(r.ref)}</b></div>`;
+        <div>Margin : <b>${seeCost() ? (cost && sale ? `${(((sale - cost) / cost) * 100).toFixed(2)}%` : '') : '****'}</b></div><div></div><div>Barcode: <b>${esc(r.ref)}</b></div>`;
     },
     foot: '<span><b>Enter</b>-Select</span><span><b>Shift+?</b>-Find</span><span><b>Esc</b>-Without Barcode</span>',
   });
@@ -516,8 +530,8 @@ export async function pickSaleRef(item: Item): Promise<JwRef | null | undefined>
 
 /** The party's Gold / Silver (pure weight) without opening PARTY HISTORY — for the sale footer. */
 export async function partyMetal(ledgerId: number): Promise<{ gold: number; silver: number }> {
-  const hst = await api<{ gold: number; silver: number }>(`/ledgers/${ledgerId}/jewel-history?kind=SALE`);
-  return { gold: hst.gold, silver: hst.silver };
+  const hst = await api<{ gold: number; silver: number }>(`/ledgers/${ledgerId}/jewel-history?kind=SALE`).catch(() => ({ gold: 0, silver: 0 }));
+  return { gold: Number(hst?.gold) || 0, silver: Number(hst?.silver) || 0 };
 }
 
 /** A Ref. typed or scanned in the DESCRIPTION column: its item and stock, or null. */
@@ -536,7 +550,9 @@ export function jwFromRef(item: Item, r: JwRef): JwLine {
     diamond: p.diamond ?? base.diamond, diamondPcs: p.diamondPcs ?? 0, diamondWt: r3(k(p.diamondWt)), lessWeight: p.lessWeight ?? base.lessWeight,
     stoneYes: p.stoneYes ?? base.stoneYes, stonePcs: p.stonePcs ?? 0, stoneUnit: p.stoneUnit ?? base.stoneUnit, stone: r3(k(p.stone)),
     stones: (p.stones ?? []).map((s) => ({ ...s, weight: r3(k(s.weight)) })),
-    stoneAmt: r2(Number(p.stoneRate ?? 0) * k(p.stone)),
+    stoneAmt: Number(p.stoneRate ?? 0) > 0 ? r2(Number(p.stoneRate) * k(p.stone))
+      : (p.stones?.length ? r2(p.stones.reduce((t, s) => t + (s.on === 'P' ? Number(s.pcs) || 0 : Number(s.weight) || 0) * (Number(s.srate) || 0), 0) * share)
+      : r2(k(p.stoneAmt))),
     purityUnit: p.sPurityUnit ?? base.purityUnit, purity: p.sPurity ?? base.purity,
     makingUnit: p.sMakingUnit ?? base.makingUnit, making: p.sMaking ?? base.making,
     polishUnit: p.sPolishUnit ?? base.polishUnit, polish: p.sPolish ?? base.polish,

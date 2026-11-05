@@ -311,33 +311,34 @@ app.get('/api/items/jewel-stock', h(() => {
 }));
 // JEWELLERY: every piece / lot bought carries a Ref. (tag no., kept in bill_items.batch).
 // Stock of each Ref = what came in on it − what went out on it.
-const JW_REF_SQL = `SELECT bi.item_id, i.name AS item_name, bi.batch AS ref,
-    SUM(CASE WHEN b.type IN (${IN_TYPES}) THEN 1 ELSE -1 END * bi.qty) AS sets,
-    SUM(CASE WHEN b.type IN (${IN_TYPES}) THEN 1 ELSE -1 END * COALESCE(json_extract(bi.jw,'$.gross'),0)) AS gross,
-    SUM(CASE WHEN b.type IN (${IN_TYPES}) THEN 1 ELSE -1 END * COALESCE(json_extract(bi.jw,'$.net'),0)) AS net,
-    SUM(CASE WHEN b.type IN (${IN_TYPES}) THEN 1 ELSE -1 END * COALESCE(json_extract(bi.jw,'$.pure'),0)) AS pure,
-    (SELECT x.jw FROM bill_items x JOIN bills xb ON xb.id=x.bill_id WHERE x.item_id=bi.item_id AND x.batch=bi.batch
+function r3(n: number) { return Math.round(n * 1000) / 1000; }
+const JW_REF_SQL = `SELECT bi.item_id, i.name AS item_name, UPPER(TRIM(bi.batch)) AS ref,
+    SUM(CASE WHEN b.type IN (${IN_TYPES}) THEN 1 WHEN b.type IN (${OUT_TYPES}) THEN -1 ELSE 0 END * bi.qty) AS sets,
+    SUM(CASE WHEN b.type IN (${IN_TYPES}) THEN 1 WHEN b.type IN (${OUT_TYPES}) THEN -1 ELSE 0 END * COALESCE(json_extract(bi.jw,'$.gross'),0)) AS gross,
+    SUM(CASE WHEN b.type IN (${IN_TYPES}) THEN 1 WHEN b.type IN (${OUT_TYPES}) THEN -1 ELSE 0 END * COALESCE(json_extract(bi.jw,'$.net'),0)) AS net,
+    SUM(CASE WHEN b.type IN (${IN_TYPES}) THEN 1 WHEN b.type IN (${OUT_TYPES}) THEN -1 ELSE 0 END * COALESCE(json_extract(bi.jw,'$.pure'),0)) AS pure,
+    (SELECT x.jw FROM bill_items x JOIN bills xb ON xb.id=x.bill_id WHERE x.item_id=bi.item_id AND UPPER(TRIM(x.batch))=UPPER(TRIM(bi.batch))
        AND xb.type IN (${IN_TYPES}) AND x.jw IS NOT NULL ORDER BY xb.date DESC, x.id DESC LIMIT 1) AS jw,
-    (SELECT pl.name FROM bill_items x JOIN bills xb ON xb.id=x.bill_id JOIN ledgers pl ON pl.id=xb.party_id WHERE x.item_id=bi.item_id AND x.batch=bi.batch
+    (SELECT pl.name FROM bill_items x JOIN bills xb ON xb.id=x.bill_id JOIN ledgers pl ON pl.id=xb.party_id WHERE x.item_id=bi.item_id AND UPPER(TRIM(x.batch))=UPPER(TRIM(bi.batch))
        AND xb.type IN ('PURCHASE','PURCHASE_CHALLAN') ORDER BY xb.date, x.id LIMIT 1) AS supplier,
-    (SELECT COALESCE(NULLIF(xb.ref_no,''), xb.no) FROM bill_items x JOIN bills xb ON xb.id=x.bill_id WHERE x.item_id=bi.item_id AND x.batch=bi.batch
+    (SELECT COALESCE(NULLIF(xb.ref_no,''), xb.no) FROM bill_items x JOIN bills xb ON xb.id=x.bill_id WHERE x.item_id=bi.item_id AND UPPER(TRIM(x.batch))=UPPER(TRIM(bi.batch))
        AND xb.type IN ('PURCHASE','PURCHASE_CHALLAN') ORDER BY xb.date, x.id LIMIT 1) AS invoice,
-    (SELECT xb.date FROM bill_items x JOIN bills xb ON xb.id=x.bill_id WHERE x.item_id=bi.item_id AND x.batch=bi.batch
+    (SELECT xb.date FROM bill_items x JOIN bills xb ON xb.id=x.bill_id WHERE x.item_id=bi.item_id AND UPPER(TRIM(x.batch))=UPPER(TRIM(bi.batch))
        AND xb.type IN ('PURCHASE','PURCHASE_CHALLAN') ORDER BY xb.date, x.id LIMIT 1) AS inv_date
   FROM bill_items bi JOIN bills b ON b.id=bi.bill_id JOIN items i ON i.id=bi.item_id
   WHERE bi.jw IS NOT NULL AND COALESCE(bi.batch,'')<>''`;
-const jwRefRows = (where: string, ...args: SQLInputValue[]) => (db.prepare(`${JW_REF_SQL} ${where} GROUP BY bi.item_id, bi.batch ORDER BY bi.batch DESC`).all(...args) as Row[])
+const jwRefRows = (where: string, ...args: SQLInputValue[]) => (db.prepare(`${JW_REF_SQL} ${where} GROUP BY bi.item_id, UPPER(TRIM(bi.batch)) ORDER BY UPPER(TRIM(bi.batch)) DESC`).all(...args) as Row[])
   .map((r) => ({ ...r, sets: r2(num(r.sets)), gross: r3(num(r.gross)), net: r3(num(r.net)), pure: r3(num(r.pure)) }))
   .filter((r) => r.gross > 0.0005 || r.sets > 0);
-const r3 = (n: number) => Math.round(n * 1000) / 1000;
 /** AVAILABLE STOCKS of an item: its Refs still in stock. */
 app.get('/api/items/:id/jewel-refs', h((req) => jwRefRows('AND bi.item_id=?', Number(req.params.id))));
 /** A Ref typed / scanned in a bill: the item it belongs to and what is left of it. */
-app.get('/api/jewel/ref/:ref', h((req) => jwRefRows('AND UPPER(bi.batch)=UPPER(?)', String(req.params.ref).trim())[0] ?? null));
+app.get('/api/jewel/ref/:ref', h((req) => jwRefRows('AND UPPER(TRIM(bi.batch))=UPPER(?)', String(req.params.ref).trim())[0] ?? null));
 /** Next Ref for a prefix (first letters of the item, e.g. LOCKET → LO001137). */
 app.get('/api/jewel/next-ref', h((req) => {
   const prefix = String(req.query.prefix ?? '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 2) || 'JW';
-  const rows = db.prepare(`SELECT batch FROM bill_items WHERE jw IS NOT NULL AND UPPER(batch) LIKE ?`).all(`${prefix}%`) as { batch: string }[];
+  const rows = db.prepare(`SELECT batch FROM bill_items WHERE jw IS NOT NULL AND UPPER(batch) LIKE ?
+    UNION SELECT batch FROM batches WHERE UPPER(batch) LIKE ?`).all(`${prefix}%`, `${prefix}%`) as { batch: string }[];
   const max = rows.reduce((m, r) => Math.max(m, Number(String(r.batch).slice(prefix.length).replace(/\D/g, '')) || 0), 0);
   return { ref: `${prefix}${String(max + 1).padStart(6, '0')}` };
 }));
@@ -767,6 +768,11 @@ function saveBill(body: BillIn, id?: number) {
       }
     }
     for (const l of c.lines) {
+      if (l.batch) l.batch = String(l.batch).trim().toUpperCase();
+      if (!l.batch_id && l.batch) {
+        const bRow = db.prepare('SELECT id FROM batches WHERE item_id=? AND UPPER(batch)=UPPER(?) LIMIT 1').get(l.item_id, l.batch) as { id: number } | undefined;
+        if (bRow) l.batch_id = bRow.id;
+      }
       insL.run(billId, l.item_id, l.batch_id ?? null, l.batch ?? '', l.expiry ?? '', l.qty, l.free, l.rate, l.disc_pct, l.gst_rate, num(l.mrp), l.taxable, l.tax, l.amount, l.jw);
     }
     const insP = db.prepare('INSERT INTO bill_payments (bill_id,ledger_id,amount,remark,detail) VALUES (?,?,?,?,?)');
@@ -854,7 +860,7 @@ app.get('/api/payment-modes', h(() => db.prepare(`SELECT * FROM (${LEDGER_BAL}) 
 app.get('/api/years', h(() => db.prepare('SELECT * FROM company_years ORDER BY code DESC').all()));
 
 // ---------------------------------------------------------------- party pending bills / CUSTOMER STATUS (receipt entry)
-const daysSince = (d: string) => Math.max(0, Math.round((Date.parse(new Date().toISOString().slice(0, 10)) - Date.parse(d)) / 864e5));
+function daysSince(d: string) { return Math.max(0, Math.round((Date.parse(new Date().toISOString().slice(0, 10)) - Date.parse(d)) / 864e5)); }
 /**
  * Credit bills of a party still not fully settled. kind SALE = sale bills (receipt / credit note),
  * PURCHASE = purchase bills (payment / debit note). `exclude` = the voucher being modified.

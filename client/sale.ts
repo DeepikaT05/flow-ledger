@@ -1256,7 +1256,11 @@ export async function saleEntry(type = 'SALE', billId?: number) {
           const r = rows[ri];
           api<Item>(`/items/${r.item_id}`).then(async (it) => {
             const jw = await jewelDetail(it, isPurchase(type) && type !== 'PURCHASE_RETURN', r.jw);
-            if (jw) { r.jw = jw; r.qty = jw.sets; r.rate = jw.rate; r.mrp = jw.mrp; r.batch = jw.ref || ''; dirty = true; renderRows(); }
+            if (jw) {
+              r.jw = jw; r.qty = jw.sets; r.rate = jw.rate; r.mrp = jw.mrp; r.batch = jw.ref || '';
+              if (ri === rows.length - 1) rows.push(blank());
+              dirty = true; renderRows();
+            }
             focusCell(jw ? Math.min(ri + 1, rows.length - 1) : ri, 'name');
           }).catch((err) => toast((err as Error).message, true));
           return true;
@@ -1360,12 +1364,22 @@ export async function saleEntry(type = 'SALE', billId?: number) {
     otherCharges = Number(b.other_charges || 0);
     manualRoundOff = b.round_off != null ? Number(b.round_off) : null;
     payments = (b.payments ?? []).map((p: any) => ({ ledger_id: p.ledger_id, ledger: p.ledger, amount: p.amount, remark: p.remark, detail: p.detail }));
-    rows = b.lines.map((l: any) => ({
-      item_id: l.item_id, name: String(l.item_name).toUpperCase(), pack: (l.pack ?? '').toUpperCase(), batch_id: l.batch_id,
-      batch: l.batch, expiry: l.expiry, qty: l.qty, free: l.free, rate: l.rate, disc: l.disc_pct, gst: l.gst_rate, mrp: l.mrp, unit: l.unit,
-      ...(l.jw ? { jw: JSON.parse(l.jw) as JwLine } : {}),
-    }));
+    const parseJw = (v: unknown): JwLine | undefined => {
+      if (!v) return undefined;
+      try { return (typeof v === 'string' ? JSON.parse(v) : v) as JwLine; } catch { return undefined; }
+    };
+    rows = b.lines.map((l: any) => {
+      const jw = parseJw(l.jw);
+      return {
+        item_id: l.item_id, name: String(l.item_name).toUpperCase(), pack: (l.pack ?? '').toUpperCase(), batch_id: l.batch_id,
+        batch: l.batch, expiry: l.expiry, qty: l.qty, free: l.free, rate: l.rate, disc: l.disc_pct, gst: l.gst_rate, mrp: l.mrp, unit: l.unit,
+        ...(jw ? { jw } : {}),
+      };
+    });
     rows.push(blank());
+    if (jewel && b.party_id) {
+      metalBal = await partyMetal(b.party_id).catch(() => ({ gold: 0, silver: 0 }));
+    }
     dirty = false;
     renderRows();
     focusCell(0, 'name');
