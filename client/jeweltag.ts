@@ -105,3 +105,4 @@ export function printJewelTagWeb(data: JewelTag) {
     w.document.close();
   }
 }
+

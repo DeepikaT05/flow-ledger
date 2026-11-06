@@ -281,7 +281,15 @@ export async function productScreen(existing?: Partial<Item> & { details?: strin
       try {
         const r = isNew ? await api<{ id: number }>('/items', { method: 'POST', body }) : await api(`/items/${existing!.id}`, { method: 'PUT', body });
         const id = isNew ? (r as { id: number }).id : existing!.id;
-        toast(isNew ? 'Product saved' : 'Product updated');
+
+        // If no barcode was typed, auto-generate and link one (e.g. FL000012 or PA000012)
+        if (!out.barcode?.trim() && !details.barcode?.trim()) {
+          const prefix = jewel ? (out.jw_prefix?.trim() || name.slice(0, 2).toUpperCase() || 'JW') : 'FL';
+          const autoCode = `${prefix}${String(id).padStart(6, '0')}`;
+          await api(`/items/${id}/barcode`, { method: 'PUT', body: { barcode: autoCode } }).catch(() => {});
+        }
+
+        toast(isNew ? 'Product saved (QR code created)' : 'Product updated');
         finish(await api<Item>(`/items/${id}`));
       } catch (e) { toast((e as Error).message, true); }
     };
