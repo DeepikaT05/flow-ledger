@@ -19,6 +19,7 @@ export interface Company {
   address2?: string;
   gstin?: string;
   state?: string;
+  business_type?: string;
   /** JSON: phone, email, dl_no … from COMPANY CREATION */
   details?: string;
 }

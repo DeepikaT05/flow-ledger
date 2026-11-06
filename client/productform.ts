@@ -7,6 +7,7 @@ import { margPop, margConfirm } from './margui.ts';
 import { seeCost } from './session.ts';
 import type { Item } from './masters.ts';
 import { isJewellery } from './jewellery.ts';
+import { printJewelTagWeb } from './jeweltag.ts';
 
 type Kind = 'text' | 'num' | 'sel';
 interface Fld { k: string; label: string; kind: Kind; opts?: string[]; dec?: number; w?: string; upper?: boolean; small?: boolean; ro?: boolean; after?: Fld[]; sep?: string }
@@ -50,18 +51,33 @@ const COLS: (Fld | null)[][] = [
 // SCHEDULE H sits in the middle column's last line.
 COLS[1].push(S('schedule_h', 'SCHEDULE H', NOYES, '58px', { small: true }));
 
-// JEWELLERY business: the item's own jewellery detail (as in MARG's jewellery item setup —
-// purity, making "charge on", polish, weight, Diamond / Stone Yes-No, tray). The sale / purchase
-// DESCRIPTION window starts from these. Kept in items.details like the other extra fields.
-/** Three columns, as the block above (Enter walks down each column). */
+// JEWELLERY business: the item's own jewellery detail (GW, LESS, NW, MKG, purity, making, polish …)
+/** Three columns for Jewellery detail */
 const JW_COLS: Fld[][] = [
-  [S('jw_purity_unit', 'PURITY ON', ['%', 'K']), S('jw_making_unit', 'MAKING ON', ['GM', '%', 'PCS', 'FIX'], '68px'), S('jw_polish_unit', 'POLISH ON', ['%', 'GWt'], '68px'), T('jw_tray', 'TRAY NAME', { w: '150px' }), T('jw_prefix', 'BARCODE PREFIX', { w: '60px', small: true })],
-  [N('jw_purity', 'PURITY', 3), N('jw_making', 'MAKING', 2), N('jw_polish', 'POLISH', 3)],
-  [N('jw_weight', 'WEIGHT (GM)', 3, { small: true }), S('jw_diamond', 'DIAMOND', NOYES), S('jw_stone', 'STONE', NOYES), S('jw_metal', 'METAL', ['GOLD', 'SILVER', 'OTHER'], '88px')],
+  [
+    N('jw_gw', 'GW (GROSS WT)', 3, { small: true }),
+    N('jw_less', 'LESS (WT)', 3, { small: true }),
+    N('jw_nw', 'NW (NET WT)', 3, { small: true, ro: true }),
+    T('jw_mkg', 'MKG (MAKING)', { w: '90px', small: true }),
+  ],
+  [
+    S('jw_metal', 'METAL', ['SILVER', 'GOLD', 'OTHER'], '88px'),
+    S('jw_purity_unit', 'PURITY ON', ['%', 'K']),
+    N('jw_purity', 'PURITY', 3),
+    S('jw_making_unit', 'MAKING ON', ['GM', '%', 'PCS', 'FIX'], '68px'),
+    N('jw_making', 'MAKING VAL', 2),
+  ],
+  [
+    T('jw_tray', 'TRAY NAME', { w: '120px' }),
+    T('jw_prefix', 'TAG PREFIX', { w: '60px', small: true }),
+    S('jw_diamond', 'DIAMOND', NOYES),
+    S('jw_stone', 'STONE', NOYES),
+  ],
 ];
 const JW_DEFAULTS: Record<string, string> = {
-  jw_purity_unit: '%', jw_purity: '100', jw_making_unit: '%', jw_making: '0', jw_polish_unit: '%', jw_polish: '0',
-  jw_weight: '0', jw_diamond: 'No', jw_stone: 'No', jw_tray: '', jw_metal: 'GOLD',
+  jw_gw: '0.000', jw_less: '0.000', jw_nw: '0.000', jw_mkg: '5.00 %',
+  jw_purity_unit: '%', jw_purity: '100', jw_making_unit: '%', jw_making: '5', jw_polish_unit: '%', jw_polish: '0',
+  jw_weight: '0', jw_diamond: 'No', jw_stone: 'No', jw_tray: '', jw_metal: 'SILVER', jw_prefix: 'PA',
 };
 
 const DEFAULTS: Record<string, string> = {
@@ -121,15 +137,67 @@ export async function productScreen(existing?: Partial<Item> & { details?: strin
     const bottom = h('div', { class: 'pf-bottom' });
     bottom.innerHTML = COLS.map((c) => `<div class="pf-col">${c.map((f) => cell(f)).join('')}</div>`).join('');
     p.body.append(top, bottom);
+
+    const printCurrentTag = () => {
+      const pName = (byKey('name') as HTMLInputElement)?.value.trim() || 'PRODUCT';
+      const bCode = (byKey('barcode') as HTMLInputElement)?.value.trim() || (byKey('code') as HTMLInputElement)?.value.trim() || (existing?.id ? `PA${String(existing.id).padStart(6, '0')}` : 'PA000001');
+      const gw = Number((byKey('jw_gw') as HTMLInputElement)?.value) || 0;
+      const less = Number((byKey('jw_less') as HTMLInputElement)?.value) || 0;
+      const nw = Number((byKey('jw_nw') as HTMLInputElement)?.value) || Math.max(0, gw - less);
+      const mkg = (byKey('jw_mkg') as HTMLInputElement)?.value.trim() || '5.00 %';
+      const metal = (byKey('jw_metal') as HTMLSelectElement)?.value || 'SILVER';
+      printJewelTagWeb({ code: bCode, name: pName, gw, less, nw, mkg, metal });
+    };
+
     if (jewel) {
       const jw = h('div', { class: 'pf-jw' });
-      jw.innerHTML = `<div class="pf-jw-h">JEWELLERY DETAIL</div><div class="pf-bottom">${
-        JW_COLS.map((c) => `<div class="pf-col">${c.map((f) => cell(f)).join('')}</div>`).join('')}</div>`;
+      const tagBtn = h('button', {
+        type: 'button',
+        class: 'btn sm',
+        style: 'float: right; margin-top: -3px; background: #0284c7; color: #fff; font-weight: 700; font-size: 11px; padding: 2px 10px; cursor: pointer; border: none; border-radius: 3px;'
+      }, '🖨️ Print Jewellery Tag (Alt+P)');
+      tagBtn.onclick = () => printCurrentTag();
+
+      const jwHead = h('div', { class: 'pf-jw-h' }, 'JEWELLERY DETAIL (GW · LESS · NW · MKG)');
+      jwHead.append(tagBtn);
+      const jwCols = h('div', { class: 'pf-bottom' });
+      jwCols.innerHTML = JW_COLS.map((c) => `<div class="pf-col">${c.map((f) => cell(f)).join('')}</div>`).join('');
+      jw.append(jwHead, jwCols);
       p.body.append(jw);
     }
 
     const inputs = [...p.body.querySelectorAll('input:not([readonly]), select')] as (HTMLInputElement | HTMLSelectElement)[];
     const byKey = (k: string) => p.body.querySelector(`[data-k="${k}"]`) as HTMLInputElement | HTMLSelectElement;
+
+    if (jewel) {
+      const gwEl = byKey('jw_gw') as HTMLInputElement | null;
+      const lessEl = byKey('jw_less') as HTMLInputElement | null;
+      const nwEl = byKey('jw_nw') as HTMLInputElement | null;
+      const wtEl = byKey('jw_weight') as HTMLInputElement | null;
+      const mkgEl = byKey('jw_mkg') as HTMLInputElement | null;
+      const mkValEl = byKey('jw_making') as HTMLInputElement | null;
+      const mkUnitEl = byKey('jw_making_unit') as HTMLSelectElement | null;
+
+      const calcNw = () => {
+        if (!gwEl || !lessEl || !nwEl) return;
+        const g = Number(gwEl.value) || 0;
+        const l = Number(lessEl.value) || 0;
+        const net = Math.max(0, g - l);
+        nwEl.value = fmt(net, 3);
+        if (wtEl) wtEl.value = fmt(net, 3);
+      };
+      gwEl?.addEventListener('input', calcNw);
+      lessEl?.addEventListener('input', calcNw);
+      gwEl?.addEventListener('blur', calcNw);
+      lessEl?.addEventListener('blur', calcNw);
+
+      mkValEl?.addEventListener('input', () => {
+        if (mkgEl && mkValEl) mkgEl.value = `${mkValEl.value} ${mkUnitEl?.value || '%'}`;
+      });
+      mkUnitEl?.addEventListener('change', () => {
+        if (mkgEl && mkValEl) mkgEl.value = `${mkValEl.value} ${mkUnitEl.value || '%'}`;
+      });
+    }
     p.body.querySelectorAll<HTMLInputElement>('input.up').forEach((el) => el.addEventListener('input', () => {
       const at = el.selectionStart; el.value = el.value.toUpperCase(); el.setSelectionRange(at, at);
     }));
@@ -242,6 +310,7 @@ export async function productScreen(existing?: Partial<Item> & { details?: strin
         const n = inputs[Math.max(0, i - 1)]; n.focus(); if (n instanceof HTMLInputElement) n.select();
         return true;
       }
+      if (k === 'Alt+P' || k === 'Alt+p') { printCurrentTag(); return true; }
       if (k === 'Ctrl+W' || k === 'Ctrl+S' || k === 'PageDown') { save(); return true; }   // MARG saves with Ctrl+W → "Yes"
       return false;
     };
