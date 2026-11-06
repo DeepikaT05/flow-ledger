@@ -117,6 +117,7 @@ export const BillEntryScreen: React.FC<{ navigation: any; route: any }> = ({ nav
   useEffect(() => navigation.addListener('focus', () => {
     if (loading) return;
     LedgerService.list().then(setLedgers).catch(() => {});
+    LedgerService.paymentModes().then(setModes).catch(() => {});
     const code = pendingCode.current;
     if (code) {
       pendingCode.current = '';
@@ -643,6 +644,19 @@ export const BillEntryScreen: React.FC<{ navigation: any; route: any }> = ({ nav
             setPayMode(l.id);
           }
         }}
+        footer={
+          <Btn
+            label="＋ Create New Payment Method (Bank / UPI / Cash)"
+            ghost
+            color={accent.main}
+            small
+            style={{ marginTop: 8 }}
+            onPress={() => {
+              setPicker('');
+              navigation.navigate('LedgerEntry', { group: 'Bank Accounts' });
+            }}
+          />
+        }
         render={(l) => (
           <View>
             <Text style={st.pickName}>{l.name}</Text>
