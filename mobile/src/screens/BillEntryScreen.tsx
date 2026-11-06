@@ -24,7 +24,7 @@ interface PaymentSplit {
 
 /** New / modify any bill type: Sale, Challan, Counter Sale, Sale Return, Purchase, Purchase Challan, Purchase Return. */
 export const BillEntryScreen: React.FC<{ navigation: any; route: any }> = ({ navigation, route }) => {
-  const { user } = useAuth();
+  const { user, company } = useAuth();
   const type: BillType = route.params?.type ?? 'SALE';
   const editId: number | undefined = route.params?.id;
 
@@ -46,7 +46,17 @@ export const BillEntryScreen: React.FC<{ navigation: any; route: any }> = ({ nav
   const [refNo, setRefNo] = useState('');
   const [refDate, setRefDate] = useState('');
   const [reason, setReason] = useState('');
-  const [walkin, setWalkin] = useState({ name: '', mobile: '' });
+  const [walkin, setWalkin] = useState({
+    name: '',
+    mobile: '',
+    address: '',
+    gstin: '',
+    state: '',
+    dl_no: '',
+    email: '',
+    order_no: '',
+    remark: '',
+  });
   const [narration, setNarration] = useState('');
   const [lines, setLines] = useState<EditLine[]>([]);
   const [cdPct, setCdPct] = useState('');
@@ -78,7 +88,18 @@ export const BillEntryScreen: React.FC<{ navigation: any; route: any }> = ({ nav
         if (editId) {
           const b = await BillService.get(editId);
           setNo(b.no); setDate(b.date); setNarration(b.narration ?? ''); setRefNo(b.ref_no ?? ''); setRefDate(b.ref_date ?? '');
-          setReason(b.reason ?? ''); setWalkin({ name: b.walkin_name ?? '', mobile: b.walkin_mobile ?? '' });
+          setReason(b.reason ?? '');
+          setWalkin({
+            name: b.walkin_name ?? '',
+            mobile: b.walkin_mobile ?? '',
+            address: b.walkin_address ?? '',
+            gstin: b.walkin_gstin ?? '',
+            state: '',
+            dl_no: '',
+            email: '',
+            order_no: '',
+            remark: '',
+          });
           setParty(ls.find((l) => l.id === b.party_id) ?? null);
           setFreight(b.freight ? String(b.freight) : ''); setOther(b.other_charges ? String(b.other_charges) : '');
           if (b.cd_amt && b.taxable) setCdPct(String(r2((b.cd_amt / b.taxable) * 100)));
@@ -99,10 +120,10 @@ export const BillEntryScreen: React.FC<{ navigation: any; route: any }> = ({ nav
         } else {
           const r = await BillService.nextNo(type).catch(() => ({ no: '' }));
           setNo(r.no);
-          if (type === 'COUNTER_SALE') {
-            const cash = ls.find((l) => l.name.toLowerCase() === 'cash');
+          if (type === 'SALE' || type === 'COUNTER_SALE' || type === 'SALE_CHALLAN') {
+            const cash = ls.find((l) => l.name.toLowerCase().includes('cash'));
             setParty(cash ?? null);
-            setPayMode(ms.find((m) => m.name.toLowerCase() === 'cash')?.id ?? ms[0]?.id ?? 0);
+            setPayMode(ms.find((m) => m.name.toLowerCase().includes('cash'))?.id ?? ms[0]?.id ?? 0);
           }
         }
       } catch (e: any) {
@@ -322,11 +343,24 @@ export const BillEntryScreen: React.FC<{ navigation: any; route: any }> = ({ nav
 
     const body = {
       mr_auto: true,   // server puts the logged-in user as the bill's M.R.
-      type, no: no.trim(), date, party_id: party.id, narration,
+      type, no: no.trim(), date, party_id: party.id,
       mode: activePayments.length ? 'CASH' : 'CREDIT',
       payments: kind.takesPayment ? activePayments : [],
       ref_no: refNo.trim(), ref_date: refDate || date, reason: reason.trim(),
-      walkin_name: walkin.name.trim(), walkin_mobile: walkin.mobile.trim(), walkin_gstin: '', walkin_address: '',
+      walkin_name: walkin.name.trim(),
+      walkin_mobile: walkin.mobile.trim(),
+      walkin_gstin: walkin.gstin.trim(),
+      walkin_address: [
+        walkin.address.trim(),
+        walkin.state.trim() ? `State: ${walkin.state.trim()}` : '',
+        walkin.dl_no.trim() ? `DL/PAN: ${walkin.dl_no.trim()}` : '',
+        walkin.email.trim() ? `Email: ${walkin.email.trim()}` : '',
+      ].filter(Boolean).join(', '),
+      narration: [
+        narration.trim(),
+        walkin.remark.trim() ? `Remark: ${walkin.remark.trim()}` : '',
+        walkin.order_no.trim() ? `Order No: ${walkin.order_no.trim()}` : '',
+      ].filter(Boolean).join(' | '),
       cd_pct: Number(cdPct) || 0, freight: Number(freight) || 0, other_charges: Number(other) || 0,
       lines: outLines,
     };
@@ -396,9 +430,26 @@ export const BillEntryScreen: React.FC<{ navigation: any; route: any }> = ({ nav
             ) : null}
 
             {party && (party.name.toUpperCase().includes('CASH') || type === 'COUNTER_SALE') ? (
-              <View style={{ flexDirection: 'row', gap: 10 }}>
-                <Field label="Customer Name" value={walkin.name} onChangeText={(v) => setWalkin((w) => ({ ...w, name: v }))} placeholder="Walk-in name" style={{ flex: 1.4 }} />
-                <Field label="Mobile" value={walkin.mobile} onChangeText={(v) => setWalkin((w) => ({ ...w, mobile: v }))} placeholder="10-digit" keyboardType="phone-pad" style={{ flex: 1 }} />
+              <View style={{ marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: C.line }}>
+                <Text style={[ui.label, { color: accent.dark, fontWeight: '800', marginBottom: 8 }]}>
+                  Party Detail (Cash / Walk-in Customer)
+                </Text>
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <Field label="Customer Name *" value={walkin.name} onChangeText={(v) => setWalkin((w) => ({ ...w, name: v }))} placeholder="Party / customer name" autoCapitalize="characters" style={{ flex: 1.4 }} />
+                  <Field label="Mobile" value={walkin.mobile} onChangeText={(v) => setWalkin((w) => ({ ...w, mobile: v }))} placeholder="10-digit mobile" keyboardType="phone-pad" style={{ flex: 1 }} />
+                </View>
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <Field label="Address" value={walkin.address} onChangeText={(v) => setWalkin((w) => ({ ...w, address: v }))} placeholder="Customer address" autoCapitalize="words" style={{ flex: 1.4 }} />
+                  <Field label="GST No." value={walkin.gstin} onChangeText={(v) => setWalkin((w) => ({ ...w, gstin: v }))} placeholder="GSTIN (optional)" autoCapitalize="characters" style={{ flex: 1 }} />
+                </View>
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <Field label="State" value={walkin.state || (company?.state ? `${company.state}` : '')} onChangeText={(v) => setWalkin((w) => ({ ...w, state: v }))} placeholder="22-CHHATTISGARH" autoCapitalize="characters" style={{ flex: 1 }} />
+                  <Field label="D.L.No. / PAN" value={walkin.dl_no} onChangeText={(v) => setWalkin((w) => ({ ...w, dl_no: v }))} placeholder="PAN or D.L.No." autoCapitalize="characters" style={{ flex: 1 }} />
+                </View>
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <Field label="E-Mail" value={walkin.email} onChangeText={(v) => setWalkin((w) => ({ ...w, email: v }))} placeholder="Email id" keyboardType="email-address" style={{ flex: 1.2, marginBottom: 0 }} />
+                  <Field label="Remark / Order No" value={walkin.remark} onChangeText={(v) => setWalkin((w) => ({ ...w, remark: v }))} placeholder="Remark" style={{ flex: 1, marginBottom: 0 }} />
+                </View>
               </View>
             ) : null}
 

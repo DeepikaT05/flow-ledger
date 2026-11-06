@@ -149,6 +149,8 @@ export interface Bill {
   against_bill_id?: number | null;
   walkin_name?: string;
   walkin_mobile?: string;
+  walkin_gstin?: string;
+  walkin_address?: string;
   mr_name?: string | null;
   lines?: BillLine[];
   payments?: BillPayment[];

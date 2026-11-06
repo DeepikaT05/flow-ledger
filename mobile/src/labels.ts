@@ -19,10 +19,10 @@ export interface BillKind {
 }
 
 export const BILL: Record<BillType, BillKind> = {
-  SALE: { title: 'Sale Bill', short: 'Sale', module: 'sale', inward: false, partyGroup: 'Sundry Debtors', partyLabel: 'Ledger', hasRef: false, needsReason: false, takesPayment: true },
-  SALE_CHALLAN: { title: 'Sale Challan', short: 'S.Chln', module: 'sale', inward: false, partyGroup: 'Sundry Debtors', partyLabel: 'Ledger', hasRef: false, needsReason: false, takesPayment: false },
+  SALE: { title: 'Sale Bill', short: 'Sale', module: 'sale', inward: false, partyGroup: 'Cash-in-hand,Sundry Debtors', partyLabel: 'Ledger', hasRef: false, needsReason: false, takesPayment: true },
+  SALE_CHALLAN: { title: 'Sale Challan', short: 'S.Chln', module: 'sale', inward: false, partyGroup: 'Cash-in-hand,Sundry Debtors', partyLabel: 'Ledger', hasRef: false, needsReason: false, takesPayment: false },
   COUNTER_SALE: { title: 'Counter Sale', short: 'Cntr', module: 'sale', inward: false, partyGroup: 'Cash-in-hand,Sundry Debtors', partyLabel: 'Ledger', hasRef: false, needsReason: false, takesPayment: true },
-  SALE_RETURN: { title: 'Sale Return (Cr.Note)', short: 'S.Rtn', module: 'sale', inward: true, partyGroup: 'Sundry Debtors', partyLabel: 'Ledger', hasRef: false, needsReason: true, takesPayment: false },
+  SALE_RETURN: { title: 'Sale Return (Cr.Note)', short: 'S.Rtn', module: 'sale', inward: true, partyGroup: 'Cash-in-hand,Sundry Debtors', partyLabel: 'Ledger', hasRef: false, needsReason: true, takesPayment: false },
   PURCHASE: { title: 'Purchase Bill', short: 'Purc', module: 'purchase', inward: true, partyGroup: 'Sundry Creditors', partyLabel: 'Supplier', hasRef: true, needsReason: false, takesPayment: true },
   PURCHASE_CHALLAN: { title: 'Purchase Challan', short: 'P.Chln', module: 'purchase', inward: true, partyGroup: 'Sundry Creditors', partyLabel: 'Supplier', hasRef: true, needsReason: false, takesPayment: false },
   PURCHASE_RETURN: { title: 'Purchase Return (Dr.Note)', short: 'P.Rtn', module: 'purchase', inward: false, partyGroup: 'Sundry Creditors', partyLabel: 'Supplier', hasRef: false, needsReason: false, takesPayment: false },
