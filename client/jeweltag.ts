@@ -23,11 +23,15 @@ export function encodeJewelQr(data: JewelTag): string {
   });
 }
 
-export function jewelTagSvg(data: JewelTag): string {
+export function qrSvg(data: string): string {
   const qr = qrcode(0, 'M');
-  qr.addData(encodeJewelQr(data));
+  qr.addData(data);
   qr.make();
   return qr.createSvgTag({ cellSize: 3, margin: 0, scalable: true });
+}
+
+export function jewelTagSvg(data: JewelTag): string {
+  return qrSvg(encodeJewelQr(data));
 }
 
 export function printJewelTagWeb(data: JewelTag) {

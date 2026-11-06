@@ -2,12 +2,12 @@
 // (Status, Type, Hide, Product, Packing … Item MID) over three columns of tax, rate and
 // discount fields. Enter / ↓ moves to the next field; Enter on the last one asks "Save ?".
 // Fields the item table has no column for are kept in items.details (JSON).
-import { api, esc, h, toast, confirmBox } from './ui.ts';
+import { api, esc, h, toast, confirmBox, openWin } from './ui.ts';
 import { margPop, margConfirm } from './margui.ts';
 import { seeCost } from './session.ts';
 import type { Item } from './masters.ts';
 import { isJewellery } from './jewellery.ts';
-import { printJewelTagWeb } from './jeweltag.ts';
+import { printJewelTagWeb, jewelTagSvg, qrSvg } from './jeweltag.ts';
 
 type Kind = 'text' | 'num' | 'sel';
 interface Fld { k: string; label: string; kind: Kind; opts?: string[]; dec?: number; w?: string; upper?: boolean; small?: boolean; ro?: boolean; after?: Fld[]; sep?: string }
@@ -149,21 +149,51 @@ export async function productScreen(existing?: Partial<Item> & { details?: strin
       printJewelTagWeb({ code: bCode, name: pName, gw, less, nw, mkg, metal });
     };
 
+    let qrBox: HTMLElement | null = null;
     if (jewel) {
       const jw = h('div', { class: 'pf-jw' });
       const tagBtn = h('button', {
         type: 'button',
         class: 'btn sm',
-        style: 'float: right; margin-top: -3px; background: #0284c7; color: #fff; font-weight: 700; font-size: 11px; padding: 2px 10px; cursor: pointer; border: none; border-radius: 3px;'
+        style: 'float: right; margin-top: -3px; background: #0284c7; color: #fff; font-weight: 700; font-size: 11px; padding: 3px 12px; cursor: pointer; border: none; border-radius: 3px;'
       }, '🖨️ Print Jewellery Tag (Alt+P)');
       tagBtn.onclick = () => printCurrentTag();
 
-      const jwHead = h('div', { class: 'pf-jw-h' }, 'JEWELLERY DETAIL (GW · LESS · NW · MKG)');
+      const jwHead = h('div', { class: 'pf-jw-h' }, 'JEWELLERY DETAIL (GW · LESS · NW · MKG · SCANNABLE QR)');
       jwHead.append(tagBtn);
-      const jwCols = h('div', { class: 'pf-bottom' });
-      jwCols.innerHTML = JW_COLS.map((c) => `<div class="pf-col">${c.map((f) => cell(f)).join('')}</div>`).join('');
-      jw.append(jwHead, jwCols);
+
+      const jwWrap = h('div', { style: 'display: flex; gap: 12px; padding: 6px 14px; background: #f8fafc; align-items: flex-start;' });
+      const jwCols = h('div', { class: 'pf-bottom', style: 'flex: 1; border-top: none;' });
+      jwCols.innerHTML = JW_COLS.map((c) => `<div class="pf-col" style="padding-top: 2px;">${c.map((f) => cell(f)).join('')}</div>`).join('');
+
+      qrBox = h('div', {
+        class: 'pf-qr-preview',
+        style: 'width: 220px; background: #fff; border: 1.5px solid #0f172a; border-radius: 6px; padding: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: 0 1px 4px rgba(0,0,0,0.15); flex-shrink: 0;'
+      });
+      jwWrap.append(jwCols, qrBox);
+      jw.append(jwHead, jwWrap);
       p.body.append(jw);
+    } else {
+      const qrFootBtn = h('div', { style: 'padding: 4px 14px; background: #f1f5f9; border-top: 1px solid #cbd5e1; display: flex; justify-content: flex-end;' });
+      const btn = h('button', {
+        type: 'button',
+        style: 'background: #0f766e; color: #fff; border: none; border-radius: 4px; padding: 4px 12px; font-size: 12px; font-weight: bold; cursor: pointer;'
+      }, '▣ View Scannable QR Code');
+      btn.onclick = () => {
+        const pName = (byKey('name') as HTMLInputElement)?.value.trim() || 'PRODUCT';
+        const bCode = (byKey('barcode') as HTMLInputElement)?.value.trim() || (byKey('code') as HTMLInputElement)?.value.trim() || (existing?.id ? `FL${String(existing.id).padStart(6, '0')}` : 'FL000001');
+        const qWin = openWin(`QR CODE - ${bCode}`, 'small');
+        qWin.body.innerHTML = `
+          <div style="padding: 16px; text-align: center; background: #fff;">
+            <div style="font-weight: 800; font-size: 14px; margin-bottom: 8px;">${esc(pName)}</div>
+            <div style="width: 140px; height: 140px; margin: 0 auto;">${qrSvg(bCode)}</div>
+            <div style="font-family: monospace; font-size: 13px; font-weight: bold; margin-top: 8px;">Code: ${esc(bCode)}</div>
+            <div style="font-size: 11px; color: #64748b; margin-top: 4px;">Scan with Flow Ledger Mobile App (Scan QR)</div>
+          </div>
+        `;
+      };
+      qrFootBtn.append(btn);
+      p.body.append(qrFootBtn);
     }
 
     const inputs = [...p.body.querySelectorAll('input:not([readonly]), select')] as (HTMLInputElement | HTMLSelectElement)[];
@@ -177,6 +207,36 @@ export async function productScreen(existing?: Partial<Item> & { details?: strin
       const mkgEl = byKey('jw_mkg') as HTMLInputElement | null;
       const mkValEl = byKey('jw_making') as HTMLInputElement | null;
       const mkUnitEl = byKey('jw_making_unit') as HTMLSelectElement | null;
+      const metalEl = byKey('jw_metal') as HTMLSelectElement | null;
+
+      const updateJewelQr = () => {
+        if (!qrBox) return;
+        const pName = (byKey('name') as HTMLInputElement)?.value.trim() || 'PRODUCT';
+        const bCode = (byKey('barcode') as HTMLInputElement)?.value.trim() || (byKey('code') as HTMLInputElement)?.value.trim() || (existing?.id ? `PA${String(existing.id).padStart(6, '0')}` : 'PA000001');
+        const gw = Number(gwEl?.value) || 0;
+        const less = Number(lessEl?.value) || 0;
+        const nw = Number(nwEl?.value) || Math.max(0, gw - less);
+        const mkg = mkgEl?.value.trim() || '5.00 %';
+        const metal = metalEl?.value || 'SILVER';
+        const svg = jewelTagSvg({ code: bCode, name: pName, gw, less, nw, mkg, metal });
+        qrBox.innerHTML = `
+          <div style="font-size: 11px; font-weight: 800; color: #1e3a8a; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">▣ SCANNABLE QR TAG</div>
+          <div style="width: 84px; height: 84px; margin-bottom: 4px;">${svg}</div>
+          <div style="font-family: monospace; font-size: 12px; font-weight: 800; color: #000;">${esc(bCode)}</div>
+          <div style="font-size: 10px; font-weight: 700; color: #334155; max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 4px;">${esc(pName)}</div>
+          <div style="font-family: monospace; font-size: 10px; width: 100%; border-top: 1px dashed #94a3b8; padding-top: 4px; color: #000;">
+            <div style="display:flex; justify-content:space-between;"><span>GW:</span><b>${gw.toFixed(3)}</b></div>
+            <div style="display:flex; justify-content:space-between;"><span>LESS:</span><b>${less.toFixed(3)}</b></div>
+            <div style="display:flex; justify-content:space-between; color:#15803d; font-weight:bold;"><span>NW:</span><b>${nw.toFixed(3)}</b></div>
+            <div style="display:flex; justify-content:space-between;"><span>MKG:</span><b>${esc(mkg)}</b></div>
+          </div>
+          <button type="button" class="btn-qr-print" style="margin-top: 6px; width: 100%; background: #0284c7; color: #fff; font-size: 11px; font-weight: 700; padding: 4px; border: none; border-radius: 3px; cursor: pointer;">
+            🖨️ Print Tag
+          </button>
+        `;
+        const printBtn = qrBox.querySelector('.btn-qr-print') as HTMLButtonElement | null;
+        if (printBtn) printBtn.onclick = () => printCurrentTag();
+      };
 
       const calcNw = () => {
         if (!gwEl || !lessEl || !nwEl) return;
@@ -185,6 +245,7 @@ export async function productScreen(existing?: Partial<Item> & { details?: strin
         const net = Math.max(0, g - l);
         nwEl.value = fmt(net, 3);
         if (wtEl) wtEl.value = fmt(net, 3);
+        updateJewelQr();
       };
       gwEl?.addEventListener('input', calcNw);
       lessEl?.addEventListener('input', calcNw);
@@ -193,10 +254,15 @@ export async function productScreen(existing?: Partial<Item> & { details?: strin
 
       mkValEl?.addEventListener('input', () => {
         if (mkgEl && mkValEl) mkgEl.value = `${mkValEl.value} ${mkUnitEl?.value || '%'}`;
+        updateJewelQr();
       });
       mkUnitEl?.addEventListener('change', () => {
         if (mkgEl && mkValEl) mkgEl.value = `${mkValEl.value} ${mkUnitEl.value || '%'}`;
+        updateJewelQr();
       });
+      (byKey('name') as HTMLInputElement | null)?.addEventListener('input', updateJewelQr);
+      (byKey('barcode') as HTMLInputElement | null)?.addEventListener('input', updateJewelQr);
+      updateJewelQr();
     }
     p.body.querySelectorAll<HTMLInputElement>('input.up').forEach((el) => el.addEventListener('input', () => {
       const at = el.selectionStart; el.value = el.value.toUpperCase(); el.setSelectionRange(at, at);

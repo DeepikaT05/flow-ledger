@@ -992,16 +992,31 @@ export async function saleEntry(type = 'SALE', billId?: number) {
     return new Promise((resolve) => {
       const net = totals().net;
       const p = margPop('MODE OF PAYMENT',
-        '<span><b>F2</b>-New</span><span><b>Enter</b>-Modify</span><span><b>End/F10</b>-Save</span><span><b>Del</b>-Delete</span><span><b>?</b>-Search</span><span><b>Tab</b>-Multiple Select</span>',
+        '<span><b>Enter / End / F10</b> - Save Bill</span><span><b>Del</b> - Delete</span><span><b>Esc</b> - Back</span>',
         '1000px');
       const box = h('div', { class: 'marg-pay', style: 'height:420px' });
       p.body.append(box);
       let sel = 0;
       let editingAmt = false;
       const amountOf = (id: number) => payments.find((x) => x.ledger_id === id)?.amount ?? 0;
+
+      let done = false;
+      const finish = (v: 'saved' | 'back') => { if (done) return; done = true; p.close(); resolve(v); };
+
+      const commit = () => {
+        const el = box.querySelector('.amt-in') as HTMLInputElement | null;
+        if (!el) return;
+        const amt = r2(Number(el.value || 0));
+        const m = modes[sel];
+        payments = payments.filter((x) => x.ledger_id !== m.id);
+        if (amt) payments.push({ ledger_id: m.id, ledger: m.name, amount: amt, remark: '', detail: '' });
+        editingAmt = false;
+      };
+
       const draw = () => {
         const cur = modes[sel];
         const received = r2(payments.reduce((s, x) => s + x.amount, 0));
+        const pending = r2(net - received);
         box.innerHTML = `
           <div class="modes">${modes.map((m, i) => `<div class="${i === sel ? 'sel' : ''}" data-i="${i}">${esc(m.name.toUpperCase())}
             <span style="float:right">${amountOf(m.id) ? f2(amountOf(m.id)) : ''}</span></div>`).join('')}</div>
@@ -1014,34 +1029,98 @@ export async function saleEntry(type = 'SALE', billId?: number) {
             <div class="kv">Bill Amount &nbsp;&nbsp;&nbsp;: <b>${f2(net)}</b></div>
             <div class="kv">Payment Received: <b>${f2(received)}</b></div>
             <div class="kv">Service Charges : <b>0.00</b></div>
-            <div class="pend">Pending &nbsp; ${f2(r2(net - received))}</div>
+            <div class="pend">Pending &nbsp; ${f2(pending)}</div>
+            <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end">
+              <button type="button" class="btn-pay-save" style="background:#15803d;color:#fff;border:none;padding:8px 22px;font-size:14px;font-weight:700;border-radius:4px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.25)">
+                💾 Save Bill (Enter / End / F10)
+              </button>
+            </div>
           </div></div>`;
+
         box.querySelectorAll('.modes div').forEach((d) => d.addEventListener('click', () => { sel = Number((d as HTMLElement).dataset.i); draw(); }));
-        if (editingAmt) { const el = box.querySelector('.amt-in') as HTMLInputElement; el.focus(); el.select(); }
+
+        const saveBtn = box.querySelector('.btn-pay-save') as HTMLButtonElement | null;
+        if (saveBtn) {
+          saveBtn.onclick = () => {
+            commit();
+            finish('saved');
+          };
+        }
+
+        const el = box.querySelector('.amt-in') as HTMLInputElement | null;
+        if (el) {
+          el.onkeydown = (e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              e.stopPropagation();
+              commit();
+              const rec = r2(payments.reduce((s, x) => s + x.amount, 0));
+              if (rec >= net || r2(net - rec) <= 0.001) {
+                finish('saved');
+              } else {
+                draw();
+              }
+            } else if (e.key === 'Escape') {
+              e.preventDefault();
+              e.stopPropagation();
+              editingAmt = false;
+              draw();
+            } else if (e.key === 'End' || e.key === 'F10') {
+              e.preventDefault();
+              e.stopPropagation();
+              commit();
+              finish('saved');
+            }
+          };
+          if (editingAmt) {
+            el.focus();
+            el.select();
+          }
+        }
       };
       draw();
-      const commit = () => {
-        const el = box.querySelector('.amt-in') as HTMLInputElement;
-        const amt = r2(Number(el.value || 0));
-        const m = modes[sel];
-        payments = payments.filter((x) => x.ledger_id !== m.id);
-        if (amt) payments.push({ ledger_id: m.id, ledger: m.name, amount: amt, remark: '', detail: '' });
-        editingAmt = false;
-        draw();
-      };
-      let done = false;
-      const finish = (v: 'saved' | 'back') => { if (done) return; done = true; p.close(); resolve(v); };
+
+      p.el.querySelector('.win-foot, .marg-foot')?.addEventListener('click', (e) => {
+        const target = e.target as HTMLElement;
+        if (target.textContent?.includes('Save')) {
+          if (editingAmt) commit();
+          finish('saved');
+        }
+      });
+
       p.onKey = (_e, k) => {
+        if (k === 'End' || k === 'F10' || k === 'Ctrl+W') {
+          if (editingAmt) commit();
+          finish('saved');
+          return true;
+        }
         if (editingAmt) {
-          if (k === 'Enter') { commit(); return true; }
+          if (k === 'Enter') {
+            commit();
+            const rec = r2(payments.reduce((s, x) => s + x.amount, 0));
+            if (rec >= net || r2(net - rec) <= 0.001) {
+              finish('saved');
+            } else {
+              draw();
+            }
+            return true;
+          }
           if (k === 'Escape') { editingAmt = false; draw(); return true; }
           return false;
         }
         if (k === 'ArrowDown') { sel = (sel + 1) % modes.length; draw(); return true; }
         if (k === 'ArrowUp') { sel = (sel - 1 + modes.length) % modes.length; draw(); return true; }
-        if (k === 'Enter') { editingAmt = true; draw(); return true; }
+        if (k === 'Enter') {
+          const rec = r2(payments.reduce((s, x) => s + x.amount, 0));
+          if (rec >= net || r2(net - rec) <= 0.001) {
+            finish('saved');
+            return true;
+          }
+          editingAmt = true;
+          draw();
+          return true;
+        }
         if (k === 'Delete') { payments = payments.filter((x) => x.ledger_id !== modes[sel].id); draw(); return true; }
-        if (k === 'End' || k === 'F10' || k === 'Ctrl+W') { finish('saved'); return true; }
         if (k === 'Escape') { finish('back'); return true; }
         return false;
       };
