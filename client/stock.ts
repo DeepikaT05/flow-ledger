@@ -205,8 +205,8 @@ export async function closingStock(initialStores: string[] = ['MAIN STORE'], opt
 
   const w = openWin(winTitle, 'full', '');
   w.el.classList.add('marg');
-  w.setFoot('<span><b>Tab/F5</b>-Search</span><span><b>F2</b>-New</span><span><b>F3</b>-Edit</span><span><b>F4</b>-Options</span><span><b>Enter</b>-Register</span><span><b>F6</b>-Total</span>' +
-    '<span><b>F9</b>-Store</span><span><b>F10</b>-Filter</span><span><b>*</b>-Shortage</span><span><b>Alt+X</b>-Excel</span><span><b>Alt+P</b>-PDF</span>');
+  w.setFoot('<span><b>Tab/F5</b>-Search</span><span><b>F2</b>-New</span><span><b>F3</b>-Edit</span><span><b>Alt+P</b>-Print QR</span><span><b>F4</b>-Options</span><span><b>Enter</b>-Register</span><span><b>F6</b>-Total</span>' +
+    '<span><b>F9</b>-Store</span><span><b>F10</b>-Filter</span><span><b>*</b>-Shortage</span><span><b>Alt+X</b>-Excel</span>');
   const screen = h('div', { class: 'cs-screen' });
   screen.innerHTML = `
     <div class="cs-main">
@@ -291,10 +291,26 @@ export async function closingStock(initialStores: string[] = ['MAIN STORE'], opt
   let batchSeq = 0;
   function draw() {
     setTitle();
-    rowsBox.innerHTML = view.map((it, i) => `<div class="r${i === sel ? ' sel' : ''}" data-i="${i}"><span>${esc(it.name.toUpperCase())}</span>
+    rowsBox.innerHTML = view.map((it, i) => `<div class="r${i === sel ? ' sel' : ''}" data-i="${i}">
+      <span style="display:flex;align-items:center;gap:6px;overflow:hidden;text-overflow:ellipsis;">
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(it.name.toUpperCase())}</span>
+        <button type="button" class="btn-item-qr" data-i="${i}" title="Print QR Tag (Alt+P)" style="margin-left:auto;padding:1px 6px;font-size:10px;font-weight:800;background:#0284c7;color:#fff;border:none;border-radius:3px;cursor:pointer;flex-shrink:0;">🖨️ QR</button>
+      </span>
       <span>${esc((it.pack ?? '').toUpperCase())}</span><span class="n">${f2(it.mrp)}</span><span class="n">${qty(stockOf(it))}</span><span>${esc(it.unit ?? '')}</span></div>`).join('')
       || '<div class="empty">No items</div>';
     rowsBox.querySelector('.sel')?.scrollIntoView({ block: 'nearest' });
+
+    rowsBox.querySelectorAll('.btn-item-qr').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const idx = Number((btn as HTMLElement).dataset.i);
+        if (view[idx]) {
+          import('./jeweltag.ts').then((m) => m.printItemTag(view[idx]));
+        }
+      });
+    });
+
     const it = view[sel];
     let filterStatusBadge = '';
     if (inStock || stockStatus === 'available') filterStatusBadge = ' &nbsp;[Available Stock Only]';
@@ -498,7 +514,13 @@ export async function closingStock(initialStores: string[] = ['MAIN STORE'], opt
     }
     if (k === '*') { shortage = !shortage; applyFilter(); return true; }
     if (k === 'Alt+X') { exportExcel(); return true; }
-    if (k === 'Alt+P' || k === 'Ctrl+P') { printList(); return true; }
+    if (k === 'Alt+P' || k === 'Alt+p') {
+      if (view[sel]) {
+        import('./jeweltag.ts').then((m) => m.printItemTag(view[sel]));
+        return true;
+      }
+    }
+    if (k === 'Ctrl+P') { printList(); return true; }
     if (k === 'Escape' && findInput.value) {
       findInput.value = '';
       applyFilter();
@@ -1767,7 +1789,13 @@ export async function batchStock(initialStores: string[] = ['MAIN STORE']) {
       return true;
     }
     if (k === 'Alt+X') { exportExcel(); return true; }
-    if (k === 'Alt+P' || k === 'Ctrl+P') { printList(); return true; }
+    if (k === 'Alt+P' || k === 'Alt+p') {
+      if (view[sel]) {
+        import('./jeweltag.ts').then((m) => m.printItemTag(view[sel]));
+        return true;
+      }
+    }
+    if (k === 'Ctrl+P') { printList(); return true; }
     if (k === 'Escape' && findInput.value) {
       findInput.value = '';
       applyFilter();

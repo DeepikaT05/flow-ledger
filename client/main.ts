@@ -81,6 +81,9 @@ const ACTIONS: Record<string, (arg?: string) => unknown> = {
   'calendar': () => calendar(),
   'print': () => window.print(),
   'shortcuts': () => shortcutsHelp(),
+  'qr.list': () => import('./qrmanager.ts').then((m) => m.qrManagerScreen(false)),
+  'qr.jewel': () => import('./qrmanager.ts').then((m) => m.qrManagerScreen(true)),
+  'qr.print': () => import('./qrmanager.ts').then((m) => m.qrManagerScreen(false)),
   // Quit: end the server session and start again from the login box.
   'exit': () => confirmBox('Quit Flow Ledger ?', false).then(async (y) => {
     if (!y) return;

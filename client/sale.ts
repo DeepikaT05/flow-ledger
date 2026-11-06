@@ -216,7 +216,7 @@ async function pickProduct(initial: string): Promise<Item | null> {
     title: 'STORE:MAIN STORE', rows, search: (r) => `${r.name} ${r.company}`, width: '1020px', findLabel: 'Find Name ? >>', initial,
     detailCols: 3,
     cols: [
-      { title: 'DESCRIPTION', get: (r) => r.name.toUpperCase(), width: '42%' },
+      { title: 'DESCRIPTION', get: (r) => `${r.name.toUpperCase()} <button type="button" class="btn-pop-qr" data-id="${r.id}" style="float:right;margin-top:2px;padding:1px 6px;font-size:10px;font-weight:bold;background:#0284c7;color:#fff;border:none;border-radius:3px;cursor:pointer;">🖨️ QR</button>`, width: '42%' },
       { title: 'PACKING', get: (r) => (r.pack ?? '').toUpperCase(), width: '18%' },
       { title: 'STOCK', get: (r) => (r.stock > 0 ? r.stock : '-'), num: true, width: '10%' },
       { title: 'UNIT', get: (r) => r.unit, width: '10%' },
@@ -230,10 +230,11 @@ async function pickProduct(initial: string): Promise<Item | null> {
       <div>W/oDeal: <b>${c2(r.purchase_rate)}</b></div><div>F.Rate&nbsp;: <b>${f2(r.sale_rate)}</b></div><div>Mfr. &nbsp;&nbsp;: &nbsp; Stock : <b>${r.stock}</b></div>
       <div>PurDeal:</div><div>Deal[F]:</div><div>Conv. &nbsp;: 0 &nbsp; BOX : 0</div>
       <div>PurDisc:</div><div>Scheme&nbsp;: 0</div><div>Barcode:</div>`,
-    foot: '<span><b>F2</b>-New</span><span><b>F3</b>-Modify</span><span><b>F4</b>-Reg.</span>',
+    foot: '<span><b>F2</b>-New</span><span><b>F3</b>-Modify</span><span><b>Alt+P</b>-Print QR</span><span><b>F4</b>-Reg.</span>',
     onKey: (k, cur, pop) => {
       if (k === 'F2') { if (!allowed('item.add', 'New Item')) return true; itemForm({ name: initial.toUpperCase() }).then(async (i) => { if (i) pop.setRows(await api('/items')); }); return true; }
       if (k === 'F3' && cur) { if (!allowed('item.list', 'Edit Item')) return true; itemForm(cur).then(async (i) => { if (i) pop.setRows(await api('/items')); }); return true; }
+      if ((k === 'Alt+P' || k === 'Alt+p') && cur) { import('./jeweltag.ts').then((m) => m.printItemTag(cur)); return true; }
       if (k === 'F4' && cur) { if (allowed('item.register', 'Item Register')) import('./masters.ts').then((m) => m.itemRegister(cur)).catch((e) => toast((e as Error).message, true)); return true; }
       return false;
     },
@@ -808,8 +809,25 @@ export async function saleEntry(type = 'SALE', billId?: number) {
       toast(`${FOOT_LABEL[type]} ${res.no} saved — Invoice Value ${money(res.net)}`);
       dirty = false;
       // As in MARG: after saving, ask how many copies and print them (Esc = don't print).
+      const liveItems = totals().live;
       const copies = await margNumber('No. of Copies', 1);
       if (copies) await import('./billing.ts').then((m) => m.printCopies(res.id, copies)).catch((e) => toast((e as Error).message, true));
+
+      // Option to print QR Tags for items in this bill
+      if (liveItems.length > 0) {
+        const askQr = await margConfirm('Print Jewellery / Item QR Tags for this Bill ?');
+        if (askQr) {
+          const jm = await import('./jeweltag.ts');
+          const allItems = await api<Item[]>('/items').catch(() => []);
+          const tags = liveItems.map((r) => {
+            const rawIt = allItems.find((it) => it.id === r.item_id);
+            let d: any = {};
+            try { d = JSON.parse(rawIt?.details || '{}'); } catch {}
+            return jm.tagOfItem({ ...rawIt, name: r.name, details: JSON.stringify({ ...d, ...(r.jw || {}) }) });
+          });
+          jm.printMultipleJewelTags(tags);
+        }
+      }
       if (billId) { w.close(); return; }
       await reset();
     } catch (e) { toast((e as Error).message, true); }

@@ -356,7 +356,12 @@ export async function productScreen(existing?: Partial<Item> & { details?: strin
         }
 
         toast(isNew ? 'Product saved (QR code created)' : 'Product updated');
-        finish(await api<Item>(`/items/${id}`));
+        const savedItem = await api<Item>(`/items/${id}`);
+        const printNow = await confirmBox('Print QR Tag now ?');
+        if (printNow) {
+          printCurrentTag();
+        }
+        finish(savedItem);
       } catch (e) { toast((e as Error).message, true); }
     };
 

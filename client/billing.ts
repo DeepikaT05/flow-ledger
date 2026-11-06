@@ -2,6 +2,7 @@ import { api, openWin, GridList, confirmBox, toast, money, esc, fmtDate, h, relo
 import { type Ledger } from './masters.ts';
 import { saleEntry } from './sale.ts';
 import { canDelete, NO_DELETE } from './session.ts';
+import { qrSvg } from './jeweltag.ts';
 
 export const BILL_TITLE: Record<string, string> = {
   SALE: 'Sale Bill', PURCHASE: 'Purchase Bill', SALE_CHALLAN: 'Sale Challan', PURCHASE_CHALLAN: 'Purchase Challan',
@@ -220,6 +221,7 @@ async function billHtml(id: number) {
         <div class="inv-hdr-mid">
           <div class="title">INVOICE</div>
           <div class="mode">${isCredit ? 'CREDIT' : 'CASH'}</div>
+          <div class="inv-qr" style="width:52px;height:52px;margin:3px auto;" title="Scan Bill QR">${qrSvg(`${companyName}|${b.no}|${b.date}|NET:${Number(b.net).toFixed(2)}`)}</div>
         </div>
         <div class="inv-hdr-right">
           <div class="pty-box">

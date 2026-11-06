@@ -830,6 +830,16 @@ export const MENU: MenuItem[] = [
     ],
   },
 
+  // ====================================================================== QR (SAVED QRS & TAGS)
+  {
+    label: 'QR', hot: 'Q', children: [
+      { label: 'Saved QR Codes (All Items)', hot: 'S', action: 'qr.list' },
+      { label: 'Jewellery QR Tags (GW · LESS · NW · MKG)', hot: 'J', action: 'qr.jewel' },
+      '-',
+      { label: 'Print QR Tag / Barcode', hot: 'P', action: 'qr.print' },
+    ],
+  },
+
   // ====================================================================== DIGITAL
   {
     label: 'Digital', hot: 'i', children: [
