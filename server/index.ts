@@ -65,7 +65,7 @@ app.get('/api/licence', h(() => {
 app.get('/api/companies', h((req) => (sysDb.prepare('SELECT * FROM companies ORDER BY name').all() as Row[])
   .filter((c) => canOpenCompany(authOf(req), Number(c.id))).map((c) => {
   const { pw_salt: _s, pw_hash: _h, ...det } = JSON.parse(String(c.details ?? '{}')) as Record<string, string>;
-  return { ...c, details: JSON.stringify({ ...det, has_password: _h ? '1' : '' }) };
+  return { ...c, business_type: det.business || '', details: JSON.stringify({ ...det, has_password: _h ? '1' : '' }) };
 })));
 const companyFields = (b: Record<string, unknown>) => {
   const name = String(b.name ?? '').trim().toUpperCase();
@@ -87,6 +87,8 @@ const companyDetails = (b: Record<string, unknown>, old = '{}') => {
       out[k] = String(v).slice(0, 200);
     }
   }
+  if (b.business_type) out.business = String(b.business_type).slice(0, 100);
+  if (b.business) out.business = String(b.business).slice(0, 100);
   return out;
 };
 const isDate = (s: unknown) => /^\d{4}-\d{2}-\d{2}$/.test(String(s)) && !Number.isNaN(Date.parse(String(s)));
@@ -298,10 +300,29 @@ app.get('/api/items/jewel-stock', h(() => {
       SUM(COALESCE(json_extract(bi.jw,'$.gross'),0)) AS gross, SUM(COALESCE(json_extract(bi.jw,'$.pure'),0)) AS pure
     FROM bill_items bi JOIN bills b ON b.id=bi.bill_id WHERE bi.jw IS NOT NULL AND b.type IN (${types}) GROUP BY bi.item_id`;
   const map = new Map<number, Record<string, number>>();
+
+  // 1. Opening jewellery weights from items table
+  const items = db.prepare('SELECT id, opening_stock, details FROM items').all() as { id: number; opening_stock: number; details: string }[];
+  for (const it of items) {
+    let d: Record<string, any> = {};
+    try { d = JSON.parse(it.details || '{}'); } catch {}
+    const gw = Number(d.jw_gw ?? d.jw_weight ?? 0);
+    const nw = Number(d.jw_nw ?? 0);
+    const pure = Number(d.jw_pure ?? (nw * (Number(d.jw_purity || 100) / 100)));
+    const stone = Number(d.jw_less ?? 0);
+    const dmnd = Number(d.jw_diamond_wt ?? 0);
+    const sets = Number(it.opening_stock) || (gw > 0 ? 1 : 0);
+    if (gw > 0 || sets > 0 || dmnd > 0 || stone > 0) {
+      map.set(it.id, { item_id: it.id, sets, dmnd: r3(dmnd), stone: r3(stone), gross: r3(gw), pure: r3(pure) });
+    }
+  }
+
+  // 2. Add bills in/out with 3-decimal precision (r3)
   const add = (rows: Record<string, number>[], sign: number) => {
     for (const r of rows) {
       const m = map.get(r.item_id) ?? { item_id: r.item_id, sets: 0, dmnd: 0, stone: 0, gross: 0, pure: 0 };
-      for (const k of ['sets', 'dmnd', 'stone', 'gross', 'pure']) m[k] = r2(m[k] + sign * num(r[k]));
+      m.sets = r2(m.sets + sign * num(r.sets));
+      for (const k of ['dmnd', 'stone', 'gross', 'pure']) m[k] = r3(m[k] + sign * num(r[k]));
       map.set(r.item_id, m);
     }
   };
@@ -333,7 +354,45 @@ const jwRefRows = (where: string, ...args: SQLInputValue[]) => (db.prepare(`${JW
 /** AVAILABLE STOCKS of an item: its Refs still in stock. */
 app.get('/api/items/:id/jewel-refs', h((req) => jwRefRows('AND bi.item_id=?', Number(req.params.id))));
 /** A Ref typed / scanned in a bill: the item it belongs to and what is left of it. */
-app.get('/api/jewel/ref/:ref', h((req) => jwRefRows('AND UPPER(TRIM(bi.batch))=UPPER(?)', String(req.params.ref).trim())[0] ?? null));
+app.get('/api/jewel/ref/:ref', h((req) => {
+  const rawRef = String(req.params.ref).trim();
+  let refCode = rawRef;
+  if (refCode.startsWith('{') && refCode.endsWith('}')) {
+    try { refCode = JSON.parse(refCode).code || refCode; } catch {}
+  }
+  const hit = jwRefRows('AND UPPER(TRIM(bi.batch))=UPPER(?)', refCode)[0];
+  if (hit) return hit;
+
+  // Fallback: check items table for item with matching barcode, code, or details->barcode
+  const it = db.prepare(`SELECT * FROM items WHERE UPPER(TRIM(barcode))=UPPER(?) OR UPPER(TRIM(code))=UPPER(?)
+    OR UPPER(TRIM(json_extract(details,'$.barcode')))=UPPER(?) LIMIT 1`).get(refCode, refCode, refCode) as any;
+  if (it) {
+    let d: Record<string, any> = {};
+    try { d = JSON.parse(it.details || '{}'); } catch {}
+    const gw = Number(d.jw_gw ?? d.jw_weight ?? 0);
+    const less = Number(d.jw_less ?? 0);
+    const nw = Number(d.jw_nw ?? (gw ? Math.max(0, gw - less) : (it.stock || 0)));
+    const pure = Number(d.jw_pure ?? (nw * (Number(d.jw_purity || 100) / 100)));
+    const jwObj = {
+      sets: 1, rate: Number(it.sale_rate || 0), gross: gw, purityUnit: d.jw_purity_unit || '%', purity: Number(d.jw_purity || 100),
+      testing: 0, diamond: d.jw_diamond || 'No', diamondPcs: 0, diamondWt: 0, diamondAmt: 0, lessWeight: 'Both',
+      stoneYes: d.jw_stone || 'No', stonePcs: 0, stoneUnit: 'Gm', stone: less, stoneAmt: 0, stones: [],
+      makingUnit: d.jw_making_unit || '%', making: Number(d.jw_making || 5), polishUnit: d.jw_polish_unit || '%', polish: Number(d.jw_polish || 0),
+      extra: 0, discUnit: 'All', disc: 0, lessBy: 0, description: it.name, narration: '',
+      orderNo: '', advance: 0, metalAdvance: 0, oRate: 0, tray: d.jw_tray || '',
+      sMakingUnit: d.jw_making_unit || 'GM', sMaking: Number(d.jw_making || 5), sPurityUnit: d.jw_purity_unit || '%', sPurity: Number(d.jw_purity || 100),
+      sPolishUnit: d.jw_polish_unit || '%', sPolish: Number(d.jw_polish || 0), sExtra: 0, mrp: Number(it.mrp || 0), sDiamondAmt: 0, stoneRate: 0, photo: 'No',
+      stoneWt: less, net: nw, pure, polishWt: 0, metalAmt: nw * Number(it.sale_rate || 0), makingAmt: 0, amount: nw * Number(it.sale_rate || 0), sAmount: nw * Number(it.sale_rate || 0),
+      ref: refCode, metal: (d.jw_metal || 'SILVER').toUpperCase(),
+    };
+    return {
+      item_id: it.id, item_name: it.name, ref: refCode,
+      sets: 1, gross: r3(gw), net: r3(nw), pure: r3(pure),
+      jw: JSON.stringify(jwObj), supplier: 'ITEM MASTER', invoice: 'INITIAL', inv_date: ''
+    };
+  }
+  return null;
+}));
 /** Next Ref for a prefix (first letters of the item, e.g. LOCKET → LO001137). */
 app.get('/api/jewel/next-ref', h((req) => {
   const prefix = String(req.query.prefix ?? '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 2) || 'JW';

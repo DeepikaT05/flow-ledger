@@ -52,7 +52,8 @@ export async function qrManagerScreen(jewelOnly = false) {
   function getVisible(): { item: Item; tag: JewelTag }[] {
     return items.map((it) => ({ item: it, tag: tagOfItem(it) })).filter(({ item: it, tag: t }) => {
       if (filterJewel) {
-        if (!t.gw && !t.less && !t.code.startsWith('PA') && !t.code.startsWith('JW')) return false;
+        const hasJewelInfo = t.gw > 0 || t.less > 0 || t.nw > 0 || t.metal === 'GOLD' || t.metal === 'SILVER' || (it.pack && /GM/i.test(it.pack));
+        if (!hasJewelInfo && !t.code.startsWith('PA') && !t.code.startsWith('JW')) return false;
       }
       if (searchQ) {
         const q = searchQ.toLowerCase();
@@ -266,3 +267,4 @@ export async function qrManagerScreen(jewelOnly = false) {
 
   await loadData();
 }
+

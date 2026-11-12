@@ -149,8 +149,26 @@ async function billHtml(id: number) {
 
   // JEWELLERY company: the item table is by weight (gross / stone / net / purity / pure), with
   // the gold rate, making and stone value — as a MARG jewellery invoice — and no batch / expiry.
-  const jwOf = (l: any): JwLine | null => { try { return l.jw ? JSON.parse(l.jw) : null; } catch { return null; } };
-  const jewel = isJewellery(c.business_type) && b.lines.some((l: any) => jwOf(l));
+  const isJewelCo = isJewellery(c.business_type);
+  const jwOf = (l: any): JwLine | null => {
+    try { if (l.jw) return JSON.parse(l.jw); } catch {}
+    if (isJewelCo) {
+      const qty = Number(l.qty || 1);
+      return {
+        sets: 1, rate: Number(l.rate || 0), gross: qty, purityUnit: '%', purity: 100,
+        testing: 0, diamond: 'No', diamondPcs: 0, diamondWt: 0, diamondAmt: 0, lessWeight: 'Both',
+        stoneYes: 'No', stonePcs: 0, stoneUnit: 'Gm', stone: 0, stoneAmt: 0, stones: [],
+        makingUnit: '%', making: 0, polishUnit: '%', polish: 0, extra: 0, discUnit: 'All', disc: 0, lessBy: 0,
+        description: '', narration: '', orderNo: '', advance: 0, metalAdvance: 0, oRate: 0, tray: '',
+        sMakingUnit: 'GM', sMaking: 0, sPurityUnit: '%', sPurity: 100, sPolishUnit: '%', sPolish: 0, sExtra: 0,
+        mrp: Number(l.mrp || 0), sDiamondAmt: 0, stoneRate: 0, photo: 'No',
+        stoneWt: 0, net: qty, pure: qty, polishWt: 0, metalAmt: Number(l.taxable || 0), makingAmt: 0,
+        amount: Number(l.taxable || 0), sAmount: Number(l.taxable || 0), ref: l.batch || '', metal: 'SILVER',
+      };
+    }
+    return null;
+  };
+  const jewel = isJewelCo || b.lines.some((l: any) => jwOf(l));
   const w3 = (n: unknown) => Number(n || 0).toFixed(3);
   const jwSum = (f: (j: JwLine) => number) => b.lines.reduce((t: number, l: any) => { const j = jwOf(l); return t + (j ? f(j) : 0); }, 0);
   const jwHead = `
@@ -196,14 +214,14 @@ async function billHtml(id: number) {
               <td colspan="3" class="tot-lbl">TOTAL</td>
               <td style="text-align:center">${jwSum((j) => j.sets)}</td>
               <td style="text-align:right">${w3(jwSum((j) => j.gross))}</td>
-              <td></td>
+              <td style="text-align:right">${w3(jwSum((j) => j.stone))}</td>
               <td style="text-align:right">${w3(jwSum((j) => j.net))}</td>
               <td></td>
               <td style="text-align:right">${w3(jwSum((j) => j.pure))}</td>
               <td></td>
               <td style="text-align:right">${jwSum((j) => j.makingAmt).toFixed(2)}</td>
               <td style="text-align:right">${jwSum((j) => j.stoneAmt).toFixed(2)}</td>
-              <td class="tot-val">${Number(b.net).toFixed(2)}</td>
+              <td class="tot-val">${Number(b.taxable).toFixed(2)}</td>
             </tr>`;
 
   const html = `

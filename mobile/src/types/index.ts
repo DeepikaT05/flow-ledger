@@ -26,7 +26,7 @@ export interface Company {
 
 export type ModuleKey = 'sale' | 'purchase' | 'receipt' | 'payment' | 'contra' | 'ledger';
 
-export type BillType =
+export type BillType =  
   | 'SALE' | 'SALE_CHALLAN' | 'COUNTER_SALE' | 'SALE_RETURN'
   | 'PURCHASE' | 'PURCHASE_CHALLAN' | 'PURCHASE_RETURN';
 
@@ -121,6 +121,7 @@ export interface BillLine {
   taxable?: number;
   tax?: number;
   amount?: number;
+  jw?: any;
 }
 
 export interface BillPayment { ledger_id: number; ledger?: string; amount: number; remark?: string; detail?: string }

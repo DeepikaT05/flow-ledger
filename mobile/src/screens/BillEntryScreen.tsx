@@ -216,6 +216,15 @@ export const BillEntryScreen: React.FC<{ navigation: any; route: any }> = ({ nav
         disc_pct: 0,
         gst_rate: Number(it.gst_rate ?? 3),
         stock: 999,
+        jw: {
+          sets: 1,
+          gross: Number(j.gw || 0),
+          stone: Number(j.less || 0),
+          net: Number(j.nw || 0),
+          mkg: String(j.mkg || ''),
+          metal: j.metal || '',
+          ref: j.code || '',
+        },
       };
       setLines((prev) => [...prev, line]);
       Alert.alert('Added ✓', `${it.name} (${j.nw.toFixed(3)} gm) added to bill.\nTag: ${j.code}`);
@@ -329,7 +338,7 @@ export const BillEntryScreen: React.FC<{ navigation: any; route: any }> = ({ nav
     if (kind.needsReason && !reason.trim()) { Alert.alert('Reason required', 'Enter the reason for this return.'); return; }
     const outLines: Record<string, unknown>[] = [];
     for (const l of lines) {
-      const base = { item_id: l.item_id, rate: l.rate, disc_pct: l.disc_pct, gst_rate: l.gst_rate };
+      const base = { item_id: l.item_id, rate: l.rate, disc_pct: l.disc_pct, gst_rate: l.gst_rate, ...(l.jw ? { jw: l.jw } : {}) };
       if (l.fifo && !kind.inward) {
         for (const a of allocate(Number(l.qty), Number(l.free || 0), await batchesOf(l.item_id))) outLines.push({ ...base, ...a, mrp: a.mrp || l.mrp });
       } else {

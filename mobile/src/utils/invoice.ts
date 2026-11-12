@@ -46,7 +46,30 @@ export function invoiceHtml(b: Bill, company: any, party: Partial<Ledger>) {
     byRate.set(Number(l.gst_rate), g);
   }
 
-  const rows = lines.map((l, i) => `
+  const isJewel = /JEWEL/i.test(company.business_type || '') || lines.some((l: any) => l.jw);
+
+  const rows = lines.map((l: any, i) => {
+    if (isJewel) {
+      const j = l.jw || {};
+      const gross = j.gross ?? j.gw ?? l.qty;
+      const stone = j.stone ?? j.less ?? 0;
+      const net = j.net ?? j.nw ?? l.qty;
+      const purity = j.purity ?? '';
+      const mkg = j.mkg ?? '';
+      return `
+      <tr>
+        <td class="c">${i + 1}</td>
+        <td><b>${esc(l.item_name)}</b>${l.batch ? `<br/><small>Tag: ${esc(l.batch)}</small>` : ''}</td>
+        <td class="r">${Number(gross).toFixed(3)}</td>
+        <td class="r">${Number(stone) > 0 ? Number(stone).toFixed(3) : '-'}</td>
+        <td class="r">${Number(net).toFixed(3)}</td>
+        <td class="c">${esc(String(purity || ''))}</td>
+        <td class="r">${amt(l.rate)}</td>
+        <td class="r">${esc(String(mkg || ''))}</td>
+        <td class="r">${amt(l.amount)}</td>
+      </tr>`;
+    }
+    return `
     <tr>
       <td class="c">${i + 1}</td>
       <td><b>${esc(l.item_name)}</b>${l.pack ? `<br/><small>${esc(l.pack)}</small>` : ''}</td>
@@ -57,7 +80,8 @@ export function invoiceHtml(b: Bill, company: any, party: Partial<Ledger>) {
       <td class="r">${l.disc_pct ? `${l.disc_pct}%` : ''}</td>
       <td class="r">${l.gst_rate}%</td>
       <td class="r">${amt(l.amount)}</td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 
   const gstRows = [...byRate.entries()].sort((a, c) => a[0] - c[0]).map(([rate, g]) => `
     <tr><td>GST ${rate}%</td><td class="r">${amt(g.taxable)}</td><td class="r">${amt(g.tax / 2)}</td><td class="r">${amt(g.tax / 2)}</td><td class="r">${amt(g.tax)}</td></tr>`).join('');
@@ -106,7 +130,10 @@ export function invoiceHtml(b: Bill, company: any, party: Partial<Ledger>) {
     </div>
   </div>
   <table class="items">
-    <tr><th>#</th><th>Item</th><th>Batch / Exp</th><th>Qty</th><th>MRP</th><th>Rate</th><th>Disc</th><th>GST</th><th>Amount</th></tr>
+    ${isJewel
+      ? `<tr><th>#</th><th>Description</th><th>Gross Wt</th><th>Stone Wt</th><th>Net Wt</th><th>Purity</th><th>Rate</th><th>Making</th><th>Amount</th></tr>`
+      : `<tr><th>#</th><th>Item</th><th>Batch / Exp</th><th>Qty</th><th>MRP</th><th>Rate</th><th>Disc</th><th>GST</th><th>Amount</th></tr>`
+    }
     ${rows}
   </table>
   <div class="bottom">

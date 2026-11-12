@@ -305,6 +305,24 @@ function companyForm(c?: Company) {
   const fields: Field[] = [
     { name: 'name', label: 'Company name', required: true, upper: true, value: c?.name },
     { name: 'station', label: 'Station / short code', upper: true, value: c?.station, hint: 'Shown next to the name in the company list' },
+    {
+      name: 'business_type', label: 'Business Type', type: 'select',
+      value: (c as any)?.business_type || (c as any)?.details?.business || 'BILLING (GENERAL)',
+      options: [
+        { value: 'BILLING (GENERAL)', label: 'Billing (General)' },
+        { value: 'JEWELLERY', label: 'Jewellery (Gold / Silver / Ornaments)' },
+        { value: 'PHARMACY SHOP (CHEMIST)', label: 'Pharmacy Shop (Chemist)' },
+        { value: 'PHARMA DISTRIBUTION', label: 'Pharma Distribution' },
+        { value: 'FMCG DISTRIBUTION', label: 'FMCG Distribution' },
+        { value: 'SUPERMARKET / MART', label: 'Supermarket / Mart' },
+        { value: 'GROCERY / KIRANA', label: 'Grocery / Kirana' },
+        { value: 'AGRO (SEEDS / FERTILIZER)', label: 'Agro (Seeds / Fertilizer)' },
+        { value: 'GARMENTS', label: 'Garments / Apparel' },
+        { value: 'ELECTRONICS', label: 'Electronics & Mobile' },
+        { value: 'AUTOMOBILE', label: 'Automobile / Spare Parts' },
+      ],
+      hint: 'Jewellery enables weight-based billing, GW/LESS/NW tags, and purity calculations'
+    },
     { name: 'address1', label: 'Address line 1', value: c?.address1 ?? '' },
     { name: 'address2', label: 'Address line 2', value: c?.address2 ?? '' },
     { name: 'gstin', label: 'GSTIN', upper: true, maxlength: 15, value: c?.gstin ?? '' },

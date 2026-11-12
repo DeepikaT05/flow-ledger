@@ -5,7 +5,7 @@
 // Order No. / Advance / Metal Advance. Stone Pcs = Yes opens STONE DETAIL. Receipt, payment and the
 // reports stay as they are for every business type.
 import { api, esc, h, toast } from './ui.ts';
-import { margPop, popList } from './margui.ts';
+import { margPop, popList, margAsk } from './margui.ts';
 import { itemForm, type Item } from './masters.ts';
 import { canAction, seeCost } from './session.ts';
 
@@ -49,12 +49,22 @@ export function itemJw(it: Partial<Item> & { details?: string }) {
   let d: Record<string, string> = {};
   try { d = JSON.parse(it.details || '{}'); } catch { /* bad JSON: no defaults */ }
   const n = (k: string, def: number) => (d[k] != null && d[k] !== '' && !Number.isNaN(Number(d[k])) ? Number(d[k]) : def);
+  const gw = n('jw_gw', n('jw_weight', 0));
+  const less = n('jw_less', 0);
+  const nw = n('jw_nw', Math.max(0, gw - less));
+  let mkgVal = n('jw_making', 0);
+  let mkgUnit = d.jw_making_unit || '%';
+  if (!mkgVal && d.jw_mkg) {
+    const match = d.jw_mkg.match(/([\d.]+)\s*(%|GM|PCS|FIX)?/i);
+    if (match) { mkgVal = Number(match[1]) || 0; if (match[2]) mkgUnit = match[2].toUpperCase(); }
+  }
+  const code = String(it.barcode || d.barcode || it.code || '');
   return {
     purityUnit: (d.jw_purity_unit === 'K' ? 'K' : '%') as '%' | 'K', purity: n('jw_purity', 100),
-    makingUnit: (['GM', '%', 'PCS', 'FIX'].includes(d.jw_making_unit) ? d.jw_making_unit : '') as JwLine['makingUnit'] | '', making: n('jw_making', 0),
+    makingUnit: (['GM', '%', 'PCS', 'FIX'].includes(mkgUnit) ? mkgUnit : '%') as JwLine['makingUnit'], making: mkgVal,
     polishUnit: (d.jw_polish_unit === 'GWt' ? 'GWt' : d.jw_polish_unit === '%' ? '%' : '') as JwLine['polishUnit'] | '', polish: n('jw_polish', 0),
-    weight: n('jw_weight', 0), diamond: d.jw_diamond === 'Yes', stone: d.jw_stone === 'Yes', tray: d.jw_tray ?? '',
-    metal: (d.jw_metal || 'GOLD').toUpperCase(),
+    weight: gw, less, nw, diamond: d.jw_diamond === 'Yes', stone: d.jw_stone === 'Yes' || less > 0, tray: d.jw_tray ?? '',
+    metal: (d.jw_metal || 'SILVER').toUpperCase(), code,
   };
 }
 
@@ -65,10 +75,10 @@ export function blankJw(it: Partial<Item> & { details?: string } = {}, purchase 
   // on a purchase the SALES DESCRIPTION part (the supplier's own making is typed on the bill).
   const mk = { unit: m.makingUnit || '%', v: m.making } as const;
   const pl = { unit: m.polishUnit || '%', v: m.polish } as const;
-  return {
+  const base: JwLine = {
     sets: 1, rate, gross: m.weight, purityUnit: m.purityUnit, purity: m.purity, testing: 0,
     diamond: m.diamond ? 'Yes' : 'No', diamondPcs: 0, diamondWt: 0, diamondAmt: 0, lessWeight: 'Both',
-    stoneYes: m.stone ? 'Yes' : 'No', stonePcs: 0, stoneUnit: purchase ? 'Crt' : 'Gm', stone: 0, stoneAmt: 0, stones: [],
+    stoneYes: m.stone ? 'Yes' : 'No', stonePcs: m.less > 0 ? 1 : 0, stoneUnit: 'Gm', stone: m.less, stoneAmt: 0, stones: [],
     makingUnit: purchase ? 'GM' : mk.unit, making: purchase ? 0 : mk.v,
     polishUnit: purchase ? 'GWt' : pl.unit, polish: purchase ? 0 : pl.v,
     extra: 0, discUnit: 'All', disc: 0, lessBy: 0, description: '', narration: '',
@@ -76,9 +86,10 @@ export function blankJw(it: Partial<Item> & { details?: string } = {}, purchase 
     tray: m.tray, sMakingUnit: m.makingUnit || 'GM', sMaking: m.making, sPurityUnit: m.purityUnit, sPurity: m.purity,
     sPolishUnit: m.polishUnit || '%', sPolish: m.polish, sExtra: 0,
     mrp: Number(it.mrp ?? 0), sDiamondAmt: 0, stoneRate: 0, photo: 'No',
-    stoneWt: 0, net: 0, pure: 0, polishWt: 0, metalAmt: 0, makingAmt: 0, amount: 0, sAmount: 0,
-    ref: '', metal: m.metal,
+    stoneWt: m.less, net: m.nw || Math.max(0, m.weight - m.less), pure: 0, polishWt: 0, metalAmt: 0, makingAmt: 0, amount: 0, sAmount: 0,
+    ref: m.code || '', metal: m.metal,
   };
+  return calcJw(base, rate);
 }
 
 const purityFactor = (unit: string, p: number) => (unit === 'K' ? p / 24 : p / 100);
@@ -148,9 +159,13 @@ export async function pickJewelItem(initial: string): Promise<(Item & { ref?: Jw
     // No item by that name: a Ref. (LO001137 / a scanned tag) brings its item and piece.
     onEnterNotFound: (typed, pop) => {
       if (!typed.trim()) return false;
-      findRef(typed).then((r) => {
+      let cleanCode = typed.trim();
+      if (cleanCode.startsWith('{') && cleanCode.endsWith('}')) {
+        try { cleanCode = JSON.parse(cleanCode).code || cleanCode; } catch {}
+      }
+      findRef(cleanCode).then((r) => {
         const it = r && rows.find((i) => i.id === r.item_id);
-        if (r && it) { refHit = r; pop.close(it); } else toast(`No item or Ref. "${typed.toUpperCase()}" in stock`, true);
+        if (r && it) { refHit = r; pop.close(it); } else toast(`No item or Ref. "${cleanCode.toUpperCase()}" in stock`, true);
       });
       return true;
     },
@@ -374,14 +389,21 @@ export function jewelDetail(item: Item, purchase: boolean, init?: JwLine): Promi
       if (k === 'F2') {
         // Pure Weight typed straight in: the purity is worked back from it.
         read();
-        const v = prompt('Pure Weight', f3(j.pure));
-        if (v != null && j.net > 0) {
-          const pure = Number(v) || 0;
-          j.purityUnit = '%'; j.purity = r3(((pure + j.lessBy) / j.net) * 100); j.lessBy = j.lessBy || 0;
-          const pu = box.querySelector('[data-k="purity"]') as HTMLInputElement; pu.value = f3(j.purity);
-          (box.querySelector('[data-u="purityUnit"]') as HTMLSelectElement).value = '%';
-          read(); paint();
-        }
+        margAsk('Pure Weight', f3(j.pure)).then((v) => {
+          if (v != null && j.net > 0) {
+            const pure = Number(v) || 0;
+            j.purityUnit = '%'; j.purity = r3(((pure + j.lessBy) / j.net) * 100); j.lessBy = j.lessBy || 0;
+            const pu = box.querySelector('[data-k="purity"]') as HTMLInputElement;
+            if (pu) pu.value = f3(j.purity);
+            const puUnit = box.querySelector('[data-u="purityUnit"]') as HTMLSelectElement;
+            if (puUnit) puUnit.value = '%';
+            read(); paint();
+          }
+        });
+        return true;
+      }
+      if (k === 'Shift+Tab') {
+        if (i > 0) go(order[i - 1]);
         return true;
       }
       if (k === 'Enter' || k === 'Tab') {
