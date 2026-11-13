@@ -63,6 +63,7 @@ const ACTIONS: Record<string, (arg?: string) => unknown> = {
   'report.party_sale': () => R.summary('SALE/party'),
   'report.single_party_sale': () => R.singlePartySale(),
   'report.product_summary': (side) => R.productSummary(side as any),
+  'report.gstr1': () => R.gstr1(),
   'report.gstr3b': () => R.gstr3b(),
   'report.summary': (spec) => R.summary(spec!),
   'report.ageing': () => R.ageing(),

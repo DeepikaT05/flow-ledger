@@ -56,6 +56,7 @@ export async function voucherEntry(initialType: string, voucherId?: number) {
   const $ = (s: string) => w.body.querySelector(s) as HTMLInputElement;
   const blank = (): VLine => ({ side: type === 'RECEIPT' || type === 'CREDIT_NOTE' ? 'Cr' : 'Dr', amount: 0 });
   const balances = new Map<number, number>();
+  let voucherAdjustments: { bill_id?: number | null; amount: number; remark?: string }[] = [];
 
   function renderGrid() {
     const simple = isSimple(type);
@@ -81,6 +82,7 @@ export async function voucherEntry(initialType: string, voucherId?: number) {
     layout();
     setTitle();
     lines = [blank()];
+    voucherAdjustments = [];
     dirty = false;
     account = null;
     $('[data-h=date]').value = today();
@@ -129,7 +131,7 @@ export async function voucherEntry(initialType: string, voucherId?: number) {
 
   async function save() {
     try {
-      const body = { type, date: $('[data-h=date]').value, no: $('[data-h=no]').value, narration: $('[data-h=narration]').value, lines: buildLines() };
+      const body = { type, date: $('[data-h=date]').value, no: $('[data-h=no]').value, narration: $('[data-h=narration]').value, lines: buildLines(), adjustments: voucherAdjustments };
       const res = voucherId ? await api(`/vouchers/${voucherId}`, { method: 'PUT', body }) : await api('/vouchers', { method: 'POST', body });
       toast(`${V_TITLE[type]} ${res.no} saved`);
       localStorage.setItem('lastNarration', body.narration);
@@ -184,6 +186,25 @@ export async function voucherEntry(initialType: string, voucherId?: number) {
           } else focusCell(r, 'amount');
         } else if (c === 'amount') {
           lines[r].amount = Number(t.value || 0);
+          const lid = lines[r].ledger_id;
+          if (lid && lines[r].amount > 0 && (type === 'RECEIPT' || type === 'PAYMENT')) {
+            const kind = type === 'PAYMENT' ? 'PURCHASE' : 'SALE';
+            api<any[]>(`/ledgers/${lid}/pending-bills?kind=${kind}`).then((pbills) => {
+              if (pbills && pbills.length > 0) {
+                let remain = lines[r].amount;
+                voucherAdjustments = voucherAdjustments.filter((a) => !pbills.some((p) => p.id === a.bill_id));
+                for (const b of pbills) {
+                  if (remain <= 0) break;
+                  const adj = Math.min(remain, Number(b.balance) || 0);
+                  voucherAdjustments.push({ bill_id: b.id, amount: adj, remark: `Agst ${b.no}` });
+                  remain = Math.round((remain - adj) * 100) / 100;
+                }
+                if (remain > 0) {
+                  voucherAdjustments.push({ bill_id: null, amount: remain, remark: 'Advance' });
+                }
+              }
+            }).catch(() => {});
+          }
           if (r === lines.length - 1) {
             const nl = blank();
             if (!isSimple(type)) {

@@ -87,13 +87,14 @@ function calc(r: Row) {
 }
 
 const GRID_COLS: { key: keyof Row; label: string; w: string; num?: boolean; edit?: boolean; center?: boolean }[] = [
-  { key: 'name', label: 'PRODUCT', w: '30%' },
-  { key: 'pack', label: 'PACK', w: '8%' },
+  { key: 'name', label: 'PRODUCT', w: '28%' },
+  { key: 'pack', label: 'PACK', w: '7%' },
   { key: 'batch', label: 'BATCH', w: '11%', edit: true },
   { key: 'expiry', label: 'EXP.', w: '8%', edit: true, center: true },
-  { key: 'qty', label: 'QTY', w: '9%', num: true, edit: true },
+  { key: 'qty', label: 'QTY', w: '8%', num: true, edit: true },
+  { key: 'free', label: 'FREE', w: '6%', num: true, edit: true },
   { key: 'rate', label: 'RATE', w: '10%', num: true, edit: true },
-  { key: 'disc', label: 'DIS1%', w: '8%', num: true, edit: true },
+  { key: 'disc', label: 'DIS1%', w: '7%', num: true, edit: true },
 ];
 /** JEWELLERY business type: the grid of a MARG jewellery company's sale / purchase. */
 const JW_COLS: { label: string; w: string; get: (j: JwLine) => string; num?: boolean }[] = [
@@ -148,45 +149,75 @@ export async function pickParty(initial = '', group?: string): Promise<Ledger | 
 }
 
 /** PARTY DETAIL — the walk-in customer box that MARG shows for a CASH party. */
-interface Walkin { name: string; gstin: string; mobile: string; address: string }
+interface Walkin {
+  name: string;
+  gstin: string;
+  mobile: string;
+  address: string;
+  dl_no?: string;
+  state?: string;
+  pin?: string;
+  pan?: string;
+  email?: string;
+  order_no?: string;
+  booked_by?: string;
+  remark?: string;
+}
 function partyDetail(company: { state: string }, init: Walkin): Promise<Walkin | null> {
   return new Promise((resolve) => {
     const w = margPop('PARTY DETAIL', '<span><b>F2</b>-Party List</span><span><b>Enter</b>-Next</span><span><b>Esc</b>-Back</span>', '760px');
     const form = h('div', { class: 'marg-form' });
-    const fields: [string, keyof Walkin][] = [['Party Name', 'name'], ['GST No.', 'gstin'], ['D.L.No.', 'address'], ['Mobile', 'mobile']];
+    const fields: [string, keyof Walkin][] = [
+      ['Party Name', 'name'], ['GST No.', 'gstin'], ['State', 'state'], ['D.L.No.', 'dl_no'],
+      ['Mobile', 'mobile'], ['Address', 'address'], ['Pin Code', 'pin'], ['PAN/Lic.No.', 'pan'],
+      ['E-Mail', 'email'], ['Order No', 'order_no'], ['Booked by', 'booked_by'], ['Remark', 'remark'],
+    ];
     form.innerHTML = `
       <label>Party Name</label><input data-k="name" style="text-transform:uppercase">
       <label>GST No.</label><input data-k="gstin" style="text-transform:uppercase">
-      <label>State</label><div><select><option>Yes</option><option>No</option></select> &nbsp; <b>22-CHHATTISGARH</b></div>
-      <label>D.L.No.</label><input data-k="address" style="text-transform:uppercase">
+      <label>State</label><div><select data-k="state_on"><option>Yes</option><option>No</option></select> &nbsp; <input data-k="state" value="${esc(init.state || company.state || '22-CHHATTISGARH')}" style="width:180px;font-weight:bold;display:inline-block"></div>
+      <label>D.L.No.</label><input data-k="dl_no" style="text-transform:uppercase">
       <label>Mobile</label><input data-k="mobile">
-      <label>Address</label><input data-k="addr2" style="text-transform:uppercase">
-      <label>Pin Code</label><input><label>PAN/Lic.No.</label><input>
-      <label>E-Mail</label><input><label>Order No</label><input>
-      <label>Booked by</label><input><label>Remark</label><input>`;
+      <label>Address</label><input data-k="address" style="text-transform:uppercase">
+      <label>Pin Code</label><input data-k="pin"><label>PAN/Lic.No.</label><input data-k="pan" style="text-transform:uppercase">
+      <label>E-Mail</label><input data-k="email"><label>Order No</label><input data-k="order_no">
+      <label>Booked by</label><input data-k="booked_by"><label>Remark</label><input data-k="remark">`;
     w.body.append(form);
     const inputs = [...form.querySelectorAll('input')] as HTMLInputElement[];
     const get = (k: keyof Walkin) => (form.querySelector(`[data-k="${k}"]`) as HTMLInputElement | null)?.value ?? '';
     for (const [, k] of fields) {
       const el = form.querySelector(`[data-k="${k}"]`) as HTMLInputElement | null;
-      if (el) el.value = init[k] ?? '';
+      if (el && init[k] != null) el.value = init[k] ?? '';
     }
     inputs[0].focus();
     let done = false;
     const finish = (v: Walkin | null) => { if (done) return; done = true; w.close(); resolve(v); };
+    const collect = (): Walkin => ({
+      name: get('name'),
+      gstin: get('gstin'),
+      mobile: get('mobile'),
+      address: get('address'),
+      dl_no: get('dl_no'),
+      state: get('state'),
+      pin: get('pin'),
+      pan: get('pan'),
+      email: get('email'),
+      order_no: get('order_no'),
+      booked_by: get('booked_by'),
+      remark: get('remark'),
+    });
     w.onKey = (e, k) => {
       const i = inputs.indexOf(e.target as HTMLInputElement);
       if (k === 'Enter') {
         if (i >= 0 && i < inputs.length - 1) { inputs[i + 1].focus(); return true; }
-        finish({ name: get('name'), gstin: get('gstin'), mobile: get('mobile'), address: get('address') });
+        finish(collect());
         return true;
       }
       if (k === 'ArrowDown' && i >= 0 && i < inputs.length - 1) { inputs[i + 1].focus(); return true; }
       if (k === 'ArrowUp' && i > 0) { inputs[i - 1].focus(); return true; }
-      if (k === 'Escape') { finish({ name: get('name'), gstin: get('gstin'), mobile: get('mobile'), address: get('address') }); return true; }
+      if (k === 'Escape') { finish(collect()); return true; }
       return false;
     };
-    void company;
   });
 }
 
@@ -1259,6 +1290,15 @@ export async function saleEntry(type = 'SALE', billId?: number) {
         dirty = true;
       }
     }
+    if ((c === 'qty' || c === 'free') && !isPurchase(type) && !isRet) {
+      const r = rows[Number(t.dataset.r)];
+      if (r && r.item_id && r.stock != null) {
+        const totalReq = (Number(r.qty) || 0) + (Number(r.free) || 0);
+        if (totalReq > r.stock) {
+          toast(`⚠️ Negative Stock! Available: ${r.stock}, Entered: ${totalReq}`, true);
+        }
+      }
+    }
   });
   tbody.addEventListener('focusin', (e) => {
     const t = e.target as HTMLElement;
@@ -1280,6 +1320,39 @@ export async function saleEntry(type = 'SALE', billId?: number) {
     const ri = Number(t.dataset?.r ?? -1);
     const c = t.dataset?.c;
 
+    if (k === 'F6' && ri >= 0 && rows[ri]?.item_id) {
+      const r = rows[ri];
+      api<Item>(`/items/${r.item_id}`).then(async (it) => {
+        if (!it) return;
+        let det: Record<string, any> = {};
+        try { det = JSON.parse(it.details || '{}'); } catch {}
+        const rateA = Number(it.sale_rate || 0);
+        const rateB = Number(det.rate_b || rateA);
+        const rateC = Number(det.rate_c || rateA);
+        const mrp = Number(it.mrp || 0);
+        const opts = [
+          { name: `Rate-A:  ₹${f2(rateA)}`, val: rateA },
+          { name: `Rate-B:  ₹${f2(rateB)}`, val: rateB },
+          { name: `Rate-C:  ₹${f2(rateC)}`, val: rateC },
+          { name: `M.R.P. :  ₹${f2(mrp)}`, val: mrp },
+        ];
+        const chosen = await popList<{ name: string; val: number }>({
+          title: `Rate Selection - ${it.name}`,
+          rows: opts,
+          search: (x) => x.name,
+          cols: [{ title: 'Rate Category', get: (x) => x.name }],
+          width: '380px',
+        });
+        if (chosen) {
+          r.rate = chosen.val;
+          dirty = true;
+          renderRows();
+          focusCell(ri, 'rate');
+        }
+      });
+      return true;
+    }
+    if (k === 'F7') { billAdjustmentsWindow('cd'); return true; }
     if (k === 'F8') { billAdjustmentsWindow('cd'); return true; }
     if (k === 'F9') { billAdjustmentsWindow('freight'); return true; }
     if (k === 'Ctrl+D' || k === 'Alt+D') { billAdjustmentsWindow('cd'); return true; }
@@ -1320,8 +1393,14 @@ export async function saleEntry(type = 'SALE', billId?: number) {
       return true;
     }
     if (k === 'F11') {
-      const v = prompt(`Bill Amount: ${f2(totals().net)}\nCash Received:`);
-      if (v) toast(`Return Cash: ${f2(Number(v) - totals().net)}`);
+      const netAmt = totals().net;
+      margAsk(`Bill Amount: ₹${f2(netAmt)}\nEnter Cash Tendered:`, String(Math.ceil(netAmt))).then((tendered) => {
+        if (tendered != null) {
+          const rec = Number(tendered) || 0;
+          const ret = r2(rec - netAmt);
+          alertBox(`Cash Tendered: ₹${f2(rec)}\nBill Amount: ₹${f2(netAmt)}\n\nRETURN CASH: ₹${f2(Math.max(0, ret))}`, 'CASH RETURN CALCULATOR');
+        }
+      });
       return true;
     }
     if (k === 'Ctrl+A') { switchType('COUNTER_SALE'); return true; }

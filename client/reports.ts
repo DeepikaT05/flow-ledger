@@ -871,23 +871,70 @@ export function negativeStock() {
 }
 
 export function gstr3b() {
-  type Line = { head: string; taxable: number; cgst: number; sgst: number; total: number };
+  type Line = { head: string; taxable: number; igst: number; cgst: number; sgst: number; total: number };
   let payable = 0;
   return reportWin<Line>({
     title: 'GSTR-3B — Monthly Tax Summary', period: true, from: `${today().slice(0, 8)}01`, to: today(),
     cols: [
-      { title: 'Particulars', get: (r) => r.head }, { title: 'Taxable Value', get: (r) => r.taxable, money: true },
-      { title: 'CGST', get: (r) => r.cgst, money: true }, { title: 'SGST', get: (r) => r.sgst, money: true },
+      { title: 'Particulars', get: (r) => r.head },
+      { title: 'Taxable Value', get: (r) => r.taxable, money: true },
+      { title: 'IGST', get: (r) => r.igst, money: true },
+      { title: 'CGST', get: (r) => r.cgst, money: true },
+      { title: 'SGST', get: (r) => r.sgst, money: true },
       { title: 'Total Tax', get: (r) => r.total, money: true },
     ],
     load: async (p) => {
-      const g = await api(`/reports/gstr3b?from=${p.from}&to=${p.to}`);
+      const g = await api<any>(`/reports/gstr3b?from=${p.from}&to=${p.to}`);
       payable = g.payable;
-      const line = (head: string, x: { taxable: number; tax: number }): Line => ({ head, taxable: x.taxable, cgst: x.tax / 2, sgst: x.tax / 2, total: x.tax });
-      return [line(`3.1 Outward taxable supplies (${g.outward.bills} bills, ${g.outward.returns} returns)`, g.outward),
-        line(`4 Eligible ITC — inward supplies (${g.inward.bills} bills, ${g.inward.returns} returns)`, g.inward)];
+      const line = (head: string, x: { taxable: number; tax: number; igst: number; cgst: number; sgst: number }): Line => ({
+        head, taxable: x.taxable, igst: x.igst, cgst: x.cgst, sgst: x.sgst, total: x.tax
+      });
+      return [
+        line(`3.1 Outward taxable supplies (${g.outward.bills} bills, ${g.outward.returns} returns)`, g.outward),
+        line(`4 Eligible ITC — inward supplies (${g.inward.bills} bills, ${g.inward.returns} returns)`, g.inward)
+      ];
     },
-    footer: () => `<tr class="total"><td colspan="4">${payable >= 0 ? 'Net GST Payable in cash' : 'Excess ITC carried forward'}</td><td class="n">${money(Math.abs(payable))}</td></tr>`,
+    footer: () => `<tr class="total"><td colspan="5">${payable >= 0 ? 'Net GST Payable in cash' : 'Excess ITC carried forward'}</td><td class="n">${money(Math.abs(payable))}</td></tr>`,
+  });
+}
+
+export function gstr1() {
+  type Gstr1Row = { no: string; date: string; party: string; gstin: string; type: string; taxable: number; igst: number; cgst: number; sgst: number; total: number };
+  return reportWin<Gstr1Row>({
+    title: 'GSTR-1 — Outward Supplies (B2B / B2C / HSN)', period: true, from: `${today().slice(0, 8)}01`, to: today(),
+    cols: [
+      { title: 'Bill No', get: (r) => r.no },
+      { title: 'Date', get: (r) => fmtDate(r.date) },
+      { title: 'Party / Description', get: (r) => r.party },
+      { title: 'GSTIN / Type', get: (r) => r.gstin || r.type },
+      { title: 'Taxable', get: (r) => r.taxable, money: true },
+      { title: 'IGST', get: (r) => r.igst, money: true },
+      { title: 'CGST', get: (r) => r.cgst, money: true },
+      { title: 'SGST', get: (r) => r.sgst, money: true },
+      { title: 'Invoice Val', get: (r) => r.total, money: true },
+    ],
+    load: async (p) => {
+      const data = await api<any>(`/reports/gstr1?from=${p.from}&to=${p.to}`);
+      const rows: Gstr1Row[] = [];
+      for (const b of data.b2b || []) {
+        rows.push({ no: b.no, date: b.date, party: b.party, gstin: b.gstin || 'B2B', type: b.sale_type, taxable: b.taxable, igst: b.igst, cgst: b.cgst, sgst: b.sgst, total: b.net });
+      }
+      for (const b of data.b2c || []) {
+        rows.push({ no: b.no, date: b.date, party: b.party || 'CASH WALK-IN', gstin: 'B2C', type: b.sale_type, taxable: b.taxable, igst: b.igst, cgst: b.cgst, sgst: b.sgst, total: b.net });
+      }
+      for (const b of data.cdnr || []) {
+        rows.push({ no: b.no, date: b.date, party: `${b.party} (RET)`, gstin: 'CDNR', type: b.sale_type, taxable: -b.taxable, igst: -b.igst, cgst: -b.cgst, sgst: -b.sgst, total: -b.net });
+      }
+      return rows;
+    },
+    footer: (rows) => {
+      const totTaxable = rows.reduce((s, r) => s + r.taxable, 0);
+      const totIgst = rows.reduce((s, r) => s + r.igst, 0);
+      const totCgst = rows.reduce((s, r) => s + r.cgst, 0);
+      const totSgst = rows.reduce((s, r) => s + r.sgst, 0);
+      const totVal = rows.reduce((s, r) => s + r.total, 0);
+      return `<tr class="total"><td colspan="4">TOTAL (${rows.length} records)</td><td class="n">${money(totTaxable)}</td><td class="n">${money(totIgst)}</td><td class="n">${money(totCgst)}</td><td class="n">${money(totSgst)}</td><td class="n">${money(totVal)}</td></tr>`;
+    },
   });
 }
 

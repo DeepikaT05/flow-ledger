@@ -167,8 +167,10 @@ export const SYS = {
   PURCHASE: 'Purchase A/c',
   CGST_OUT: 'Output CGST',
   SGST_OUT: 'Output SGST',
+  IGST_OUT: 'Output IGST',
   CGST_IN: 'Input CGST',
   SGST_IN: 'Input SGST',
+  IGST_IN: 'Input IGST',
   ROUND: 'Round Off',
   SALE_RET: 'Sales Return A/c',
   PUR_RET: 'Purchase Return A/c',
@@ -238,7 +240,7 @@ function initCompany(d: DatabaseSync, info: CompanyInfo, demo: boolean) {
   insL.run(SYS.SALE_RET, gid('Sales Accounts'), st);
   insL.run(SYS.PURCHASE, gid('Purchase Accounts'), st);
   insL.run(SYS.PUR_RET, gid('Purchase Accounts'), st);
-  for (const n of [SYS.CGST_OUT, SYS.SGST_OUT, SYS.CGST_IN, SYS.SGST_IN]) insL.run(n, gid('Duties & Taxes'), st);
+  for (const n of [SYS.CGST_OUT, SYS.SGST_OUT, SYS.IGST_OUT, SYS.CGST_IN, SYS.SGST_IN, SYS.IGST_IN]) insL.run(n, gid('Duties & Taxes'), st);
   insL.run(SYS.ROUND, gid('Indirect Expenses'), st);
 
   if (!demo) {
@@ -506,6 +508,15 @@ export function tx<T>(fn: () => T): T {
 
 export function sysLedger(name: string): number {
   const r = db.prepare('SELECT id FROM ledgers WHERE name=?').get(name) as { id: number } | undefined;
-  if (!r) throw new Error(`System ledger missing: ${name}`);
+  if (!r) {
+    if (name === SYS.IGST_OUT || name === SYS.IGST_IN) {
+      const g = db.prepare("SELECT id FROM account_groups WHERE name='Duties & Taxes'").get() as { id: number } | undefined;
+      if (g) {
+        const ins = db.prepare('INSERT INTO ledgers (name,group_id,is_system) VALUES (?,?,1)').run(name, g.id);
+        return Number(ins.lastInsertRowid);
+      }
+    }
+    throw new Error(`System ledger missing: ${name}`);
+  }
   return r.id;
 }

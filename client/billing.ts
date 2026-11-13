@@ -65,6 +65,8 @@ async function billHtml(id: number) {
   const partyName = (b.walkin_name || p.name || 'CASH').toUpperCase();
   const partyPhone = b.walkin_mobile || p.phone || pDet.mobile || '';
   const partyGstin = b.walkin_gstin || p.gstin || '';
+  const partyAddress = b.walkin_address || [p.address, p.city].filter(Boolean).join(', ') || '';
+  const partyDl = pDet.dl_no || pDet.dl || '';
   const partyState = p.state ? p.state.split('-')[0].trim() : (pDet.state ? pDet.state.split('-')[0].trim() : '22');
 
   const isCredit = b.mode !== 'CASH';
@@ -244,9 +246,11 @@ async function billHtml(id: number) {
         <div class="inv-hdr-right">
           <div class="pty-box">
             <div class="pty-name">${esc(partyName)} ${isCredit ? 'CR' : 'DR'}</div>
+            ${partyAddress ? `<div class="pty-row">${esc(partyAddress)}</div>` : ''}
             <div class="pty-row">State : ${esc(partyState)}</div>
-            <div class="pty-row">Ph No.: ${esc(partyPhone)}</div>
-            <div class="pty-row">GST : ${esc(partyGstin)}</div>
+            ${partyPhone ? `<div class="pty-row">Ph No.: ${esc(partyPhone)}</div>` : ''}
+            ${partyGstin ? `<div class="pty-row">GST : ${esc(partyGstin)}</div>` : ''}
+            ${partyDl ? `<div class="pty-row">D.L.No.: ${esc(partyDl)}</div>` : ''}
           </div>
           <div class="inv-meta">
             <div class="meta-row"><span>Invoice No.</span> <span>: ${esc(b.no)}</span></div>

@@ -698,6 +698,8 @@ function postBill(id: number) {
   // Sale: party Dr / income Cr. Purchase: expense Dr / party Cr. Returns flip the sides.
   const partyDr = isSale !== isReturn;
   const main = isSale ? (isReturn ? SYS.SALE_RET : SYS.SALES) : (isReturn ? SYS.PUR_RET : SYS.PURCHASE);
+  const isCentral = b.sale_type === 'CENTRAL';
+  const ig = isSale ? SYS.IGST_OUT : SYS.IGST_IN;
   const [cg, sg] = isSale ? [SYS.CGST_OUT, SYS.SGST_OUT] : [SYS.CGST_IN, SYS.SGST_IN];
   const ins = db.prepare(`INSERT INTO ledger_entries (source,source_id,date,ledger_id,debit,credit,vtype,vno,narration)
     VALUES ('BILL',?,?,?,?,?,?,?,?)`);
@@ -712,8 +714,12 @@ function postBill(id: number) {
   for (const p of pays) put(p.ledger_id, p.amount, partyDr);
   put(party, r2(b.net - paid), partyDr);
   put(sysLedger(main), b.taxable, !partyDr);
-  put(sysLedger(cg), halfA, !partyDr);
-  put(sysLedger(sg), halfB, !partyDr);
+  if (isCentral) {
+    put(sysLedger(ig), b.tax, !partyDr);
+  } else {
+    put(sysLedger(cg), halfA, !partyDr);
+    put(sysLedger(sg), halfB, !partyDr);
+  }
   if (b.cd_amt) {
     let cdId = (db.prepare("SELECT id FROM ledgers WHERE name LIKE 'Cash Discount%'").get() as { id: number } | undefined)?.id;
     if (!cdId) {
@@ -1734,16 +1740,91 @@ app.get('/api/reports/ageing', h((req) => {
 
 app.get('/api/reports/gstr3b', h((req) => {
   const { from, to } = req.query as Record<string, string>;
-  const sum = (types: string) => db.prepare(`SELECT COALESCE(SUM(taxable),0) AS taxable, COALESCE(SUM(tax),0) AS tax, COUNT(*) AS bills
-    FROM bills WHERE type IN (${types}) AND date BETWEEN ? AND ?`).get(from, to) as { taxable: number; tax: number; bills: number };
-  const sales = sum(`'SALE','COUNTER_SALE'`), saleRet = sum(`'SALE_RETURN'`);
-  const purch = sum(`'PURCHASE'`), purRet = sum(`'PURCHASE_RETURN'`);
-  const outTax = r2(sales.tax - saleRet.tax), inTax = r2(purch.tax - purRet.tax);
-  return {
-    outward: { taxable: r2(sales.taxable - saleRet.taxable), tax: outTax, bills: sales.bills, returns: saleRet.bills },
-    inward: { taxable: r2(purch.taxable - purRet.taxable), tax: inTax, bills: purch.bills, returns: purRet.bills },
-    payable: r2(outTax - inTax),
+  const querySummary = (types: string) => {
+    const r = db.prepare(`SELECT
+      COALESCE(SUM(taxable),0) AS taxable,
+      COALESCE(SUM(tax),0) AS tax,
+      COALESCE(SUM(CASE WHEN sale_type='CENTRAL' THEN tax ELSE 0 END),0) AS igst,
+      COALESCE(SUM(CASE WHEN sale_type!='CENTRAL' THEN tax/2.0 ELSE 0 END),0) AS cgst,
+      COALESCE(SUM(CASE WHEN sale_type!='CENTRAL' THEN tax/2.0 ELSE 0 END),0) AS sgst,
+      COUNT(*) AS bills
+      FROM bills WHERE type IN (${types}) AND date BETWEEN ? AND ?`).get(from, to) as any;
+    return {
+      taxable: r2(r.taxable), tax: r2(r.tax), igst: r2(r.igst),
+      cgst: r2(r.cgst), sgst: r2(r.sgst), bills: Number(r.bills || 0)
+    };
   };
+  const sales = querySummary(`'SALE','COUNTER_SALE'`), saleRet = querySummary(`'SALE_RETURN'`);
+  const purch = querySummary(`'PURCHASE'`), purRet = querySummary(`'PURCHASE_RETURN'`);
+  const outward = {
+    taxable: r2(sales.taxable - saleRet.taxable),
+    tax: r2(sales.tax - saleRet.tax),
+    igst: r2(sales.igst - saleRet.igst),
+    cgst: r2(sales.cgst - saleRet.cgst),
+    sgst: r2(sales.sgst - saleRet.sgst),
+    bills: sales.bills,
+    returns: saleRet.bills
+  };
+  const inward = {
+    taxable: r2(purch.taxable - purRet.taxable),
+    tax: r2(purch.tax - purRet.tax),
+    igst: r2(purch.igst - purRet.igst),
+    cgst: r2(purch.cgst - purRet.cgst),
+    sgst: r2(purch.sgst - purRet.sgst),
+    bills: purch.bills,
+    returns: purRet.bills
+  };
+  return {
+    outward,
+    inward,
+    payable: r2(outward.tax - inward.tax),
+    igstPayable: r2(outward.igst - inward.igst),
+    cgstPayable: r2(outward.cgst - inward.cgst),
+    sgstPayable: r2(outward.sgst - inward.sgst),
+  };
+}));
+
+app.get('/api/reports/gstr1', h((req) => {
+  const { from, to } = req.query as Record<string, string>;
+  const b2b = db.prepare(`SELECT b.id, b.no, b.date, l.name AS party, COALESCE(NULLIF(b.walkin_gstin,''), l.gstin) AS gstin,
+    b.sale_type, b.taxable, b.tax, b.net,
+    (CASE WHEN b.sale_type='CENTRAL' THEN b.tax ELSE 0 END) AS igst,
+    (CASE WHEN b.sale_type!='CENTRAL' THEN b.tax/2.0 ELSE 0 END) AS cgst,
+    (CASE WHEN b.sale_type!='CENTRAL' THEN b.tax/2.0 ELSE 0 END) AS sgst
+    FROM bills b JOIN ledgers l ON l.id=b.party_id
+    WHERE b.type IN ('SALE','COUNTER_SALE') AND b.date BETWEEN ? AND ?
+    AND (l.gstin <> '' OR b.walkin_gstin <> '')
+    ORDER BY b.date, b.no`).all(from, to) as any[];
+
+  const b2c = db.prepare(`SELECT b.id, b.no, b.date, COALESCE(NULLIF(b.walkin_name,''), l.name) AS party,
+    b.sale_type, b.taxable, b.tax, b.net,
+    (CASE WHEN b.sale_type='CENTRAL' THEN b.tax ELSE 0 END) AS igst,
+    (CASE WHEN b.sale_type!='CENTRAL' THEN b.tax/2.0 ELSE 0 END) AS cgst,
+    (CASE WHEN b.sale_type!='CENTRAL' THEN b.tax/2.0 ELSE 0 END) AS sgst
+    FROM bills b JOIN ledgers l ON l.id=b.party_id
+    WHERE b.type IN ('SALE','COUNTER_SALE') AND b.date BETWEEN ? AND ?
+    AND (l.gstin IS NULL OR l.gstin = '') AND (b.walkin_gstin IS NULL OR b.walkin_gstin = '')
+    ORDER BY b.date, b.no`).all(from, to) as any[];
+
+  const cdnr = db.prepare(`SELECT b.id, b.no, b.date, l.name AS party, COALESCE(NULLIF(b.walkin_gstin,''), l.gstin) AS gstin,
+    b.sale_type, b.taxable, b.tax, b.net,
+    (CASE WHEN b.sale_type='CENTRAL' THEN b.tax ELSE 0 END) AS igst,
+    (CASE WHEN b.sale_type!='CENTRAL' THEN b.tax/2.0 ELSE 0 END) AS cgst,
+    (CASE WHEN b.sale_type!='CENTRAL' THEN b.tax/2.0 ELSE 0 END) AS sgst
+    FROM bills b JOIN ledgers l ON l.id=b.party_id
+    WHERE b.type='SALE_RETURN' AND b.date BETWEEN ? AND ?
+    ORDER BY b.date, b.no`).all(from, to) as any[];
+
+  const hsn = db.prepare(`SELECT COALESCE(NULLIF(i.hsn,''), '(BLANK)') AS hsn, i.unit,
+    SUM(bi.qty) AS qty, SUM(bi.taxable) AS taxable, SUM(bi.tax) AS tax,
+    SUM(CASE WHEN b.sale_type='CENTRAL' THEN bi.tax ELSE 0 END) AS igst,
+    SUM(CASE WHEN b.sale_type!='CENTRAL' THEN bi.tax/2.0 ELSE 0 END) AS cgst,
+    SUM(CASE WHEN b.sale_type!='CENTRAL' THEN bi.tax/2.0 ELSE 0 END) AS sgst
+    FROM bill_items bi JOIN bills b ON b.id=bi.bill_id JOIN items i ON i.id=bi.item_id
+    WHERE b.type IN ('SALE','COUNTER_SALE') AND b.date BETWEEN ? AND ?
+    GROUP BY i.hsn, i.unit ORDER BY i.hsn`).all(from, to) as any[];
+
+  return { b2b, b2c, cdnr, hsn };
 }));
 
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
