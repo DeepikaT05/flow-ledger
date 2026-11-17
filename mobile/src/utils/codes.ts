@@ -189,8 +189,11 @@ export function jewelTagHtml(data: JewelTagData, copies = 1, setup: StickerSetup
   const mods = canCode128(code) ? code128(code).length : 0;
   const barDot = Math.max(1, tagBarDots(code, setup));
   const bars = mods ? `<div class="bc" style="width:${mm(mods * barDot)};margin-left:${mm(Math.floor((dots(head) - mods * barDot) / 2))}">${code128Svg(code, 0)}</div>` : '';
-  const qr = qrcode(0, 'M');
-  qr.addData(code);
+  // Tag codes are A–Z / 0–9 (≤10 chars): alphanumeric mode fits ECC H (recovers 30 %) in the same 21×21 QR
+  // that byte mode needs for ECC M (15 %). Smudge test: 50 % → 96 % of damaged tags still read.
+  const alnum = code.length <= 10 && /^[0-9A-Z $%*+\-./:]+$/.test(code);
+  const qr = qrcode(0, alnum ? 'H' : 'M');
+  qr.addData(code, alnum ? 'Alphanumeric' : 'Byte');
   qr.make();
   const qrMods = qr.getModuleCount() + 4; // 2-cell quiet zone each side
   const qrSize = mm(qrMods * Math.max(1, Math.floor(dots(h * 0.88) / qrMods)));
