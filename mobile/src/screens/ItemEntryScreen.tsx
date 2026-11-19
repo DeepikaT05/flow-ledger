@@ -1,16 +1,21 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, Alert, TouchableOpacity, KeyboardAvoidingView, Platform, StyleSheet } from 'react-native';
-import { Screen, TopBar, Card, Field, SectionTitle, Btn, Loading, Stepper, ui } from '../components/ui';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Screen, TopBar, Card, Field, SectionTitle, Btn, Loading, Stepper, Segmented, ui } from '../components/ui';
 import { QrCode } from '../components/QrCode';
+import { Barcode } from '../components/Barcode';
 import { Scanner } from '../components/Scanner';
 import { ItemService } from '../api/services';
 import { useAuth } from '../context/AuthContext';
 import { Item } from '../types';
-import { codeOf, newCode, printLabels, printJewelTags, encodeJewelQr, parseJewelCode, JewelTagData } from '../utils/codes';
+import {
+  codeOf, newCode, printLabels, printJewelTags, shareJewelTags, tagBarDots, parseJewelCode, JewelTagData, STICKERS, StickerSize, DEFAULT_SETUP,
+} from '../utils/codes';
 import { MODULE, C, R } from '../theme';
 
 const GST = [0, 3, 5, 12, 18, 28];
 const n = (s: string) => Number(String(s).replace(/,/g, '')) || 0;
+const SETUP_KEY = 'fl.jewelSticker';
 const str = (v: unknown) => (v === null || v === undefined || Number(v) === 0 ? '' : String(v));
 
 /**
@@ -29,6 +34,20 @@ export const ItemEntryScreen: React.FC<{ navigation: any; route: any }> = ({ nav
   const [item, setItem] = useState<Item | null>(null);
   const [scan, setScan] = useState(false);
   const [copies, setCopies] = useState(2);
+  // Sticker stock + alignment nudge, remembered on this phone for the shop's label printer.
+  const [sticker, setSticker] = useState({ size: DEFAULT_SETUP.size as StickerSize, dpi: '203', offX: '', offY: '' });
+  useEffect(() => {
+    AsyncStorage.getItem(SETUP_KEY).then((v) => { if (v) setSticker((o) => ({ ...o, ...JSON.parse(v) })); }).catch(() => {});
+  }, []);
+  const setStk = (k: keyof typeof sticker) => (v: string) => setSticker((o) => {
+    const next = { ...o, [k]: v };
+    AsyncStorage.setItem(SETUP_KEY, JSON.stringify(next)).catch(() => {});
+    return next;
+  });
+  const setup = {
+    size: STICKERS[sticker.size] ? sticker.size : DEFAULT_SETUP.size, dpi: sticker.dpi === '300' ? 300 as const : 203 as const,
+    offX: n(sticker.offX), offY: n(sticker.offY),
+  };
   const [f, setF] = useState({
     name: '', company: '', pack: '', unit: isJewel ? 'GM' : 'PCS', hsn: isJewel ? '7113' : '',
     gst_rate: isJewel ? 3 : 18, mrp: '', sale_rate: '', purchase_rate: '',
@@ -156,16 +175,17 @@ export const ItemEntryScreen: React.FC<{ navigation: any; route: any }> = ({ nav
     nw: n(f.nw) || Math.max(0, n(f.gw) - n(f.less)),
     mkg: f.mkg || '5.00 %',
     metal: f.metal,
+    mrp: n(f.mrp) || undefined,
   };
+  const jewel = isJewel || n(f.gw) > 0;
 
-  const qrValue = (isJewel || n(f.gw))
-    ? encodeJewelQr(jewelData)
-    : (code || 'FL000000');
+  // The tag's QR and barcode both carry just the code; scanning it finds this item (findByCode).
+  const qrValue = code || 'FL000000';
 
   const onPrint = async () => {
     try {
-      if (isJewel || n(f.gw)) {
-        await printJewelTags(jewelData, copies);
+      if (jewel) {
+        await printJewelTags(jewelData, copies, setup);
       } else if (item) {
         await printLabels({ ...item, name: f.name, mrp: n(f.mrp) }, code, copies);
       }
@@ -192,11 +212,13 @@ export const ItemEntryScreen: React.FC<{ navigation: any; route: any }> = ({ nav
             {code ? (
               <View style={{ alignItems: 'center' }}>
                 <QrCode value={qrValue} size={170} />
-                {(isJewel || n(f.gw)) ? (
+                {jewel ? <View style={{ marginTop: 10 }}><Barcode value={code} width={260} height={56} /></View> : null}
+                {jewel ? (
                   <View style={st.tagBox}>
                     <View style={st.tagSideA}>
-                      <Text style={st.tagA1}>{code}</Text>
                       <Text style={st.tagA2} numberOfLines={1}>{f.name || 'ITEM NAME'}</Text>
+                      <Barcode value={code} width={130} height={18} />
+                      <Text style={st.tagA1}>{code}{n(f.mrp) ? `  ₹${f.mrp}` : ''}</Text>
                     </View>
                     <View style={st.tagDivider} />
                     <View style={st.tagSideB}>
@@ -205,6 +227,7 @@ export const ItemEntryScreen: React.FC<{ navigation: any; route: any }> = ({ nav
                       <View style={[st.wRow, st.wBld]}><Text style={st.wK}>NW</Text><Text style={st.wV}>{jewelData.nw.toFixed(3)}</Text></View>
                       <View style={st.wRow}><Text style={st.wK}>MKG</Text><Text style={st.wV}>{f.mkg || '5.00 %'}</Text></View>
                     </View>
+                    <View style={{ justifyContent: 'center', paddingRight: 4 }}><QrCode value={qrValue} size={56} /></View>
                   </View>
                 ) : null}
               </View>
@@ -223,6 +246,30 @@ export const ItemEntryScreen: React.FC<{ navigation: any; route: any }> = ({ nav
               ) : null}
             </View>
 
+            {code && jewel ? (
+              <View style={st.print2}>
+                <Text style={ui.label}>Sticker size (mm)</Text>
+                <Segmented
+                  options={Object.entries(STICKERS).map(([key, v]) => ({ key, label: v.label }))}
+                  value={setup.size} onChange={setStk('size')} color={accent.main}
+                />
+                <Text style={[ui.label, { marginTop: 10 }]}>Printer resolution (on the printer's label)</Text>
+                <Segmented
+                  options={[{ key: '203', label: '203 dpi' }, { key: '300', label: '300 dpi' }]}
+                  value={String(setup.dpi)} onChange={setStk('dpi')} color={accent.main}
+                />
+                {tagBarDots(code, setup) < 2 ? (
+                  <Text style={{ color: '#B00020', fontSize: 12, marginTop: 8 }}>
+                    ⚠ Code {code} is too long for a readable barcode on this tag. Use a short code like SI000015 (2 letters + digits), a bigger tag, or a 300 dpi printer.
+                  </Text>
+                ) : null}
+                <View style={[st.row, { marginTop: 10 }]}>
+                  <Field label="Shift right (mm, − = left)" value={sticker.offX} onChangeText={setStk('offX')} keyboardType="numbers-and-punctuation" placeholder="0" style={{ flex: 1, marginBottom: 0 }} />
+                  <Field label="Shift down (mm, − = up)" value={sticker.offY} onChangeText={setStk('offY')} keyboardType="numbers-and-punctuation" placeholder="0" style={{ flex: 1, marginBottom: 0 }} />
+                </View>
+              </View>
+            ) : null}
+
             {code ? (
               <View style={st.print}>
                 <Text style={[ui.label, { marginBottom: 0, flex: 1 }]}>Copies</Text>
@@ -230,10 +277,14 @@ export const ItemEntryScreen: React.FC<{ navigation: any; route: any }> = ({ nav
                 <Btn small label="🖨️ Print Tag" color={C.navy2} style={{ marginLeft: 10 }} onPress={onPrint} />
               </View>
             ) : null}
+            {code && jewel ? (
+              <Btn small ghost label="📄 Share Tag PDF (printer app)" color={C.navy2} style={{ marginTop: 8 }}
+                onPress={() => shareJewelTags(jewelData, copies, setup).catch((e) => Alert.alert('Could not share', e.message))} />
+            ) : null}
           </Card>
 
           {/* Jewellery Weight & Making Section */}
-          {(isJewel || n(f.gw)) ? (
+          {jewel ? (
             <>
               <SectionTitle>Jewellery Details (GW · LESS · NW · MKG)</SectionTitle>
               <Card>
@@ -301,6 +352,7 @@ export const ItemEntryScreen: React.FC<{ navigation: any; route: any }> = ({ nav
 const st = StyleSheet.create({
   row: { flexDirection: 'row', gap: 10 },
   gst: { flex: 1, paddingVertical: 10, borderRadius: R.sm, borderWidth: 1.2, borderColor: C.line, alignItems: 'center', backgroundColor: C.white },
+  print2: { marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: C.line },
   print: { flexDirection: 'row', alignItems: 'center', marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: C.line },
   tagBox: {
     marginTop: 12,
