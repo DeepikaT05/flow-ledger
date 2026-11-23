@@ -174,27 +174,6 @@ export async function productScreen(existing?: Partial<Item> & { details?: strin
       jwWrap.append(jwCols, qrBox);
       jw.append(jwHead, jwWrap);
       p.body.append(jw);
-    } else {
-      const qrFootBtn = h('div', { style: 'padding: 4px 14px; background: #f1f5f9; border-top: 1px solid #cbd5e1; display: flex; justify-content: flex-end;' });
-      const btn = h('button', {
-        type: 'button',
-        style: 'background: #0f766e; color: #fff; border: none; border-radius: 4px; padding: 4px 12px; font-size: 12px; font-weight: bold; cursor: pointer;'
-      }, '▣ View Scannable QR Code');
-      btn.onclick = () => {
-        const pName = (byKey('name') as HTMLInputElement)?.value.trim() || 'PRODUCT';
-        const bCode = (byKey('barcode') as HTMLInputElement)?.value.trim() || (byKey('code') as HTMLInputElement)?.value.trim() || (existing?.id ? `FL${String(existing.id).padStart(6, '0')}` : 'FL000001');
-        const qWin = openWin(`QR CODE - ${bCode}`, 'small');
-        qWin.body.innerHTML = `
-          <div style="padding: 16px; text-align: center; background: #fff;">
-            <div style="font-weight: 800; font-size: 14px; margin-bottom: 8px;">${esc(pName)}</div>
-            <div style="width: 140px; height: 140px; margin: 0 auto;">${qrSvg(bCode)}</div>
-            <div style="font-family: monospace; font-size: 13px; font-weight: bold; margin-top: 8px;">Code: ${esc(bCode)}</div>
-            <div style="font-size: 11px; color: #64748b; margin-top: 4px;">Scan with Flow Ledger Mobile App (Scan QR)</div>
-          </div>
-        `;
-      };
-      qrFootBtn.append(btn);
-      p.body.append(qrFootBtn);
     }
 
     const inputs = [...p.body.querySelectorAll('input:not([readonly]), select')] as (HTMLInputElement | HTMLSelectElement)[];
@@ -410,7 +389,7 @@ export async function productScreen(existing?: Partial<Item> & { details?: strin
         const n = inputs[Math.max(0, i - 1)]; n.focus(); if (n instanceof HTMLInputElement) n.select();
         return true;
       }
-      if (k === 'Alt+P' || k === 'Alt+p') { printCurrentTag(); return true; }
+      if ((k === 'Alt+P' || k === 'Alt+p') && jewel) { printCurrentTag(); return true; }
       if (k === 'Ctrl+W' || k === 'Ctrl+S' || k === 'PageDown') { save(); return true; }   // MARG saves with Ctrl+W → "Yes"
       return false;
     };

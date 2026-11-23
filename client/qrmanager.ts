@@ -2,8 +2,14 @@ import { api, esc, h, toast } from './ui.ts';
 import { margWin, margBar } from './margui.ts';
 import { printJewelTagWeb, printMultipleJewelTags, tagOfItem, jewelTagSvg, barcode128Svg, JewelTag } from './jeweltag.ts';
 import { itemForm, type Item } from './masters.ts';
+import { isJewellery } from './jewellery.ts';
 
 export async function qrManagerScreen(jewelOnly = false) {
+  const co = await api<any>('/company').catch(() => ({}));
+  if (!isJewellery(co.business_type)) {
+    toast('QR & Jewellery Tag Master is only available for Jewellery companies', true);
+    return;
+  }
   const w = margWin('SAVED QR MASTER (ALL TAGS)');
   w.setFoot('<span><b>Enter/Space</b>-Preview</span><span><b>Alt+P</b>-Print Tag</span><span><b>F2</b>-New Item</span><span><b>F3</b>-Edit Item</span><span><b>Esc</b>-Exit</span>');
 
@@ -59,7 +65,7 @@ export async function qrManagerScreen(jewelOnly = false) {
         const q = searchQ.toLowerCase();
         const m = t.name.toLowerCase().includes(q) ||
                   t.code.toLowerCase().includes(q) ||
-                  t.metal.toLowerCase().includes(q) ||
+                  (t.metal || '').toLowerCase().includes(q) ||
                   (it.pack || '').toLowerCase().includes(q);
         if (!m) return false;
       }

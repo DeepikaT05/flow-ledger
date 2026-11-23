@@ -123,7 +123,7 @@ async function billHtml(id: number) {
     totTotalGst += v.totalGst;
   }
 
-  const qrSvg = `<svg width="56" height="56" viewBox="0 0 33 33" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges">
+  const sampleQrSvg = `<svg width="56" height="56" viewBox="0 0 33 33" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges">
     <rect width="33" height="33" fill="#fff"/>
     <rect x="2" y="2" width="7" height="7" fill="#000"/><rect x="3" y="3" width="5" height="5" fill="#fff"/><rect x="4" y="4" width="3" height="3" fill="#000"/>
     <rect x="24" y="2" width="7" height="7" fill="#000"/><rect x="25" y="3" width="5" height="5" fill="#fff"/><rect x="26" y="4" width="3" height="3" fill="#000"/>
@@ -312,7 +312,7 @@ async function billHtml(id: number) {
           <div class="qr-vert"><span>Body Checkup</span> <span>Health Offers</span></div>
           <div class="qr-card">
             <div class="qr-lbl-top">Scan &amp; Book</div>
-            ${qrSvg}
+            ${sampleQrSvg}
             <div class="qr-lbl-bot">Improve Your Health</div>
           </div>
           <div class="qr-desc">

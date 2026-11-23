@@ -1,7 +1,7 @@
 // SALE ENTRY — modelled on the MARG ERP 9+ screen: header (Name / Bill No. / M.R. /
 // Date / Type), the PRODUCT grid, the item + batch pickers, MODE OF PAYMENT and
 // the "Exit W/o Save" box. Everything is driven from the keyboard.
-import { api, esc, toast, h, today, money, openWin, type Win } from './ui.ts';
+import { api, esc, toast, h, today, money, openWin, type Win, alertBox } from './ui.ts';
 import { margBar, margPop, popList, margConfirm, margNumber, margAsk } from './margui.ts';
 import { billDetails, pickBillItems, pickSold, saveInBox, type ReturnInfo } from './salereturn.ts';
 import { ledgerForm, itemForm, type Ledger, type Item } from './masters.ts';
@@ -241,13 +241,13 @@ async function pickMR(): Promise<Salesman | null> {
 }
 
 /** Item search — STORE:MAIN STORE, with the rate / margin / company detail panel. */
-async function pickProduct(initial: string): Promise<Item | null> {
+async function pickProduct(initial: string, isJewel = false): Promise<Item | null> {
   const rows = await api<Item[]>('/items');
   return popList<Item>({
     title: 'STORE:MAIN STORE', rows, search: (r) => `${r.name} ${r.company}`, width: '1020px', findLabel: 'Find Name ? >>', initial,
     detailCols: 3,
     cols: [
-      { title: 'DESCRIPTION', get: (r) => `${r.name.toUpperCase()} <button type="button" class="btn-pop-qr" data-id="${r.id}" style="float:right;margin-top:2px;padding:1px 6px;font-size:10px;font-weight:bold;background:#0284c7;color:#fff;border:none;border-radius:3px;cursor:pointer;">🖨️ QR</button>`, width: '42%' },
+      { title: 'DESCRIPTION', get: (r) => r.name.toUpperCase(), width: '42%' },
       { title: 'PACKING', get: (r) => (r.pack ?? '').toUpperCase(), width: '18%' },
       { title: 'STOCK', get: (r) => (r.stock > 0 ? r.stock : '-'), num: true, width: '10%' },
       { title: 'UNIT', get: (r) => r.unit, width: '10%' },
@@ -261,11 +261,11 @@ async function pickProduct(initial: string): Promise<Item | null> {
       <div>W/oDeal: <b>${c2(r.purchase_rate)}</b></div><div>F.Rate&nbsp;: <b>${f2(r.sale_rate)}</b></div><div>Mfr. &nbsp;&nbsp;: &nbsp; Stock : <b>${r.stock}</b></div>
       <div>PurDeal:</div><div>Deal[F]:</div><div>Conv. &nbsp;: 0 &nbsp; BOX : 0</div>
       <div>PurDisc:</div><div>Scheme&nbsp;: 0</div><div>Barcode:</div>`,
-    foot: '<span><b>F2</b>-New</span><span><b>F3</b>-Modify</span><span><b>Alt+P</b>-Print QR</span><span><b>F4</b>-Reg.</span>',
+    foot: `<span><b>F2</b>-New</span><span><b>F3</b>-Modify</span>${isJewel ? '<span><b>Alt+P</b>-Print Tag</span>' : ''}<span><b>F4</b>-Reg.</span>`,
     onKey: (k, cur, pop) => {
       if (k === 'F2') { if (!allowed('item.add', 'New Item')) return true; itemForm({ name: initial.toUpperCase() }).then(async (i) => { if (i) pop.setRows(await api('/items')); }); return true; }
       if (k === 'F3' && cur) { if (!allowed('item.list', 'Edit Item')) return true; itemForm(cur).then(async (i) => { if (i) pop.setRows(await api('/items')); }); return true; }
-      if ((k === 'Alt+P' || k === 'Alt+p') && cur) { import('./jeweltag.ts').then((m) => m.printItemTag(cur)); return true; }
+      if ((k === 'Alt+P' || k === 'Alt+p') && cur && isJewel) { import('./jeweltag.ts').then((m) => m.printItemTag(cur)); return true; }
       if (k === 'F4' && cur) { if (allowed('item.register', 'Item Register')) import('./masters.ts').then((m) => m.itemRegister(cur)).catch((e) => toast((e as Error).message, true)); return true; }
       return false;
     },
@@ -753,7 +753,7 @@ export async function saleEntry(type = 'SALE', billId?: number) {
         dirty = true; renderRows(); focusCell(rowIdx, 'qty');
         return;
       }
-      const it = await pickProduct(typed);
+      const it = await pickProduct(typed, jewel);
       if (!it) { focusCell(rowIdx, 'name'); return; }
       // Purchase / purchase challan / sale return bring stock in: a new batch can be typed here.
       const inward = isPurchase(type) && type !== 'PURCHASE_RETURN' || refEntry;
@@ -844,16 +844,16 @@ export async function saleEntry(type = 'SALE', billId?: number) {
       const copies = await margNumber('No. of Copies', 1);
       if (copies) await import('./billing.ts').then((m) => m.printCopies(res.id, copies)).catch((e) => toast((e as Error).message, true));
 
-      // Option to print QR Tags for items in this bill
-      if (liveItems.length > 0) {
-        const askQr = await margConfirm('Print Jewellery / Item QR Tags for this Bill ?');
+      // Option to print QR Tags for items in this bill (Jewellery only)
+      if (jewel && liveItems.length > 0) {
+        const askQr = await margConfirm('Print Jewellery QR Tags for this Bill ?');
         if (askQr) {
           const jm = await import('./jeweltag.ts');
           const allItems = await api<Item[]>('/items').catch(() => []);
           const tags = liveItems.map((r) => {
             const rawIt = allItems.find((it) => it.id === r.item_id);
             let d: any = {};
-            try { d = JSON.parse(rawIt?.details || '{}'); } catch {}
+            try { d = JSON.parse((rawIt as any)?.details || '{}'); } catch {}
             return jm.tagOfItem({ ...rawIt, name: r.name, details: JSON.stringify({ ...d, ...(r.jw || {}) }) });
           });
           jm.printMultipleJewelTags(tags);
@@ -1325,7 +1325,7 @@ export async function saleEntry(type = 'SALE', billId?: number) {
       api<Item>(`/items/${r.item_id}`).then(async (it) => {
         if (!it) return;
         let det: Record<string, any> = {};
-        try { det = JSON.parse(it.details || '{}'); } catch {}
+        try { det = JSON.parse((it as any).details || '{}'); } catch {}
         const rateA = Number(it.sale_rate || 0);
         const rateB = Number(det.rate_b || rateA);
         const rateC = Number(det.rate_c || rateA);
@@ -1341,6 +1341,7 @@ export async function saleEntry(type = 'SALE', billId?: number) {
           rows: opts,
           search: (x) => x.name,
           cols: [{ title: 'Rate Category', get: (x) => x.name }],
+          foot: '<span><b>Enter</b>-Select</span><span><b>Esc</b>-Close</span>',
           width: '380px',
         });
         if (chosen) {
@@ -1398,7 +1399,7 @@ export async function saleEntry(type = 'SALE', billId?: number) {
         if (tendered != null) {
           const rec = Number(tendered) || 0;
           const ret = r2(rec - netAmt);
-          alertBox(`Cash Tendered: ₹${f2(rec)}\nBill Amount: ₹${f2(netAmt)}\n\nRETURN CASH: ₹${f2(Math.max(0, ret))}`, 'CASH RETURN CALCULATOR');
+          alertBox(`[ CASH RETURN CALCULATOR ]\n\nCash Tendered: ₹${f2(rec)}\nBill Amount: ₹${f2(netAmt)}\n\nRETURN CASH: ₹${f2(Math.max(0, ret))}`);
         }
       });
       return true;

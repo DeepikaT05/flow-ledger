@@ -7,6 +7,7 @@ import { margBar, margPop, popList, margAsk } from './margui.ts';
 import { canAction, seeCost, canDelete, NO_DELETE } from './session.ts';
 import { itemForm, type Item } from './masters.ts';
 import { downloadCsv, addExportToMargBar } from './export.ts';
+import { isJewellery } from './jewellery.ts';
 
 /** This edition keeps all stock in one store; MARG lists every store maintained. */
 const STORES = ['MAIN STORE'];
@@ -202,10 +203,11 @@ export async function closingStock(initialStores: string[] = ['MAIN STORE'], opt
   let companyFilter = (options.company || 'ALL').toUpperCase();
   const isFiltered = !!options.title || options.inStockOnly || stockStatus !== 'all' || (companyFilter !== 'ALL' && !!companyFilter);
   const winTitle = options.title || (isFiltered ? 'FILTERED STOCK' : 'CLOSING STOCK');
+  let isJewel = false;
 
   const w = openWin(winTitle, 'full', '');
   w.el.classList.add('marg');
-  w.setFoot('<span><b>Tab/F5</b>-Search</span><span><b>F2</b>-New</span><span><b>F3</b>-Edit</span><span><b>Alt+P</b>-Print QR</span><span><b>F4</b>-Options</span><span><b>Enter</b>-Register</span><span><b>F6</b>-Total</span>' +
+  w.setFoot('<span><b>Tab/F5</b>-Search</span><span><b>F2</b>-New</span><span><b>F3</b>-Edit</span><span><b>F4</b>-Options</span><span><b>Enter</b>-Register</span><span><b>F6</b>-Total</span>' +
     '<span><b>F9</b>-Store</span><span><b>F10</b>-Filter</span><span><b>*</b>-Shortage</span><span><b>Alt+X</b>-Excel</span>');
   const screen = h('div', { class: 'cs-screen' });
   screen.innerHTML = `
@@ -254,6 +256,14 @@ export async function closingStock(initialStores: string[] = ['MAIN STORE'], opt
   };
 
   async function load() {
+    try {
+      const co = await api<any>('/company');
+      isJewel = isJewellery(co.business_type);
+      if (isJewel) {
+        w.setFoot('<span><b>Tab/F5</b>-Search</span><span><b>F2</b>-New</span><span><b>F3</b>-Edit</span><span><b>Alt+P</b>-Print Tag</span><span><b>F4</b>-Options</span><span><b>Enter</b>-Register</span><span><b>F6</b>-Total</span>' +
+          '<span><b>F9</b>-Store</span><span><b>F10</b>-Filter</span><span><b>*</b>-Shortage</span><span><b>Alt+X</b>-Excel</span>');
+      }
+    } catch {}
     all = await api<Item[]>('/items');
     applyFilter();
   }
@@ -294,7 +304,7 @@ export async function closingStock(initialStores: string[] = ['MAIN STORE'], opt
     rowsBox.innerHTML = view.map((it, i) => `<div class="r${i === sel ? ' sel' : ''}" data-i="${i}">
       <span style="display:flex;align-items:center;gap:6px;overflow:hidden;text-overflow:ellipsis;">
         <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(it.name.toUpperCase())}</span>
-        <button type="button" class="btn-item-qr" data-i="${i}" title="Print QR Tag (Alt+P)" style="margin-left:auto;padding:1px 6px;font-size:10px;font-weight:800;background:#0284c7;color:#fff;border:none;border-radius:3px;cursor:pointer;flex-shrink:0;">🖨️ QR</button>
+        ${isJewel ? `<button type="button" class="btn-item-qr" data-i="${i}" title="Print QR Tag (Alt+P)" style="margin-left:auto;padding:1px 6px;font-size:10px;font-weight:800;background:#0284c7;color:#fff;border:none;border-radius:3px;cursor:pointer;flex-shrink:0;">🖨️ QR</button>` : ''}
       </span>
       <span>${esc((it.pack ?? '').toUpperCase())}</span><span class="n">${f2(it.mrp)}</span><span class="n">${qty(stockOf(it))}</span><span>${esc(it.unit ?? '')}</span></div>`).join('')
       || '<div class="empty">No items</div>';
@@ -514,7 +524,7 @@ export async function closingStock(initialStores: string[] = ['MAIN STORE'], opt
     }
     if (k === '*') { shortage = !shortage; applyFilter(); return true; }
     if (k === 'Alt+X') { exportExcel(); return true; }
-    if (k === 'Alt+P' || k === 'Alt+p') {
+    if ((k === 'Alt+P' || k === 'Alt+p') && isJewel) {
       if (view[sel]) {
         import('./jeweltag.ts').then((m) => m.printItemTag(view[sel]));
         return true;
@@ -1369,7 +1379,12 @@ export async function batchStock(initialStores: string[] = ['MAIN STORE']) {
     (bar.firstElementChild as HTMLElement).textContent = `${stores.join(', ')} : BATCH STOCK : ${dmy(today())}${filterTag}`;
   };
 
+  let isJewel = false;
   async function load() {
+    try {
+      const co = await api<any>('/company');
+      isJewel = isJewellery(co.business_type);
+    } catch {}
     allBatches = await api<BatchStockRow[]>('/reports/batch-stock');
     applyFilter();
   }
@@ -1789,9 +1804,10 @@ export async function batchStock(initialStores: string[] = ['MAIN STORE']) {
       return true;
     }
     if (k === 'Alt+X') { exportExcel(); return true; }
-    if (k === 'Alt+P' || k === 'Alt+p') {
-      if (view[sel]) {
-        import('./jeweltag.ts').then((m) => m.printItemTag(view[sel]));
+    if ((k === 'Alt+P' || k === 'Alt+p') && isJewel) {
+      const curRow = displayRows[sel];
+      if (curRow && curRow.type === 'batch') {
+        import('./jeweltag.ts').then((m) => m.printItemTag({ id: curRow.product.item_id, name: curRow.product.name, pack: curRow.product.pack, unit: curRow.product.unit, sale_rate: curRow.product.sale_rate, purchase_rate: curRow.product.purchase_rate, mrp: curRow.product.mrp, gst_rate: curRow.product.gst_rate, hsn: curRow.product.hsn, barcode: curRow.batch.batch }));
         return true;
       }
     }

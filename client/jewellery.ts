@@ -58,7 +58,7 @@ export function itemJw(it: Partial<Item> & { details?: string }) {
     const match = d.jw_mkg.match(/([\d.]+)\s*(%|GM|PCS|FIX)?/i);
     if (match) { mkgVal = Number(match[1]) || 0; if (match[2]) mkgUnit = match[2].toUpperCase(); }
   }
-  const code = String(it.barcode || d.barcode || it.code || '');
+  const code = String((it as any).barcode || d.barcode || (it as any).code || '');
   return {
     purityUnit: (d.jw_purity_unit === 'K' ? 'K' : '%') as '%' | 'K', purity: n('jw_purity', 100),
     makingUnit: (['GM', '%', 'PCS', 'FIX'].includes(mkgUnit) ? mkgUnit : '%') as JwLine['makingUnit'], making: mkgVal,

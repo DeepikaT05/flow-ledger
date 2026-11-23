@@ -1,4 +1,5 @@
 import { MENU, USER_MENU, QUICK, HOTKEYS, type MenuEntry, type MenuItem } from './menu.ts';
+import { isJewellery } from './jewellery.ts';
 import { api, esc, keyName, toast, openWin, handleWinKey, winCount, confirmBox, alertBox } from './ui.ts';
 import { ledgerList, ledgerForm, itemList, itemForm, groupList, groupForm, companyForm, partyGstList, masterStats, exportLedgers, itemRegister, salesmanList, priceList } from './masters.ts';
 import { billList } from './billing.ts';
@@ -82,9 +83,18 @@ const ACTIONS: Record<string, (arg?: string) => unknown> = {
   'calendar': () => calendar(),
   'print': () => window.print(),
   'shortcuts': () => shortcutsHelp(),
-  'qr.list': () => import('./qrmanager.ts').then((m) => m.qrManagerScreen(false)),
-  'qr.jewel': () => import('./qrmanager.ts').then((m) => m.qrManagerScreen(true)),
-  'qr.print': () => import('./qrmanager.ts').then((m) => m.qrManagerScreen(false)),
+  'qr.list': () => {
+    if (!currentCompanyJewel) { toast('QR & Jewellery Tag Master is only available for Jewellery companies', true); return; }
+    import('./qrmanager.ts').then((m) => m.qrManagerScreen(false));
+  },
+  'qr.jewel': () => {
+    if (!currentCompanyJewel) { toast('QR & Jewellery Tag Master is only available for Jewellery companies', true); return; }
+    import('./qrmanager.ts').then((m) => m.qrManagerScreen(true));
+  },
+  'qr.print': () => {
+    if (!currentCompanyJewel) { toast('QR & Jewellery Tag Master is only available for Jewellery companies', true); return; }
+    import('./qrmanager.ts').then((m) => m.qrManagerScreen(false));
+  },
   // Quit: end the server session and start again from the login box.
   'exit': () => confirmBox('Quit Flow Ledger ?', false).then(async (y) => {
     if (!y) return;
@@ -246,10 +256,12 @@ function pruneDead(items: MenuEntry[]): MenuEntry[] {
 }
 const LIVE_MENU = pruneDead(MENU) as MenuItem[];
 const LIVE_USER_MENU = pruneDead(USER_MENU) as MenuItem[];
+let currentCompanyJewel = false;
 let TREE: MenuItem[] = LIVE_MENU;
 function applyRole() {
   simpleMenu = isUserRole();
-  TREE = simpleMenu ? (filterTree(LIVE_USER_MENU) as MenuItem[]) : isSuper() ? LIVE_MENU : (filterTree(LIVE_MENU) as MenuItem[]);
+  const rawTree = simpleMenu ? (filterTree(LIVE_USER_MENU) as MenuItem[]) : isSuper() ? LIVE_MENU : (filterTree(LIVE_MENU) as MenuItem[]);
+  TREE = rawTree.filter((m) => currentCompanyJewel || (m.label !== 'QR' && !m.action?.startsWith('qr.')));
   closeMenu();
   renderQuick();
   renderSeen();
@@ -550,7 +562,9 @@ function ctxMenu(x: number, y: number, items: { label: string; fn: () => void }[
 // ------------------------------------------------------------------ info bar
 let user = localStorage.getItem('user') ?? 'ADMIN';
 async function refreshInfo() {
-  const c = await api('/company');
+  const c = await api<{ name: string; address1: string; address2: string; gstin: string; fy_start: string; fy_end: string; business_type?: string }>('/company');
+  currentCompanyJewel = isJewellery(c.business_type);
+  applyRole();
   const fy = `${new Date(c.fy_start).toLocaleString('en', { month: 'short' })}., ${c.fy_start.slice(0, 4)} - ${new Date(c.fy_end).toLocaleString('en', { month: 'short' })}., ${c.fy_end.slice(0, 4)}`;
   document.getElementById('companyinfo')!.innerHTML = `<div>${esc(c.name)}</div><div>${esc(c.address1)}</div><div>${esc(c.address2)}</div><div>GSTIN:${esc(c.gstin)}&nbsp; ${fy}</div>`;
   document.getElementById('titlebar')!.textContent = `Flow Ledger|Web|${c.name} ${c.fy_start.slice(0, 4)}-${c.fy_end.slice(0, 4)}|USER-${user}${session() ? ` [${session()!.role}]` : ''}|MAIN COMPUTER`;
