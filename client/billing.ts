@@ -11,7 +11,7 @@ export const BILL_TITLE: Record<string, string> = {
 // ------------------------------------------------------------------ bill list (Modify)
 export async function billList(type: string) {
   const types = type.split(',');
-  const w = openWin(`Modify ${BILL_TITLE[types[0]] ?? 'Bill'}`, 'wide',
+  const w = openWin(`Modify ${BILL_TITLE[types[0]] ?? 'Bill'}`, 'full',
     '<span><b>Enter / F3</b> Modify</span><span><b>F2</b> New</span><span><b>F10</b> Print</span><span><b>Del</b> Delete</span><span><b>Esc</b> Close</span>');
   w.body.style.height = '100%';
   const g = new GridList<any>(w.body, [

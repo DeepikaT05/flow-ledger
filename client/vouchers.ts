@@ -265,7 +265,7 @@ export async function voucherEntry(initialType: string, voucherId?: number) {
 }
 
 export async function voucherList(type: string) {
-  const w = openWin(`${V_TITLE[type]} Book / Modify`, 'wide', '<span><b>Enter / F3</b> Modify</span><span><b>F2</b> New</span><span><b>Del</b> Delete</span><span><b>Esc</b> Close</span>');
+  const w = openWin(`${V_TITLE[type]} Book / Modify`, 'full', '<span><b>Enter / F3</b> Modify</span><span><b>F2</b> New</span><span><b>Del</b> Delete</span><span><b>Esc</b> Close</span>');
   w.body.style.height = '100%';
   const g = new GridList<any>(w.body, [
     { title: 'Date', get: (r) => fmtDate(r.date) }, { title: 'No.', get: (r) => r.no },

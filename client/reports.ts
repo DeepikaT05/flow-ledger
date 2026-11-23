@@ -33,7 +33,7 @@ async function reportWin<T extends Record<string, any>>(opts: {
   onEnter?: (r: T) => void; extraKeys?: Record<string, (r: T | undefined) => void>; extraFoot?: string;
 }) {
   const p = { from: opts.from ?? fyStart(), to: opts.to ?? today() };
-  const w = openWin(opts.title, 'wide', (opts.period ? '<span><b>F2</b> Change Period</span>' : '') + (opts.onEnter ? '<span><b>Enter</b> Open</span>' : '') +
+  const w = openWin(opts.title, 'full', (opts.period ? '<span><b>F2</b> Change Period</span>' : '') + (opts.onEnter ? '<span><b>Enter</b> Open</span>' : '') +
     (opts.extraFoot ?? '') + '<span><b>Alt+X</b> Excel</span><span><b>F10/Alt+P</b> PDF</span><span><b>Esc</b> Close</span>');
   w.body.style.height = '100%';
   const head = h('div', { class: 'party-info', style: 'font-size:14px;margin-bottom:4px' });
@@ -146,7 +146,7 @@ export async function profitLoss() {
   const totExp = exp.reduce((s, r) => s + r.balance, 0) + opening;
   const totInc = inc.reduce((s, r) => s - r.balance, 0) + stock;
   const profit = totInc - totExp;
-  const w = openWin('Profit & Loss A/c', 'wide', '<span><b>F10</b> Print</span><span><b>Esc</b> Close</span>');
+  const w = openWin('Profit & Loss A/c', 'full', '<span><b>F10</b> Print</span><span><b>Esc</b> Close</span>');
   const side = (rows: [string, number][]) => rows.map(([n, v]) => `<tr><td>${esc(n)}</td><td class="n">${money(v)}</td></tr>`).join('');
   const left: [string, number][] = [['Opening Stock', opening], ...exp.map((r) => [r.name, r.balance] as [string, number])];
   const right: [string, number][] = [...inc.map((r) => [r.name, -r.balance] as [string, number]), ['Closing Stock', stock]];
@@ -170,7 +170,7 @@ export async function balanceSheet() {
   liab.push(['Opening Stock (Capital)', opening]);
   if (pl >= 0) liab.push(['Profit & Loss A/c', pl]); else asset.push(['Profit & Loss A/c (Loss)', -pl]);
   const tl = liab.reduce((s, x) => s + x[1], 0), ta = asset.reduce((s, x) => s + x[1], 0);
-  const w = openWin('Balance Sheet', 'wide', '<span><b>F10</b> Print</span><span><b>Esc</b> Close</span>');
+  const w = openWin('Balance Sheet', 'full', '<span><b>F10</b> Print</span><span><b>Esc</b> Close</span>');
   const side = (rows: [string, number][]) => rows.map(([n, v]) => `<tr><td>${esc(n)}</td><td class="n">${money(v)}</td></tr>`).join('');
   w.body.innerHTML = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
     <table class="grid"><tr><th>Liabilities</th><th class="n">Amount</th></tr>${side(liab)}<tr class="total"><td>Total</td><td class="n">${money(tl)}</td></tr></table>
@@ -1586,7 +1586,7 @@ export async function singleCompanySale(companyName?: string, initFrom?: string,
   let from = initFrom || fyStart();
   let to = initTo || today();
 
-  const w = openWin(`COMPANY SALE: ${comp.toUpperCase()}`, 'wide', '');
+  const w = openWin(`COMPANY SALE: ${comp.toUpperCase()}`, 'full', '');
   w.el.classList.add('marg');
   w.setFoot('<span><b>F2</b>-Period</span><span><b>F3</b>-Change Company</span><span><b>Enter</b>-Product Sale Detail</span><span><b>Alt+X</b>-Excel</span><span><b>Alt+P</b>-PDF</span><span><b>Esc</b>-Close</span>');
 
@@ -1825,7 +1825,7 @@ export async function singlePartySale(partyOrId?: any, initFrom?: string, initTo
   let from = initFrom || fyStart();
   let to = initTo || today();
 
-  const w = openWin('SINGLE PARTY SALE REPORT', 'wide', '');
+  const w = openWin('SINGLE PARTY SALE REPORT', 'full', '');
   w.el.classList.add('marg');
   w.setFoot('<span><b>F2</b>-Period</span><span><b>F3</b>-Change Party</span><span><b>Enter</b>-Open Bill</span><span><b>Alt+X</b>-Excel</span><span><b>Alt+P</b>-PDF</span><span><b>Esc</b>-Close</span>');
 
