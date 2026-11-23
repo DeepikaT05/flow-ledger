@@ -1,6 +1,6 @@
 import { api, esc, h, toast } from './ui.ts';
 import { margWin, margBar } from './margui.ts';
-import { printJewelTagWeb, printMultipleJewelTags, tagOfItem, jewelTagSvg, JewelTag } from './jeweltag.ts';
+import { printJewelTagWeb, printMultipleJewelTags, tagOfItem, jewelTagSvg, barcode128Svg, JewelTag } from './jeweltag.ts';
 import { itemForm, type Item } from './masters.ts';
 
 export async function qrManagerScreen(jewelOnly = false) {
@@ -150,18 +150,24 @@ export async function qrManagerScreen(jewelOnly = false) {
     }
     const { item: it, tag: t } = entry;
     const svg = jewelTagSvg(t);
+    const bSvg = barcode128Svg(t.code, 26, 1.15);
 
     previewBox.innerHTML = `
-      <div style="font-weight:800; font-size:13px; color:#1e3a8a; margin-bottom:8px; text-transform:uppercase;">
-        ▣ LIVE SCANNABLE QR
+      <!-- 1D Barcode Physical Sticker Preview (Screenshot 2 style) -->
+      <div style="width:100%; background:#fff; border:1.5px solid #0f172a; border-radius:6px; padding:8px 10px; box-sizing:border-box; text-align:center; box-shadow:0 1px 3px rgba(0,0,0,0.1); margin-bottom:10px;">
+        <div style="font-size:9px; font-weight:800; color:#475569; text-transform:uppercase; margin-bottom:2px;">📦 PHYSICAL STICKER (1D)</div>
+        <div style="font-family:monospace; font-size:15px; font-weight:900; color:#000; letter-spacing:1px;">${esc(t.code)}</div>
+        <div style="width:100%; height:26px; margin:4px 0;">${bSvg}</div>
+        <div style="font-size:12px; font-weight:800; text-transform:uppercase; color:#000; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(t.name)}</div>
       </div>
-      <div style="background:#fff; padding:10px; border:1px solid #cbd5e1; border-radius:6px; box-shadow:0 1px 3px rgba(0,0,0,0.1); width:130px; height:130px; display:flex; align-items:center; justify-content:center;">
-        <div style="width:110px; height:110px;">${svg}</div>
-      </div>
-      <div style="font-family:monospace; font-size:14px; font-weight:800; color:#0f172a; margin-top:8px;">${esc(t.code)}</div>
-      <div style="font-size:12px; font-weight:700; color:#334155; text-align:center; margin-top:2px;">${esc(t.name.toUpperCase())}</div>
 
-      <div style="width:100%; background:#fff; border:1px solid #cbd5e1; border-radius:6px; padding:10px; margin-top:12px; font-size:12px;">
+      <!-- 2D QR Code Preview -->
+      <div style="width:100%; background:#fff; border:1px solid #cbd5e1; border-radius:6px; padding:8px; box-sizing:border-box; display:flex; flex-direction:column; align-items:center;">
+        <div style="font-size:9px; font-weight:800; color:#0284c7; text-transform:uppercase; margin-bottom:4px;">▣ 2D QR CODE</div>
+        <div style="width:84px; height:84px;">${svg}</div>
+      </div>
+
+      <div style="width:100%; background:#fff; border:1px solid #cbd5e1; border-radius:6px; padding:10px; margin-top:10px; font-size:12px;">
         <div style="display:flex; justify-content:space-between; padding:2px 0;"><span>Gross Wt (GW):</span><b style="font-family:monospace;">${t.gw.toFixed(3)}</b></div>
         <div style="display:flex; justify-content:space-between; padding:2px 0;"><span>Less Wt (LESS):</span><b style="font-family:monospace;">${t.less.toFixed(3)}</b></div>
         <div style="display:flex; justify-content:space-between; padding:2px 0; border-top:1px dashed #cbd5e1; color:#15803d; font-weight:bold;">
@@ -172,18 +178,27 @@ export async function qrManagerScreen(jewelOnly = false) {
         <div style="display:flex; justify-content:space-between; padding:2px 0;"><span>Current Stock:</span><b>${it.stock ?? 0} ${esc(it.unit ?? '')}</b></div>
       </div>
 
-      <div style="width:100%; display:flex; flex-direction:column; gap:6px; margin-top:14px;">
-        <button type="button" class="btn-prev-print" style="width:100%; background:#0284c7; color:#fff; font-weight:700; font-size:13px; padding:8px; border:none; border-radius:4px; cursor:pointer;">
-          🖨️ Print Jewellery Tag (Alt+P)
-        </button>
+      <div style="width:100%; display:flex; flex-direction:column; gap:6px; margin-top:12px;">
+        <div style="display:flex; gap:6px;">
+          <button type="button" class="btn-prev-print-dual" style="flex:1; background:#0284c7; color:#fff; font-weight:700; font-size:12px; padding:8px 4px; border:none; border-radius:4px; cursor:pointer;">
+            🏷️ Dual Tag
+          </button>
+          <button type="button" class="btn-prev-print-sticker" style="flex:1; background:#0f766e; color:#fff; font-weight:700; font-size:12px; padding:8px 4px; border:none; border-radius:4px; cursor:pointer;">
+            📦 Barcode Sticker
+          </button>
+        </div>
         <button type="button" class="btn-prev-edit" style="width:100%; background:#f1f5f9; color:#0f172a; font-weight:700; font-size:12px; padding:6px; border:1px solid #94a3b8; border-radius:4px; cursor:pointer;">
           ✏️ Edit Item (F3)
         </button>
       </div>
     `;
 
-    (previewBox.querySelector('.btn-prev-print') as HTMLButtonElement | null)?.addEventListener('click', () => {
-      printJewelTagWeb(t);
+    (previewBox.querySelector('.btn-prev-print-dual') as HTMLButtonElement | null)?.addEventListener('click', () => {
+      printJewelTagWeb(t, 'dual');
+    });
+
+    (previewBox.querySelector('.btn-prev-print-sticker') as HTMLButtonElement | null)?.addEventListener('click', () => {
+      printJewelTagWeb(t, 'sticker');
     });
 
     (previewBox.querySelector('.btn-prev-edit') as HTMLButtonElement | null)?.addEventListener('click', async () => {

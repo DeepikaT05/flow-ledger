@@ -7,7 +7,7 @@ import { margPop, margConfirm } from './margui.ts';
 import { seeCost } from './session.ts';
 import type { Item } from './masters.ts';
 import { isJewellery } from './jewellery.ts';
-import { printJewelTagWeb, jewelTagSvg, qrSvg } from './jeweltag.ts';
+import { printJewelTagWeb, jewelTagSvg, qrSvg, barcode128Svg } from './jeweltag.ts';
 
 type Kind = 'text' | 'num' | 'sel';
 interface Fld { k: string; label: string; kind: Kind; opts?: string[]; dec?: number; w?: string; upper?: boolean; small?: boolean; ro?: boolean; after?: Fld[]; sep?: string }
@@ -138,15 +138,16 @@ export async function productScreen(existing?: Partial<Item> & { details?: strin
     bottom.innerHTML = COLS.map((c) => `<div class="pf-col">${c.map((f) => cell(f)).join('')}</div>`).join('');
     p.body.append(top, bottom);
 
-    const printCurrentTag = () => {
-      const pName = (byKey('name') as HTMLInputElement)?.value.trim() || 'PRODUCT';
+    const printCurrentTag = (mode: 'dual' | 'sticker' = 'dual') => {
+      const rawName = (byKey('name') as HTMLInputElement)?.value.trim();
+      const pName = (rawName && rawName !== '0') ? rawName : 'PRODUCT';
       const bCode = (byKey('barcode') as HTMLInputElement)?.value.trim() || (byKey('code') as HTMLInputElement)?.value.trim() || (existing?.id ? `PA${String(existing.id).padStart(6, '0')}` : 'PA000001');
       const gw = Number((byKey('jw_gw') as HTMLInputElement)?.value) || 0;
       const less = Number((byKey('jw_less') as HTMLInputElement)?.value) || 0;
       const nw = Number((byKey('jw_nw') as HTMLInputElement)?.value) || Math.max(0, gw - less);
       const mkg = (byKey('jw_mkg') as HTMLInputElement)?.value.trim() || '5.00 %';
       const metal = (byKey('jw_metal') as HTMLSelectElement)?.value || 'SILVER';
-      printJewelTagWeb({ code: bCode, name: pName, gw, less, nw, mkg, metal });
+      printJewelTagWeb({ code: bCode, name: pName, gw, less, nw, mkg, metal }, mode);
     };
 
     let qrBox: HTMLElement | null = null;
@@ -211,7 +212,8 @@ export async function productScreen(existing?: Partial<Item> & { details?: strin
 
       const updateJewelQr = () => {
         if (!qrBox) return;
-        const pName = (byKey('name') as HTMLInputElement)?.value.trim() || 'PRODUCT';
+        const rawName = (byKey('name') as HTMLInputElement)?.value.trim();
+        const pName = (rawName && rawName !== '0') ? rawName : 'PRODUCT';
         const bCode = (byKey('barcode') as HTMLInputElement)?.value.trim() || (byKey('code') as HTMLInputElement)?.value.trim() || (existing?.id ? `PA${String(existing.id).padStart(6, '0')}` : 'PA000001');
         const gw = Number(gwEl?.value) || 0;
         const less = Number(lessEl?.value) || 0;
@@ -219,23 +221,42 @@ export async function productScreen(existing?: Partial<Item> & { details?: strin
         const mkg = mkgEl?.value.trim() || '5.00 %';
         const metal = metalEl?.value || 'SILVER';
         const svg = jewelTagSvg({ code: bCode, name: pName, gw, less, nw, mkg, metal });
+        const bSvg = barcode128Svg(bCode, 24, 1.1);
         qrBox.innerHTML = `
-          <div style="font-size: 11px; font-weight: 800; color: #1e3a8a; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">▣ SCANNABLE QR TAG</div>
-          <div style="width: 84px; height: 84px; margin-bottom: 4px;">${svg}</div>
-          <div style="font-family: monospace; font-size: 12px; font-weight: 800; color: #000;">${esc(bCode)}</div>
-          <div style="font-size: 10px; font-weight: 700; color: #334155; max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 4px;">${esc(pName)}</div>
-          <div style="font-family: monospace; font-size: 10px; width: 100%; border-top: 1px dashed #94a3b8; padding-top: 4px; color: #000;">
-            <div style="display:flex; justify-content:space-between;"><span>GW:</span><b>${gw.toFixed(3)}</b></div>
-            <div style="display:flex; justify-content:space-between;"><span>LESS:</span><b>${less.toFixed(3)}</b></div>
-            <div style="display:flex; justify-content:space-between; color:#15803d; font-weight:bold;"><span>NW:</span><b>${nw.toFixed(3)}</b></div>
-            <div style="display:flex; justify-content:space-between;"><span>MKG:</span><b>${esc(mkg)}</b></div>
+          <!-- SECTION 1: PHYSICAL BARCODE STICKER (Screenshot 2: Serial No + 1D Barcode + Product Name) -->
+          <div style="width: 100%; background: #ffffff; border: 1.5px solid #0f172a; border-radius: 4px; padding: 4px 6px; box-sizing: border-box; text-align: center; margin-bottom: 6px;">
+            <div style="font-size: 8.5px; font-weight: 800; color: #475569; text-transform: uppercase; margin-bottom: 1px;">📦 PHYSICAL STICKER (1D)</div>
+            <div style="font-family: monospace; font-size: 13px; font-weight: 900; color: #000; letter-spacing: 0.8px;">${esc(bCode)}</div>
+            <div style="width: 100%; height: 24px; margin: 2px 0;">${bSvg}</div>
+            <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #000; max-width: 195px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${esc(pName)}</div>
           </div>
-          <button type="button" class="btn-qr-print" style="margin-top: 6px; width: 100%; background: #0284c7; color: #fff; font-size: 11px; font-weight: 700; padding: 4px; border: none; border-radius: 3px; cursor: pointer;">
-            🖨️ Print Tag
-          </button>
+
+          <!-- SECTION 2: 2D QR CODE + WEIGHTS -->
+          <div style="width: 100%; background: #f8fafc; border: 1px dashed #94a3b8; border-radius: 4px; padding: 4px; box-sizing: border-box; text-align: center;">
+            <div style="font-size: 8.5px; font-weight: 800; color: #0369a1; text-transform: uppercase; margin-bottom: 2px;">▣ 2D QR CODE + WEIGHTS</div>
+            <div style="width: 64px; height: 64px; margin: 0 auto 3px;">${svg}</div>
+            <div style="font-family: monospace; font-size: 9.5px; width: 100%; border-top: 1px dashed #cbd5e1; padding-top: 3px; color: #000; text-align: left;">
+              <div style="display:flex; justify-content:space-between;"><span>GW:</span><b>${gw.toFixed(3)}</b></div>
+              <div style="display:flex; justify-content:space-between;"><span>LESS:</span><b>${less.toFixed(3)}</b></div>
+              <div style="display:flex; justify-content:space-between; color:#15803d; font-weight:bold;"><span>NW:</span><b>${nw.toFixed(3)}</b></div>
+              <div style="display:flex; justify-content:space-between;"><span>MKG:</span><b>${esc(mkg)}</b></div>
+            </div>
+          </div>
+
+          <!-- ACTIONS: Dual Tag Print & Barcode Sticker Print -->
+          <div style="display: flex; gap: 4px; width: 100%; margin-top: 6px;">
+            <button type="button" class="btn-qr-dual" title="Print Dual Tag with Barcode & QR" style="flex: 1; background: #0284c7; color: #fff; font-size: 10px; font-weight: 700; padding: 5px 2px; border: none; border-radius: 3px; cursor: pointer;">
+              🏷️ Dual Tag
+            </button>
+            <button type="button" class="btn-qr-sticker" title="Print 1D Barcode Sticker (Screenshot Style)" style="flex: 1; background: #0f766e; color: #fff; font-size: 10px; font-weight: 700; padding: 5px 2px; border: none; border-radius: 3px; cursor: pointer;">
+              📦 Barcode
+            </button>
+          </div>
         `;
-        const printBtn = qrBox.querySelector('.btn-qr-print') as HTMLButtonElement | null;
-        if (printBtn) printBtn.onclick = () => printCurrentTag();
+        const dualBtn = qrBox.querySelector('.btn-qr-dual') as HTMLButtonElement | null;
+        if (dualBtn) dualBtn.onclick = () => printCurrentTag('dual');
+        const stickerBtn = qrBox.querySelector('.btn-qr-sticker') as HTMLButtonElement | null;
+        if (stickerBtn) stickerBtn.onclick = () => printCurrentTag('sticker');
       };
 
       const calcNw = () => {
