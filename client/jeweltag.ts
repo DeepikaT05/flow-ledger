@@ -116,31 +116,64 @@ export function barcodeStickerHtml(data: JewelTag): string {
     </div>`;
 }
 
-/** Dual Jewellery Dumbbell Tag: 1D Barcode (Screenshot 2) on Side A, 2D QR + Weights on Side B */
+/** QR printed on the tag: only the tag code (CH001445). A short A–Z/0–9 code fits alphanumeric mode
+ *  at ECC H in a 21×21 QR, so its cells stay big enough to scan off a 12 mm sticker; the scanner
+ *  looks the item (and its weights) up by that code. */
+export function tagQrSvg(code: string): string {
+  const c = String(code || '').trim().toUpperCase();
+  const alnum = c.length <= 10 && /^[0-9A-Z $%*+\-./:]+$/.test(c);
+  const qr = qrcode(0, alnum ? 'H' : 'M');
+  qr.addData(c, alnum ? 'Alphanumeric' : 'Byte');
+  qr.make();
+  return qr.createSvgTag({ cellSize: 1, margin: 1, scalable: true });
+}
+
+/** Sticker stock (die-cut roll): 84 x 12 mm overall = 60 mm printable head (two 30 mm faces,
+ *  folded back-to-back) + 24 mm blank tail that wraps round the piece. */
+export const TAG_STOCK = { w: 84, h: 12, face: 30, tail: 24 } as const;
+
+/** Print CSS for the tag: each tag is one 84 x 12 mm page at 0,0 with no margins, and the
+ *  die-cut outline (only a guide on screen) is not printed. */
+export const TAG_PAGE_CSS = `@page { size: ${TAG_STOCK.w}mm ${TAG_STOCK.h}mm; margin: 0; }`;
+const TAG_PRINT_CSS = `
+    @media print {
+      html, body { margin: 0 !important; padding: 0 !important; }
+      .tags-wrap:not([style*="none"]) { display: block !important; gap: 0 !important; }
+      .jewel-tag-wrap { display: flex !important; margin: 0 !important; break-after: page; page-break-after: always; }
+      .jewel-tag-wrap:last-child { break-after: auto; page-break-after: auto; }
+      .jt-cut { border-color: transparent !important; }
+    }`;
+
+/** Jewellery tag laid out on the 84 x 12 mm stock:
+ *  [ details face 30 mm: GW / LESS / NW / MKG + QR | barcode face 30 mm: code · barcode · name ] + tail 24 mm */
 export function jewelTagCardHtml(data: JewelTag): string {
-  const qSvg = jewelTagSvg(data);
+  const { w, h, face, tail } = TAG_STOCK;
   const bSvg = barcode128Svg(data.code, 24, 1.15);
   const fmt3 = (n: number) => (Number(n) || 0).toFixed(3);
+  const row = (k: string, v: string) =>
+    `<div style="display:flex; white-space:nowrap;"><span style="width:4.6ch;">${k}</span><span style="flex:1; text-align:right;">${v}</span></div>`;
   return `
-    <div class="jewel-tag" style="display:inline-flex; flex-direction:row; align-items:stretch; width:360px; min-height:92px; border:1.5px solid #000; border-radius:4px; box-sizing:border-box; overflow:hidden; page-break-inside:avoid; margin:4px; background:#fff;">
-      <!-- SIDE A: 1D Barcode Sticker Style (Screenshot 2) -->
-      <div class="side-a" style="flex:1.2; padding:6px 8px; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; border-right:1px dashed #444;">
-        <div class="tag-code" style="font-size:13px; font-weight:800; font-family:monospace; letter-spacing:0.8px; color:#000;">${esc(data.code)}</div>
-        <div class="tag-barcode" style="width:100%; height:24px; margin:2px 0;">${bSvg}</div>
-        <div class="tag-name" style="font-size:11px; font-weight:800; text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:160px; color:#000;">${esc(data.name)}</div>
-      </div>
-      <!-- DUMBBELL FOLD / BRIDGE -->
-      <div class="tag-bridge" style="width:12px; background:repeating-linear-gradient(45deg, #eee, #eee 2px, #fff 2px, #fff 6px); border-right:1px dashed #444;"></div>
-      <!-- SIDE B: 2D QR Code + Weights -->
-      <div class="side-b" style="flex:1.3; padding:6px 8px; display:flex; flex-direction:row; align-items:center; gap:6px; font-family:monospace;">
-        <div class="tag-qr" style="width:52px; height:52px; flex-shrink:0;">${qSvg}</div>
-        <div class="w-table" style="flex:1; display:flex; flex-direction:column; justify-content:space-between; font-size:11.5px; line-height:1.25;">
-          <div style="display:flex; justify-content:space-between;"><span>GW:</span><b style="font-weight:800;">${fmt3(data.gw)}</b></div>
-          <div style="display:flex; justify-content:space-between;"><span>LESS:</span><b style="font-weight:800;">${fmt3(data.less)}</b></div>
-          <div style="display:flex; justify-content:space-between; border-top:1px solid #aaa; border-bottom:1px solid #aaa; padding:1px 0; color:#15803d;"><span style="font-weight:800;">NW:</span><b style="font-weight:800;">${fmt3(data.nw)}</b></div>
-          <div style="display:flex; justify-content:space-between;"><span>MKG:</span><b>${esc(data.mkg)}</b></div>
+    <div class="jewel-tag-wrap" style="display:inline-flex; align-items:flex-start; width:${w}mm; height:${h}mm; margin:1.5mm; overflow:hidden; page-break-inside:avoid; break-inside:avoid; background:#fff; color:#000;">
+    <div class="jewel-tag jt-cut" style="display:flex; flex:none; width:${face * 2}mm; height:${h}mm; border:0.2mm solid #999; border-radius:0.8mm; box-sizing:border-box; overflow:hidden;">
+      <!-- DETAILS FACE: weights + QR -->
+      <div class="side-details jt-cut" style="width:${face}mm; flex:none; box-sizing:border-box; padding:0.6mm 0.8mm 0.6mm 1.2mm; display:flex; align-items:center; gap:0.8mm; border-right:0.2mm dashed #bbb;">
+        <div class="w-table" style="flex:1; min-width:0; font-family:'Courier New', Courier, monospace; font-weight:700; font-size:2.3mm; line-height:2.6mm;">
+          ${row('GW', fmt3(data.gw))}
+          ${row('LESS', fmt3(data.less))}
+          ${row('NW', fmt3(data.nw))}
+          ${row('MKG', esc(data.mkg))}
         </div>
+        <div class="tag-qr" style="width:10mm; height:10mm; flex:none;">${tagQrSvg(data.code)}</div>
       </div>
+      <!-- BARCODE FACE (unchanged): code · barcode · name -->
+      <div class="side-a" style="width:${face}mm; flex:none; box-sizing:border-box; padding:0.5mm 1mm; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center;">
+        <div class="tag-code" style="font-size:2.5mm; line-height:2.8mm; font-weight:800; font-family:monospace; letter-spacing:0.15mm;">${esc(data.code)}</div>
+        <div class="tag-barcode" style="width:100%; height:5mm; margin:0.2mm 0;">${bSvg.replace(/height="24"/, 'height="100%" preserveAspectRatio="none"')}</div>
+        <div class="tag-name" style="font-size:2.3mm; line-height:2.6mm; font-weight:800; text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%;">${esc(data.name)}</div>
+      </div>
+    </div>
+    <!-- TAIL (blank, ${tail} mm): wraps round the piece and sticks back on itself -->
+    <div class="tag-tail jt-cut" style="width:${tail}mm; flex:none; height:4.5mm; margin:1.2mm 0 0 -0.2mm; border:0.2mm solid #999; border-left:none; border-radius:0 2.25mm 2.25mm 0; box-sizing:border-box;"></div>
     </div>`;
 }
 
@@ -153,8 +186,9 @@ export function printMultipleJewelTags(tags: JewelTag[]) {
 <head>
   <meta charset="utf-8"/>
   <title>Print Jewellery Tags (${tags.length})</title>
+  <style id="page-size">${TAG_PAGE_CSS}</style>
   <style>
-    @page { margin: 4mm; size: auto; }
+    ${TAG_PRINT_CSS}
     body {
       margin: 0; padding: 12px;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Courier New", monospace;
@@ -178,6 +212,7 @@ export function printMultipleJewelTags(tags: JewelTag[]) {
   <div id="view-sticker" class="tags-wrap" style="display:none;">${stickerHtml}</div>
   <script>
     function showMode(mode) {
+      document.getElementById('page-size').textContent = mode === 'dual' ? ${JSON.stringify(TAG_PAGE_CSS)} : '@page { margin: 3mm; size: auto; }';
       document.getElementById('view-dual').style.display = mode === 'dual' ? 'flex' : 'none';
       document.getElementById('view-sticker').style.display = mode === 'sticker' ? 'flex' : 'none';
       document.getElementById('btn-dual').style.background = mode === 'dual' ? '#0284c7' : '#fff';
@@ -206,8 +241,9 @@ export function printJewelTagWeb(data: JewelTag, initialMode: 'dual' | 'sticker'
 <head>
   <meta charset="utf-8"/>
   <title>Jewellery Tag - ${esc(data.code)}</title>
+  <style id="page-size">${initialMode === 'dual' ? TAG_PAGE_CSS : '@page { margin: 3mm; size: auto; }'}</style>
   <style>
-    @page { margin: 3mm; size: auto; }
+    ${TAG_PRINT_CSS}
     body {
       margin: 0; padding: 12px;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Courier New", monospace;
@@ -234,6 +270,7 @@ export function printJewelTagWeb(data: JewelTag, initialMode: 'dual' | 'sticker'
   </div>
   <script>
     function showMode(mode) {
+      document.getElementById('page-size').textContent = mode === 'dual' ? ${JSON.stringify(TAG_PAGE_CSS)} : '@page { margin: 3mm; size: auto; }';
       document.getElementById('view-dual').style.display = mode === 'dual' ? 'block' : 'none';
       document.getElementById('view-sticker').style.display = mode === 'sticker' ? 'block' : 'none';
       document.getElementById('btn-dual').style.background = mode === 'dual' ? '#0284c7' : '#fff';
