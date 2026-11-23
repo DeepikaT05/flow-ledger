@@ -83,7 +83,7 @@ export function barcode128Svg(rawText: string, height = 30, barScale = 1.3): str
   }
 
   const totalW = curX + quiet;
-  return `<svg viewBox="0 0 ${totalW.toFixed(1)} ${height}" width="100%" height="${height}" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges">
+  return `<svg viewBox="0 0 ${totalW.toFixed(1)} ${height}" width="100%" height="${height}" preserveAspectRatio="none" style="display:block; width:100%; height:100%;" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges">
     <rect width="${totalW.toFixed(1)}" height="${height}" fill="#fff"/>
     ${bars.join('')}
   </svg>`;
@@ -125,7 +125,7 @@ export function tagQrSvg(code: string): string {
   const qr = qrcode(0, alnum ? 'H' : 'M');
   qr.addData(c, alnum ? 'Alphanumeric' : 'Byte');
   qr.make();
-  return qr.createSvgTag({ cellSize: 1, margin: 1, scalable: true });
+  return qr.createSvgTag({ cellSize: 1, margin: 0, scalable: true });
 }
 
 /** Sticker stock (die-cut roll): 84 x 12 mm overall = 60 mm printable head (two 30 mm faces,
@@ -156,24 +156,24 @@ export function jewelTagCardHtml(data: JewelTag): string {
     <div class="jewel-tag-wrap" style="display:inline-flex; align-items:flex-start; width:${w}mm; height:${h}mm; margin:1.5mm; overflow:hidden; page-break-inside:avoid; break-inside:avoid; background:#fff; color:#000;">
     <div class="jewel-tag jt-cut" style="display:flex; flex:none; width:${face * 2}mm; height:${h}mm; border:0.2mm solid #999; border-radius:0.8mm; box-sizing:border-box; overflow:hidden;">
       <!-- DETAILS FACE: weights + QR -->
-      <div class="side-details jt-cut" style="width:${face}mm; flex:none; box-sizing:border-box; padding:1mm 0.8mm 1mm 1.2mm; display:flex; align-items:center; gap:0.8mm; border-right:0.2mm dashed #bbb;">
-        <div class="w-table" style="flex:1; min-width:0; font-family:'Courier New', Courier, monospace; font-weight:700; font-size:2.2mm; line-height:2.4mm;">
+      <div class="side-details jt-cut" style="width:${face}mm; height:100%; flex:none; box-sizing:border-box; padding:0.6mm 0.8mm 0.6mm 1.2mm; display:flex; align-items:center; justify-content:space-between; gap:0.6mm; border-right:0.2mm dashed #bbb;">
+        <div class="w-table" style="flex:1; min-width:0; font-family:'Courier New', Courier, monospace; font-weight:700; font-size:1.8mm; line-height:2.1mm;">
           ${row('GW', fmt3(data.gw))}
           ${row('LESS', fmt3(data.less))}
           ${row('NW', fmt3(data.nw))}
           ${row('MKG', esc(data.mkg))}
         </div>
-        <div class="tag-qr" style="width:10mm; height:10mm; flex:none;">${tagQrSvg(data.code)}</div>
+        <div class="tag-qr" style="width:8.5mm; height:8.5mm; flex:none; display:flex; align-items:center; justify-content:center;">${tagQrSvg(data.code)}</div>
       </div>
-      <!-- BARCODE FACE (unchanged): code · barcode · name -->
-      <div class="side-a" style="width:${face}mm; flex:none; box-sizing:border-box; padding:0.9mm 1mm; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center;">
-        <div class="tag-code" style="font-size:2.4mm; line-height:2.7mm; font-weight:800; font-family:monospace; letter-spacing:0.15mm;">${esc(data.code)}</div>
-        <div class="tag-barcode" style="width:100%; height:3.8mm; margin:0.15mm 0;">${bSvg.replace(/height="24"/, 'height="100%" preserveAspectRatio="none"')}</div>
-        <div class="tag-name" style="font-size:2.3mm; line-height:2.5mm; font-weight:800; text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%;">${esc(data.name)}</div>
+      <!-- BARCODE FACE: code · barcode · name -->
+      <div class="side-a" style="width:${face}mm; height:100%; flex:none; box-sizing:border-box; padding:0.6mm 1mm; display:flex; flex-direction:column; align-items:center; justify-content:space-between; text-align:center;">
+        <div class="tag-code" style="font-size:2.2mm; line-height:2.3mm; font-weight:800; font-family:monospace; letter-spacing:0.15mm; flex:none;">${esc(data.code)}</div>
+        <div class="tag-barcode" style="width:100%; height:3.2mm; flex:none; margin:0.2mm 0; display:flex; align-items:center; justify-content:center; overflow:hidden;">${bSvg}</div>
+        <div class="tag-name" style="font-size:2.0mm; line-height:2.2mm; font-weight:800; text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; flex:none;">${esc(data.name)}</div>
       </div>
     </div>
     <!-- TAIL (blank, ${tail} mm): wraps round the piece and sticks back on itself -->
-    <div class="tag-tail jt-cut" style="width:${tail}mm; flex:none; height:4.5mm; margin:1.2mm 0 0 -0.2mm; border:0.2mm solid #999; border-left:none; border-radius:0 2.25mm 2.25mm 0; box-sizing:border-box;"></div>
+    <div class="tag-tail jt-cut" style="width:${tail}mm; flex:none; height:4.5mm; margin:3.75mm 0 0 -0.2mm; border:0.2mm solid #999; border-left:none; border-radius:0 2.25mm 2.25mm 0; box-sizing:border-box;"></div>
     </div>`;
 }
 
