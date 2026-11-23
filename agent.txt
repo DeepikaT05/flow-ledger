@@ -1,0 +1,78 @@
+========================================================================
+ FLOW LEDGER - LOCAL DIRECT PRINT AGENT (TSC TE244 / JEWELLERY TAG PRINTER)
+========================================================================
+
+YE AGENT KYA KARTA HAI?
+-----------------------
+Flow Ledger ERP (flowledger.stafftrack.cloud) cloud server pe chalta hai, 
+lekin aapka TSC TE244 barcode/jewellery tag printer aapke local Windows PC 
+se USB ke through juda hua hai.
+
+Yeh agent aapke Windows PC par background me port 3211 par chalta hai. 
+Jab aap ERP me jewellery tag par "Print" dabate hain, to web browser seedha 
+is local agent ko command bhejta hai aur yeh agent bina kisi browser print dialog 
+ke seedha TSC TE244 printer par 1-click sticker print nikal deta hai.
+
+
+REQUIREMENTS:
+-------------
+1. Windows PC jisme TSC TE244 printer USB se connected ho aur installed ho.
+2. Node.js installed hona chahiye (check karne ke liye cmd me run karein: node -v).
+
+
+AGENT KAISE CHALAYE (HOW TO RUN):
+----------------------------------
+
+TARIKA 1: DIRECT COMMAND PROMPT SE (Foreground me)
+--------------------------------------------------
+1. Command Prompt (cmd) ya PowerShell open karein.
+2. Us folder me jayein jaha `printer_agent.cjs` hai:
+   cd "C:\Users\DEEPIKA TANDULKAR\Downloads\Marg"
+3. Run karein:
+   node printer_agent.cjs
+
+   Output aayega:
+   "Flow Ledger Print Agent running on http://127.0.0.1:3211"
+
+
+TARIKA 2: BACKGROUND ME CHALANA (Bina Black Window ke)
+-----------------------------------------------------
+Agar aap chahte hain ki peeche background me chupke chale bina koi cmd window dikhe:
+1. Win + R dabaiye
+2. Run me paste karein aur Enter dabayein:
+   wscript.exe "C:\Users\DEEPIKA TANDULKAR\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\FlowLedgerPrintAgent.vbs"
+
+
+TARIKA 3: COMPUTER RESTART HONE PAR AUTOMATIC CHALANA (AUTO-STARTUP)
+-------------------------------------------------------------------
+PC restart hote hi agent apne aap chalu ho jaye, iske liye setup already ho chuka hai:
+File location:
+  %APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\FlowLedgerPrintAgent.vbs
+
+Is file me yeh code rehta hai:
+  Set WshShell = CreateObject("WScript.Shell")
+  WshShell.Run """C:\Program Files\nodejs\node.exe"" ""c:\Users\DEEPIKA TANDULKAR\Downloads\Marg\printer_agent.cjs""", 0, False
+
+Iska matlab jab bhi aapka laptop/PC on hoga, print agent automatically background me start ho jayega.
+
+
+AGENT CHECK KAISE KAREIN KI RUNNING HAI YA NAHI?
+------------------------------------------------
+Apne browser me yeh link kholein:
+  http://127.0.0.1:3211/status
+
+Agar screen par yeh likha aaye:
+  {"ok":true,"printer":"TSC TE244","version":"1.0"}
+To iska matlab agent bilkul sahi kaam kar raha hai!
+
+
+TROUBLESHOOTING / AGENT BAND HO JAYE TO:
+----------------------------------------
+1. Agar "Could not print directly" alert aaye:
+   - Check karein http://127.0.0.1:3211/status khul raha hai ya nahi.
+   - Agar nahi khul raha, to start_agent.bat par double-click karein ya cmd me `node printer_agent.cjs` chala dein.
+2. Agar print agent on hai fir bhi print nahi nikla:
+   - USB cable check karein ki printer PC se sahi laga hai.
+   - Printer ka power switch ON hai aur Blue/Green light steady hai.
+   - Windows Settings > Printers me check karein printer ka naam "TSC TE244" hi hona chahiye.
+========================================================================
