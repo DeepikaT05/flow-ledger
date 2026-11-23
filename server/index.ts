@@ -3,12 +3,15 @@ import { join } from 'node:path';
 import { mkdirSync } from 'node:fs';
 import type { SQLInputValue } from 'node:sqlite';
 import { db, sysDb, tx, sysLedger, SYS, dataDir, companyRow, companyDb, currentFy, hashPassword, type Row } from './db.ts';
+import { registerTagPrint } from './tagprint.ts';
 import { authMiddleware, registerAuthRoutes, maskCost, authOf, can, bindCompany, setSessionCompany, setSessionYear, canOpenCompany } from './auth.ts';
 
 const app = express();
+app.use('/api/print-tags', express.json({ limit: '25mb' }));   // tag bitmaps (before the 100 kb default)
 app.use(express.json());
 app.use(express.static(join(process.cwd(), 'public')));
 app.use('/api', authMiddleware);   // login + role checks for every API call
+registerTagPrint(app);             // jewellery tags straight to the label printer (no print dialog)
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const num = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0);

@@ -1,5 +1,5 @@
 import qrcode from 'qrcode-generator';
-import { esc } from './ui.ts';
+import { esc, api } from './ui.ts';
 
 export interface JewelTag {
   code: string;
@@ -226,16 +226,16 @@ const TAG_PRINT_CSS = `
 
 /** Jewellery tag laid out as a Single Atomic Vector SVG (84 x 12 mm):
  *  [ details face 30 mm: GW / LESS / NW / MKG + QR | barcode face 30 mm: code · barcode · name ] + tail 24 mm */
-export function jewelTagCardHtml(data: JewelTag, rotated = false): string {
+function tagSvgInner(data: JewelTag, guides: boolean): string {
   const fmt3 = (n: number) => (Number(n) || 0).toFixed(3);
   const qrRects = qrSvgElements(data.code, 19.5, 1.4, 9.2);
   const barcodeRects = barcode128Elements(data.code, 45, 3.4, 3.7, 27);
 
-  const innerSvgContent = `
-    <!-- Screen Outline Guides (hidden in print) -->
+  return `
+    ${guides ? `<!-- Screen Outline Guides (hidden in print) -->
     <rect x="0.2" y="0.2" width="59.6" height="11.6" rx="0.8" fill="none" stroke="#999" stroke-width="0.2" class="screen-guide"/>
     <line x1="30" y1="0.5" x2="30" y2="11.5" stroke="#bbb" stroke-width="0.2" stroke-dasharray="0.8,0.8" class="screen-guide"/>
-    <path d="M 60,3.75 L 81.75,3.75 A 2.25,2.25 0 0 1 81.75,8.25 L 60,8.25" fill="none" stroke="#999" stroke-width="0.2" class="screen-guide"/>
+    <path d="M 60,3.75 L 81.75,3.75 A 2.25,2.25 0 0 1 81.75,8.25 L 60,8.25" fill="none" stroke="#999" stroke-width="0.2" class="screen-guide"/>` : ''}
 
     <!-- DETAILS FACE (0 to 30 mm): Weights + QR -->
     <g id="face-details">
@@ -264,7 +264,11 @@ export function jewelTagCardHtml(data: JewelTag, rotated = false): string {
     </g>
     <!-- Blank Tail (60 to 84 mm) -->
   `;
+}
 
+/** Jewellery tag preview: the 84 x 12 mm SVG (with on-screen die-cut guides) in a page box. */
+export function jewelTagCardHtml(data: JewelTag, rotated = false): string {
+  const innerSvgContent = tagSvgInner(data, true);
   if (rotated) {
     return `
       <div class="jewel-tag-page" style="width:12mm; height:84mm; overflow:hidden; margin:0; padding:0; background:#fff;">
@@ -282,6 +286,69 @@ export function jewelTagCardHtml(data: JewelTag, rotated = false): string {
         ${innerSvgContent}
       </svg>
     </div>`;
+}
+
+// ------------------------------------------------------------------ direct print (no dialog)
+/** Label printer resolution: TSC TE244 and most desktop label printers are 203 dpi (8 dots/mm). */
+const TAG_DPI = 203;
+
+/** One tag as a 1-bit PNG at the printer's own resolution (84 x 12 mm -> 671 x 96 px): every
+ *  pixel is one printer dot, pure black or white, so the driver has nothing to scale or grey. */
+export async function jewelTagPng(data: JewelTag): Promise<string> {
+  const { w, h } = TAG_STOCK;
+  const pxW = Math.round((w / 25.4) * TAG_DPI);
+  const pxH = Math.round((h / 25.4) * TAG_DPI);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${pxW}" height="${pxH}" viewBox="0 0 ${w} ${h}" shape-rendering="crispEdges">`
+    + `<rect width="${w}" height="${h}" fill="#fff"/>${tagSvgInner(data, false)}</svg>`;
+  const img = new Image();
+  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  await img.decode();
+  const c = document.createElement('canvas');
+  c.width = pxW;
+  c.height = pxH;
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#fff';
+  g.fillRect(0, 0, pxW, pxH);
+  g.drawImage(img, 0, 0, pxW, pxH);
+  const px = g.getImageData(0, 0, pxW, pxH);
+  const a = px.data;
+  for (let i = 0; i < a.length; i += 4) {
+    const k = a[i] * 0.299 + a[i + 1] * 0.587 + a[i + 2] * 0.114 < 160 ? 0 : 255;
+    a[i] = a[i + 1] = a[i + 2] = k;
+    a[i + 3] = 255;
+  }
+  g.putImageData(px, 0, 0);
+  return c.toDataURL('image/png');
+}
+
+/** Send tags straight to the label printer through the server: no browser print dialog, one
+ *  84 x 12 mm label per tag. */
+export async function printJewelTagsDirect(tags: JewelTag[]): Promise<{ printed: number; printer: string }> {
+  const pngs: string[] = [];
+  for (const t of tags) pngs.push(await jewelTagPng(t));
+  return api('/print-tags', { method: 'POST', body: { pngs, widthMm: TAG_STOCK.w, heightMm: TAG_STOCK.h } });
+}
+
+/** Wire a tag preview window's Print button: tags go straight to the label printer; the barcode
+ *  sticker view (other stock) still uses the browser's print. */
+function wireDirectPrint(w: Window, tags: JewelTag[]) {
+  (w as any).directPrint = async (btn: HTMLButtonElement) => {
+    if ((w as any).__mode === 'sticker') { w.print(); return; }
+    const label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Printing…';
+    try {
+      const r = await printJewelTagsDirect(tags);
+      btn.textContent = `✓ ${r.printed} tag${r.printed === 1 ? '' : 's'} sent to ${r.printer}`;
+      setTimeout(() => { btn.textContent = label; btn.disabled = false; }, 2500);
+    } catch (e) {
+      btn.textContent = label;
+      btn.disabled = false;
+      if (w.confirm(`Could not print directly: ${(e as Error).message}
+
+Print with the browser print dialog instead?`)) w.print();
+    }
+  };
 }
 
 export function printMultipleJewelTags(tags: JewelTag[]) {
@@ -315,9 +382,9 @@ export function printMultipleJewelTags(tags: JewelTag[]) {
     <button onclick="showMode('rotated')" id="btn-rotated" style="padding: 6px 14px; font-weight: bold; background: #fff; color: #333; border: 1px solid #cbd5e1; border-radius: 4px; cursor: pointer;">↻ Rotated (12 × 84 mm)</button>
     <button onclick="showMode('sticker')" id="btn-sticker" style="padding: 6px 14px; font-weight: bold; background: #fff; color: #333; border: 1px solid #cbd5e1; border-radius: 4px; cursor: pointer;">📦 Barcode Sticker</button>
     <div style="font-size: 11.5px; color: #1e3a8a; background: #dbeafe; padding: 5px 10px; border-radius: 4px; font-weight: 600;">
-      TSC TE244 Setup: Destination = <b>TSC TE244</b> | Margins = <b>None</b>
+      Print sends tags straight to the label printer (84 × 12 mm) — no print dialog
     </div>
-    <button onclick="window.print()" style="margin-left: auto; padding: 6px 18px; font-weight: 800; background: #15803d; color: #fff; border: none; border-radius: 4px; cursor: pointer;">🖨️ Print Now</button>
+    <button onclick="directPrint(this)" style="margin-left: auto; padding: 6px 18px; font-weight: 800; background: #15803d; color: #fff; border: none; border-radius: 4px; cursor: pointer;">🖨️ Print Now</button>
     <button onclick="window.close()" style="padding: 6px 14px; border: 1px solid #ccc; background: #fff; border-radius: 4px; cursor: pointer;">Close</button>
   </div>
   <div id="view-dual" class="tags-wrap">${dualHtml}</div>
@@ -325,6 +392,7 @@ export function printMultipleJewelTags(tags: JewelTag[]) {
   <div id="view-sticker" class="tags-wrap" style="display:none;">${stickerHtml}</div>
   <script>
     function showMode(mode) {
+      window.__mode = mode;
       const pageCss = mode === 'dual' ? ${JSON.stringify(TAG_PAGE_CSS)} : mode === 'rotated' ? ${JSON.stringify(TAG_PAGE_ROTATED_CSS)} : '@page { margin: 3mm; size: auto; }';
       document.getElementById('page-size').textContent = pageCss;
       document.getElementById('view-dual').style.display = mode === 'dual' ? 'flex' : 'none';
@@ -347,6 +415,8 @@ export function printMultipleJewelTags(tags: JewelTag[]) {
     w.document.open();
     w.document.write(html);
     w.document.close();
+    (w as any).__mode = 'dual';
+    wireDirectPrint(w, tags);
   }
 }
 
@@ -380,9 +450,9 @@ export function printJewelTagWeb(data: JewelTag, initialMode: 'dual' | 'rotated'
     <button onclick="showMode('rotated')" id="btn-rotated" style="padding: 6px 12px; font-size: 12px; font-weight: bold; background: ${initialMode === 'rotated' ? '#0284c7' : '#fff'}; color: ${initialMode === 'rotated' ? '#fff' : '#333'}; border: 1px solid #cbd5e1; border-radius: 4px; cursor: pointer;">↻ Rotated (12 × 84 mm)</button>
     <button onclick="showMode('sticker')" id="btn-sticker" style="padding: 6px 12px; font-size: 12px; font-weight: bold; background: ${initialMode === 'sticker' ? '#0284c7' : '#fff'}; color: ${initialMode === 'sticker' ? '#fff' : '#333'}; border: 1px solid #cbd5e1; border-radius: 4px; cursor: pointer;">📦 Barcode Sticker</button>
     <div style="font-size: 11px; color: #1e3a8a; background: #dbeafe; padding: 4px 8px; border-radius: 4px; font-weight: 600;">
-      TSC TE244 Setup: Destination = <b>TSC TE244</b> | Margins = <b>None</b>
+      Print sends tags straight to the label printer (84 × 12 mm) — no print dialog
     </div>
-    <button onclick="window.print()" style="margin-left: auto; padding: 6px 16px; font-size: 12px; font-weight: 800; background: #15803d; color: #fff; border: none; border-radius: 4px; cursor: pointer;">🖨️ Print</button>
+    <button onclick="directPrint(this)" style="margin-left: auto; padding: 6px 16px; font-size: 12px; font-weight: 800; background: #15803d; color: #fff; border: none; border-radius: 4px; cursor: pointer;">🖨️ Print</button>
     <button onclick="window.close()" style="padding: 6px 12px; font-size: 12px; border: 1px solid #ccc; background: #fff; border-radius: 4px; cursor: pointer;">Close</button>
   </div>
   <div id="view-dual" style="${initialMode === 'dual' ? 'display:block;' : 'display:none;'}">
@@ -396,6 +466,7 @@ export function printJewelTagWeb(data: JewelTag, initialMode: 'dual' | 'rotated'
   </div>
   <script>
     function showMode(mode) {
+      window.__mode = mode;
       const pageCss = mode === 'dual' ? ${JSON.stringify(TAG_PAGE_CSS)} : mode === 'rotated' ? ${JSON.stringify(TAG_PAGE_ROTATED_CSS)} : '@page { margin: 3mm; size: auto; }';
       document.getElementById('page-size').textContent = pageCss;
       document.getElementById('view-dual').style.display = mode === 'dual' ? 'block' : 'none';
@@ -418,5 +489,7 @@ export function printJewelTagWeb(data: JewelTag, initialMode: 'dual' | 'rotated'
     w.document.open();
     w.document.write(html);
     w.document.close();
+    (w as any).__mode = initialMode;
+    wireDirectPrint(w, [data]);
   }
 }
