@@ -321,9 +321,23 @@ export async function jewelTagPng(data: JewelTag): Promise<string> {
   return c.toDataURL('image/png');
 }
 
-/** Send tags straight to the label printer through the server: no browser print dialog, one
- *  84 x 12 mm label per tag. */
+/** Send tags straight to the label printer: first try local print agent on the client machine (http://127.0.0.1:3211),
+ *  then fallback to server API. */
 export async function printJewelTagsDirect(tags: JewelTag[]): Promise<{ printed: number; printer: string }> {
+  // 1. Try local print agent on the client PC where the TSC TE244 printer is connected via USB
+  try {
+    const res = await fetch('http://127.0.0.1:3211/print-tags', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tags }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.ok) return data;
+    }
+  } catch {}
+
+  // 2. Fallback to server API (if server is running on Windows)
   const pngs: string[] = [];
   for (const t of tags) pngs.push(await jewelTagPng(t));
   return api('/print-tags', { method: 'POST', body: { pngs, widthMm: TAG_STOCK.w, heightMm: TAG_STOCK.h } });
