@@ -154,7 +154,7 @@ export async function pickJewelItem(initial: string): Promise<(Item & { ref?: Jw
   const w = (n: unknown) => (Number(n) ? f3(n) : '');
   let refHit: JwRef | null = null;
   const picked = await popList<Row>({
-    title: 'STORE:MAIN STORE', rows, search: (r) => `${r.name} ${r.company}`, width: '1020px', findLabel: 'Find Name ? >>', initial,
+    title: 'STORE:MAIN STORE', rows, search: (r) => `${r.name} ${r.company}`, full: true, findLabel: 'Find Name ? >>', initial,
     detailCols: 3, showHeader: true,
     // No item by that name: a Ref. (LO001137 / a scanned tag) brings its item and piece.
     onEnterNotFound: (typed, pop) => {
@@ -521,7 +521,7 @@ export async function pickSaleRef(item: Item): Promise<JwRef | null | undefined>
   const w = (n: unknown) => (Number(n) ? f3(n) : '');
   const dm = (iso?: string) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : '');
   const picked = await popList<JwRef>({
-    title: item.name.toUpperCase(), rows: refs, search: (r) => `${r.ref} ${jwOf(r).tray ?? ''}`, width: '1020px', findLabel: 'Find ? >>', showHeader: true,
+    title: item.name.toUpperCase(), rows: refs, search: (r) => `${r.ref} ${jwOf(r).tray ?? ''}`, full: true, findLabel: 'Find ? >>', showHeader: true,
     detailCols: 3,
     cols: [
       { title: 'BARCODE', get: (r) => r.ref, width: '22%' },

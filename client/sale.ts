@@ -119,12 +119,12 @@ export async function pickParty(initial = '', group?: string): Promise<Ledger | 
   let balanceOnly = false;
   const show = (all: Ledger[]) => (balanceOnly ? all.filter((l) => Math.abs(l.balance) > 0.004) : all);
   return popList<Ledger>({
-    title: 'LEDGERS', rows: show(rows), findLabel: 'Name ? >>', width: '830px', showHeader: false, initial,
+    title: 'LEDGERS', rows: show(rows), findLabel: 'Name ? >>', full: true, showHeader: false, initial,
     search: (r) => r.name,
     cols: [
-      { title: 'Name', get: (r) => r.name.toUpperCase(), width: '45%' },
-      { title: 'Station', get: (r) => (r.city ?? '').toUpperCase(), width: '30%' },
-      { title: 'Balance', get: (r) => (Math.abs(r.balance) > 0.004 ? `${f2(Math.abs(r.balance))} ${r.balance >= 0 ? 'Dr' : 'Cr'}` : ''), num: true },
+      { title: 'Name', get: (r) => r.name.toUpperCase(), width: '50%' },
+      { title: 'Station', get: (r) => (r.city ?? '').toUpperCase(), width: '25%' },
+      { title: 'Balance', get: (r) => (Math.abs(r.balance) > 0.004 ? `${f2(Math.abs(r.balance))} ${r.balance >= 0 ? 'Dr' : 'Cr'}` : ''), num: true, width: '25%' },
     ],
     rowCls: (r) => (r.balance < -0.004 ? 'due' : ''),
     detail: (r) => !r ? '' : `<div>Address&nbsp;: <b>${esc((r.address || r.name).toUpperCase())}</b></div><div>[${esc(r.group_name)}]</div>
@@ -244,14 +244,14 @@ async function pickMR(): Promise<Salesman | null> {
 async function pickProduct(initial: string, isJewel = false): Promise<Item | null> {
   const rows = await api<Item[]>('/items');
   return popList<Item>({
-    title: 'STORE:MAIN STORE', rows, search: (r) => `${r.name} ${r.company}`, width: '1020px', findLabel: 'Find Name ? >>', initial,
+    title: 'STORE:MAIN STORE', rows, search: (r) => `${r.name} ${r.company}`, full: true, findLabel: 'Find Name ? >>', initial,
     detailCols: 3,
     cols: [
       { title: 'DESCRIPTION', get: (r) => r.name.toUpperCase(), width: '42%' },
       { title: 'PACKING', get: (r) => (r.pack ?? '').toUpperCase(), width: '18%' },
       { title: 'STOCK', get: (r) => (r.stock > 0 ? r.stock : '-'), num: true, width: '10%' },
       { title: 'UNIT', get: (r) => r.unit, width: '10%' },
-      { title: 'RATE-A', get: (r) => f2(r.sale_rate), num: true, width: '14%' },
+      { title: 'RATE-A', get: (r) => f2(r.sale_rate), num: true, width: '20%' },
     ],
     detail: (r) => !r ? '' : `
       <div>PurRate: <b>${c2(r.purchase_rate)}</b></div><div>M.R.P. &nbsp;: <b>${f2(r.mrp)}</b></div><div>Company: <b>${esc(r.company || 'OTHERS')}</b></div>
@@ -348,7 +348,7 @@ async function pickBatch(item: Item, allowNew = false): Promise<Batch | null> {
     title: `${item.name.toUpperCase()} ${item.pack ?? ''}`,
     rows: listRows,
     search: (r) => (r.id === -1 ? '' : r.batch),
-    width: '1020px',
+    full: true,
     findLabel: allowNew ? 'Batch ? >>' : 'Find ? >>',
     extra: `Total : ${total}`,
     extraHtml: allowNew
@@ -1042,8 +1042,9 @@ export async function saleEntry(type = 'SALE', billId?: number) {
       const net = totals().net;
       const p = margPop('MODE OF PAYMENT',
         '<span><b>Enter / End / F10</b> - Save Bill</span><span><b>Del</b> - Delete</span><span><b>Esc</b> - Back</span>',
-        '1000px');
-      const box = h('div', { class: 'marg-pay', style: 'height:420px' });
+        undefined,
+        true);
+      const box = h('div', { class: 'marg-pay', style: 'flex:1; height:100%; min-height:0;' });
       p.body.append(box);
       let sel = 0;
       let editingAmt = false;

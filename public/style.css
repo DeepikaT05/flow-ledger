@@ -258,7 +258,7 @@ table.marg-grid td input.exp-inp, table.marg-grid td.c input { text-align: cente
 .marg-invoice .amt b { display: block; font-size: 30px; }
 /* popups */
 .win.marg-pop { border: 2px solid #555; }
-.marg-pop .win-body { padding: 0; background: #fff; }
+.marg-pop .win-body { padding: 0; background: #fff; display: flex; flex-direction: column; height: 100%; }
 .marg-list { font-family: "Courier New", Consolas, monospace; display: flex; flex-direction: column; height: 100%; background: #fff; font-weight: bold; }
 .marg-list .rows { flex: 1; overflow: auto; }
 .marg-list table { width: 100%; border-collapse: collapse; font-size: 19px; font-weight: bold; table-layout: fixed; }
@@ -281,13 +281,13 @@ table.marg-grid td input.exp-inp, table.marg-grid td.c input { text-align: cente
 .marg-form label::after { content: " :"; }
 .marg-form input, .marg-form select { font: inherit; border: none; background: #d9d9d9; padding: 2px 6px; }
 .marg-form input:focus, .marg-form select:focus { background: var(--marg-sel); color: #fff; outline: none; }
-.marg-pay { display: grid; grid-template-columns: 1fr 1.4fr; height: 100%; font-family: "Courier New", Consolas, monospace; }
+.marg-pay { display: grid; grid-template-columns: 360px 1fr; height: 100%; font-family: "Courier New", Consolas, monospace; }
 .marg-pay .modes { border-right: 1px solid #333; overflow: auto; font-size: 17px; }
-.marg-pay .modes div { padding: 2px 14px; }
+.marg-pay .modes div { padding: 4px 14px; font-size: 18px; }
 .marg-pay .modes div.sel { background: var(--marg-sel); color: #fff; font-weight: bold; }
 .marg-pay .right { display: flex; flex-direction: column; }
-.marg-pay .entry { flex: 1; padding: 8px 14px; font-size: 17px; }
-.marg-pay .totals { border-top: 1px solid #333; padding: 8px 14px; font-size: 17px; color: var(--marg-lbl); }
+.marg-pay .entry { flex: 1; padding: 12px 18px; font-size: 18px; }
+.marg-pay .totals { border-top: 1px solid #333; padding: 12px 18px; font-size: 18px; color: var(--marg-lbl); }
 .marg-pay .totals .pend { color: #0a7a2f; font-size: 26px; font-weight: bold; }
 .marg-amt { background: #1c6ef2; color: #fff; padding: 0 8px; font-weight: bold; }
 /* exit box */

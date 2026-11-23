@@ -37,12 +37,24 @@ export function margBar(title: string) {
   return el;
 }
 
-/** A MARG popup shell (green bar + footer keys) sized to `width`. */
-export function margPop(title: string, foot: string, width: string): Win {
-  const p = openWin(title, 'mid', foot);
+/** A MARG popup shell (green bar + footer keys) sized to `width` or full-screen. */
+export function margPop(title: string, foot: string, width?: string, full = false): Win {
+  const p = openWin(title, full ? 'full' : 'mid', foot);
   p.el.classList.add('marg', 'marg-pop');
-  p.el.classList.remove('mid');
-  p.el.style.width = width;
+  if (full) {
+    p.el.classList.remove('mid');
+    p.el.classList.add('full');
+    p.el.style.width = '98vw';
+    p.el.style.height = '94vh';
+    p.el.style.maxWidth = '98vw';
+    p.el.style.maxHeight = '96vh';
+  } else {
+    p.el.classList.remove('mid');
+    if (width) p.el.style.width = width;
+  }
+  p.body.style.display = 'flex';
+  p.body.style.flexDirection = 'column';
+  p.body.style.height = '100%';
   p.body.prepend(margBar(title));
   return p;
 }
@@ -60,6 +72,7 @@ export interface PopOpts<T> {
   foot: string;
   width?: string;
   height?: string;
+  full?: boolean;
   rowCls?: (r: T) => string;
   extra?: string;              // text shown next to the find box, e.g. "Total : 21"
   extraHtml?: string;          // custom HTML next to find box (buttons, etc)
@@ -75,16 +88,30 @@ export interface PopApi<T> { close: (v: T | null) => void; setRows: (rows: T[]) 
 /** MARG-style chooser popup. Resolves with the selected row, or null on Esc. */
 export function popList<T extends Record<string, any>>(o: PopOpts<T>): Promise<T | null> {
   return new Promise((resolve) => {
-    const w = openWin(o.title, 'mid', o.foot);
+    const isFull = o.full ?? false;
+    const w = openWin(o.title, isFull ? 'full' : 'mid', o.foot);
     w.el.classList.add('marg', 'marg-pop');
-    w.el.classList.remove('mid');
-    w.el.style.width = o.width ?? '900px';
-    w.el.style.height = o.height ?? '';
-    w.body.style.height = o.height ? '100%' : '';
+    if (isFull) {
+      w.el.classList.remove('mid');
+      w.el.classList.add('full');
+      w.el.style.width = '98vw';
+      w.el.style.height = '94vh';
+      w.el.style.maxWidth = '98vw';
+      w.el.style.maxHeight = '96vh';
+    } else {
+      w.el.classList.remove('mid');
+      w.el.style.width = o.width ?? '900px';
+      w.el.style.height = o.height ?? '';
+    }
+    w.body.style.height = '100%';
+    w.body.style.display = 'flex';
+    w.body.style.flexDirection = 'column';
 
     const wrap = h('div', { class: 'marg-list' });
+    wrap.style.cssText = 'flex:1; display:flex; flex-direction:column; min-height:0; height:100%;';
     wrap.append(margBar(o.title));
-    const rowsBox = h('div', { class: 'rows', style: `height:${o.height ? 'auto' : '320px'}` });
+    const rowsBox = h('div', { class: 'rows' });
+    rowsBox.style.cssText = isFull ? 'flex:1; overflow:auto; min-height:0;' : `height:${o.height ? 'auto' : '320px'}`;
     const table = h('table');
     rowsBox.append(table);
     const find = h('div', { class: 'marg-find' },
