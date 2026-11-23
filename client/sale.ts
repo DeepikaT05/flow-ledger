@@ -1,7 +1,7 @@
 // SALE ENTRY — modelled on the MARG ERP 9+ screen: header (Name / Bill No. / M.R. /
 // Date / Type), the PRODUCT grid, the item + batch pickers, MODE OF PAYMENT and
 // the "Exit W/o Save" box. Everything is driven from the keyboard.
-import { api, esc, toast, h, today, money, openWin, type Win, alertBox } from './ui.ts';
+import { api, esc, toast, h, today, money, openWin, topWin, type Win, alertBox } from './ui.ts';
 import { margBar, margPop, popList, margConfirm, margNumber, margAsk } from './margui.ts';
 import { billDetails, pickBillItems, pickSold, saveInBox, type ReturnInfo } from './salereturn.ts';
 import { ledgerForm, itemForm, type Ledger, type Item } from './masters.ts';
@@ -1047,7 +1047,9 @@ export async function saleEntry(type = 'SALE', billId?: number) {
       const box = h('div', { class: 'marg-pay', style: 'flex:1; height:100%; min-height:0;' });
       p.body.append(box);
       let sel = 0;
-      let editingAmt = false;
+      if (!payments.length && net > 0 && modes.length > 0) {
+        payments = [{ ledger_id: modes[0].id, ledger: modes[0].name, amount: net, remark: '', detail: '' }];
+      }
       const amountOf = (id: number) => payments.find((x) => x.ledger_id === id)?.amount ?? 0;
 
       let done = false;
@@ -1060,20 +1062,21 @@ export async function saleEntry(type = 'SALE', billId?: number) {
         const m = modes[sel];
         payments = payments.filter((x) => x.ledger_id !== m.id);
         if (amt) payments.push({ ledger_id: m.id, ledger: m.name, amount: amt, remark: '', detail: '' });
-        editingAmt = false;
       };
 
       const draw = () => {
         const cur = modes[sel];
         const received = r2(payments.reduce((s, x) => s + x.amount, 0));
         const pending = r2(net - received);
+        const curAmt = amountOf(cur.id);
+        const displayAmt = curAmt ? curAmt : (sel === 0 && !received ? net : (pending > 0 ? pending : 0));
         box.innerHTML = `
           <div class="modes">${modes.map((m, i) => `<div class="${i === sel ? 'sel' : ''}" data-i="${i}">${esc(m.name.toUpperCase())}
             <span style="float:right">${amountOf(m.id) ? f2(amountOf(m.id)) : ''}</span></div>`).join('')}</div>
           <div class="right"><div class="entry">
             <div style="color:var(--marg-lbl);font-weight:bold">${esc(cur.name.toUpperCase())}</div>
-            <div style="margin-top:8px">Amount &nbsp;: <input class="amt-in marg-amt" value="${f2(amountOf(cur.id))}" style="width:140px;text-align:right"> [${f2(net)}]</div>
-            <div>Remark &nbsp;:</div><div>Detail &nbsp;&nbsp;:</div>
+            <div style="margin-top:8px">Amount &nbsp;: <input class="amt-in marg-amt" value="${f2(displayAmt)}" style="width:160px;text-align:right"> [${f2(net)}]</div>
+            <div style="margin-top:8px">Remark &nbsp;:</div><div style="margin-top:4px">Detail &nbsp;&nbsp;:</div>
           </div>
           <div class="totals">
             <div class="kv">Bill Amount &nbsp;&nbsp;&nbsp;: <b>${f2(net)}</b></div>
@@ -1087,7 +1090,11 @@ export async function saleEntry(type = 'SALE', billId?: number) {
             </div>
           </div></div>`;
 
-        box.querySelectorAll('.modes div').forEach((d) => d.addEventListener('click', () => { sel = Number((d as HTMLElement).dataset.i); draw(); }));
+        box.querySelectorAll('.modes div').forEach((d) => d.addEventListener('click', () => {
+          commit();
+          sel = Number((d as HTMLElement).dataset.i);
+          draw();
+        }));
 
         const saveBtn = box.querySelector('.btn-pay-save') as HTMLButtonElement | null;
         if (saveBtn) {
@@ -1107,14 +1114,28 @@ export async function saleEntry(type = 'SALE', billId?: number) {
               const rec = r2(payments.reduce((s, x) => s + x.amount, 0));
               if (rec >= net || r2(net - rec) <= 0.001) {
                 finish('saved');
+              } else if (sel < modes.length - 1) {
+                sel++;
+                draw();
               } else {
                 draw();
               }
+            } else if (e.key === 'ArrowDown') {
+              e.preventDefault();
+              e.stopPropagation();
+              commit();
+              sel = (sel + 1) % modes.length;
+              draw();
+            } else if (e.key === 'ArrowUp') {
+              e.preventDefault();
+              e.stopPropagation();
+              commit();
+              sel = (sel - 1 + modes.length) % modes.length;
+              draw();
             } else if (e.key === 'Escape') {
               e.preventDefault();
               e.stopPropagation();
-              editingAmt = false;
-              draw();
+              finish('back');
             } else if (e.key === 'End' || e.key === 'F10') {
               e.preventDefault();
               e.stopPropagation();
@@ -1122,10 +1143,10 @@ export async function saleEntry(type = 'SALE', billId?: number) {
               finish('saved');
             }
           };
-          if (editingAmt) {
+          setTimeout(() => {
             el.focus();
             el.select();
-          }
+          }, 0);
         }
       };
       draw();
@@ -1133,46 +1154,40 @@ export async function saleEntry(type = 'SALE', billId?: number) {
       p.el.querySelector('.win-foot, .marg-foot')?.addEventListener('click', (e) => {
         const target = e.target as HTMLElement;
         if (target.textContent?.includes('Save')) {
-          if (editingAmt) commit();
+          commit();
           finish('saved');
         }
       });
 
       p.onKey = (_e, k) => {
         if (k === 'End' || k === 'F10' || k === 'Ctrl+W') {
-          if (editingAmt) commit();
+          commit();
           finish('saved');
           return true;
         }
-        if (editingAmt) {
-          if (k === 'Enter') {
-            commit();
-            const rec = r2(payments.reduce((s, x) => s + x.amount, 0));
-            if (rec >= net || r2(net - rec) <= 0.001) {
-              finish('saved');
-            } else {
-              draw();
-            }
-            return true;
-          }
-          if (k === 'Escape') { editingAmt = false; draw(); return true; }
-          return false;
-        }
-        if (k === 'ArrowDown') { sel = (sel + 1) % modes.length; draw(); return true; }
-        if (k === 'ArrowUp') { sel = (sel - 1 + modes.length) % modes.length; draw(); return true; }
+        if (k === 'Escape') { finish('back'); return true; }
+        if (k === 'ArrowDown') { commit(); sel = (sel + 1) % modes.length; draw(); return true; }
+        if (k === 'ArrowUp') { commit(); sel = (sel - 1 + modes.length) % modes.length; draw(); return true; }
         if (k === 'Enter') {
+          commit();
           const rec = r2(payments.reduce((s, x) => s + x.amount, 0));
           if (rec >= net || r2(net - rec) <= 0.001) {
             finish('saved');
-            return true;
+          } else if (sel < modes.length - 1) {
+            sel++;
+            draw();
+          } else {
+            draw();
           }
-          editingAmt = true;
-          draw();
           return true;
         }
         if (k === 'Delete') { payments = payments.filter((x) => x.ledger_id !== modes[sel].id); draw(); return true; }
-        if (k === 'Escape') { finish('back'); return true; }
-        return false;
+        // Ensure amt-in has focus so any typed digits go directly into amount!
+        const el = box.querySelector('.amt-in') as HTMLInputElement | null;
+        if (el && document.activeElement !== el) {
+          el.focus();
+        }
+        return true;
       };
     });
   }
@@ -1241,6 +1256,7 @@ export async function saleEntry(type = 'SALE', billId?: number) {
 
   // ---------------------------------------------------------------- keys
   tbody.addEventListener('input', (e) => {
+    if (topWin() !== w) return;
     const t = e.target as HTMLInputElement;
     const c = t.dataset.c;
     if (c === 'name') { // typing a product name opens the item window
@@ -1272,6 +1288,7 @@ export async function saleEntry(type = 'SALE', billId?: number) {
     renderTotals();
   });
   tbody.addEventListener('change', (e) => {
+    if (topWin() !== w) return;
     const t = e.target as HTMLInputElement;
     const c = t.dataset.c;
     if (c === 'expiry') {
@@ -1317,6 +1334,7 @@ export async function saleEntry(type = 'SALE', billId?: number) {
   });
 
   w.onKey = (e, k) => {
+    if (topWin() !== w) return false;
     const t = e.target as HTMLInputElement;
     const ri = Number(t.dataset?.r ?? -1);
     const c = t.dataset?.c;
