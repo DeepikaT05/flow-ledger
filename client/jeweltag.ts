@@ -156,8 +156,8 @@ export function jewelTagCardHtml(data: JewelTag): string {
     <div class="jewel-tag-wrap" style="display:inline-flex; align-items:flex-start; width:${w}mm; height:${h}mm; margin:1.5mm; overflow:hidden; page-break-inside:avoid; break-inside:avoid; background:#fff; color:#000;">
     <div class="jewel-tag jt-cut" style="display:flex; flex:none; width:${face * 2}mm; height:${h}mm; border:0.2mm solid #999; border-radius:0.8mm; box-sizing:border-box; overflow:hidden;">
       <!-- DETAILS FACE: weights + QR -->
-      <div class="side-details jt-cut" style="width:${face}mm; flex:none; box-sizing:border-box; padding:0.6mm 0.8mm 0.6mm 1.2mm; display:flex; align-items:center; gap:0.8mm; border-right:0.2mm dashed #bbb;">
-        <div class="w-table" style="flex:1; min-width:0; font-family:'Courier New', Courier, monospace; font-weight:700; font-size:2.3mm; line-height:2.6mm;">
+      <div class="side-details jt-cut" style="width:${face}mm; flex:none; box-sizing:border-box; padding:1mm 0.8mm 1mm 1.2mm; display:flex; align-items:center; gap:0.8mm; border-right:0.2mm dashed #bbb;">
+        <div class="w-table" style="flex:1; min-width:0; font-family:'Courier New', Courier, monospace; font-weight:700; font-size:2.2mm; line-height:2.4mm;">
           ${row('GW', fmt3(data.gw))}
           ${row('LESS', fmt3(data.less))}
           ${row('NW', fmt3(data.nw))}
@@ -166,10 +166,10 @@ export function jewelTagCardHtml(data: JewelTag): string {
         <div class="tag-qr" style="width:10mm; height:10mm; flex:none;">${tagQrSvg(data.code)}</div>
       </div>
       <!-- BARCODE FACE (unchanged): code · barcode · name -->
-      <div class="side-a" style="width:${face}mm; flex:none; box-sizing:border-box; padding:0.5mm 1mm; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center;">
-        <div class="tag-code" style="font-size:2.5mm; line-height:2.8mm; font-weight:800; font-family:monospace; letter-spacing:0.15mm;">${esc(data.code)}</div>
-        <div class="tag-barcode" style="width:100%; height:5mm; margin:0.2mm 0;">${bSvg.replace(/height="24"/, 'height="100%" preserveAspectRatio="none"')}</div>
-        <div class="tag-name" style="font-size:2.3mm; line-height:2.6mm; font-weight:800; text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%;">${esc(data.name)}</div>
+      <div class="side-a" style="width:${face}mm; flex:none; box-sizing:border-box; padding:0.9mm 1mm; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center;">
+        <div class="tag-code" style="font-size:2.4mm; line-height:2.7mm; font-weight:800; font-family:monospace; letter-spacing:0.15mm;">${esc(data.code)}</div>
+        <div class="tag-barcode" style="width:100%; height:3.8mm; margin:0.15mm 0;">${bSvg.replace(/height="24"/, 'height="100%" preserveAspectRatio="none"')}</div>
+        <div class="tag-name" style="font-size:2.3mm; line-height:2.5mm; font-weight:800; text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%;">${esc(data.name)}</div>
       </div>
     </div>
     <!-- TAIL (blank, ${tail} mm): wraps round the piece and sticks back on itself -->
