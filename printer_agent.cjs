@@ -107,7 +107,7 @@ function nextCode(c) {
   return `${c || 'ZC000001'}-2`;
 }
 
-function buildAgroTspl(t1, t2) {
+function buildAgroTspl(t1, t2, isSingle = false) {
   const s = (v) => String(v ?? '').replace(/["\r\n]/g, '').trim().toUpperCase();
   const c1 = s(t1.company || 'TAMRAKAR AGROTECH BORI');
   const n1 = s(t1.name || 'PRODUCT');
@@ -116,6 +116,19 @@ function buildAgroTspl(t1, t2) {
   const r1 = s(t1.rate ?? '0');
   const cd1 = s(t1.code || 'ZC000001');
   const qr1 = t1.qrData || `${c1}\nITEM:${n1}\nBATCH:${b1}\nEXP:${e1}\nRATE:Rs.${r1}\nCODE:${cd1}`;
+
+  if (isSingle) {
+    // Only 1 side (Left sticker). Right side is blank, keeping exact 104mm roll alignment.
+    return `CLS
+TEXT 28,16,"2",0,1,1,"${c1}"
+TEXT 28,46,"3",0,1,1,"${n1}"
+TEXT 28,82,"1",0,1,1,"BATCH: ${b1}  EXP: ${e1}"
+TEXT 28,118,"4",0,1,1,"RATE: Rs.${r1}"
+TEXT 28,162,"2",0,1,1,"${cd1}"
+QRCODE 248,36,M,3,A,0,"${qr1}"
+PRINT 1,1
+`;
+  }
 
   const rightT = t2 || { ...t1, code: nextCode(cd1) };
   const c2 = s(rightT.company || c1);
@@ -127,25 +140,28 @@ function buildAgroTspl(t1, t2) {
   const qr2 = rightT.qrData || `${c2}\nITEM:${n2}\nBATCH:${b2}\nEXP:${e2}\nRATE:Rs.${r2}\nCODE:${cd2}`;
 
   return `CLS
-TEXT 12,16,"2",0,1,1,"${c1}"
-TEXT 12,46,"3",0,1,1,"${n1}"
-TEXT 12,82,"1",0,1,1,"BATCH: ${b1}  EXP: ${e1}"
-TEXT 12,118,"4",0,1,1,"RATE: Rs.${r1}"
-TEXT 12,162,"2",0,1,1,"${cd1}"
-QRCODE 236,18,M,3,A,0,"${qr1}"
+TEXT 28,16,"2",0,1,1,"${c1}"
+TEXT 28,46,"3",0,1,1,"${n1}"
+TEXT 28,82,"1",0,1,1,"BATCH: ${b1}  EXP: ${e1}"
+TEXT 28,118,"4",0,1,1,"RATE: Rs.${r1}"
+TEXT 28,162,"2",0,1,1,"${cd1}"
+QRCODE 248,36,M,3,A,0,"${qr1}"
 
-TEXT 436,16,"2",0,1,1,"${c2}"
-TEXT 436,46,"3",0,1,1,"${n2}"
-TEXT 436,82,"1",0,1,1,"BATCH: ${b2}  EXP: ${e2}"
-TEXT 436,118,"4",0,1,1,"RATE: Rs.${r2}"
-TEXT 436,162,"2",0,1,1,"${cd2}"
-QRCODE 660,18,M,3,A,0,"${qr2}"
+TEXT 452,16,"2",0,1,1,"${c2}"
+TEXT 452,46,"3",0,1,1,"${n2}"
+TEXT 452,82,"1",0,1,1,"BATCH: ${b2}  EXP: ${e2}"
+TEXT 452,118,"4",0,1,1,"RATE: Rs.${r2}"
+TEXT 452,162,"2",0,1,1,"${cd2}"
+QRCODE 668,36,M,3,A,0,"${qr2}"
 PRINT 1,1
 `;
 }
 
-function buildTsplJob(tags, isAgro = false) {
+function buildTsplJob(tags, isAgro = false, mode = '2up') {
   if (isAgro) {
+    if (mode === '1up' && tags.length === 1) {
+      return `SIZE 104 mm, 25 mm\nGAP 3 mm, 0 mm\nDIRECTION 1\nOFFSET 0 mm\n` + buildAgroTspl(tags[0], null, true);
+    }
     const jobs = [];
     for (let i = 0; i < tags.length; i += 2) {
       jobs.push(buildAgroTspl(tags[i], tags[i + 1]));
@@ -167,7 +183,7 @@ function runPrint(payload) {
     const script = path.join(dir, 'print.ps1');
     fs.writeFileSync(script, '﻿' + PS_SCRIPT, 'utf8');
     const isAgro = payload.type === 'agro' || (tags[0] && tags[0].type === 'agro');
-    const defW = isAgro ? (payload.mode === '1up' ? 50 : 104) : 84;
+    const defW = isAgro ? 104 : 84;
     const defH = isAgro ? 25 : 12;
     const args = ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, '-Dir', dir,
       '-WidthMm', String(Number(payload.widthMm) || defW), '-HeightMm', String(Number(payload.heightMm) || defH)];
@@ -179,7 +195,7 @@ function runPrint(payload) {
         Buffer.from(String(p).replace(/^data:image\/png;base64,/, ''), 'base64')));
     } else {
       const raw = path.join(dir, 'job.tspl');
-      fs.writeFileSync(raw, buildTsplJob(tags, isAgro), 'ascii');
+      fs.writeFileSync(raw, buildTsplJob(tags, isAgro, payload.mode), 'ascii');
       args.push('-Raw', raw);
     }
 

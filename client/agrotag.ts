@@ -50,8 +50,8 @@ export function agroQrSvg(text: string, x: number, y: number, size: number): str
   </g>`;
 }
 
-/** Single 50 mm × 25 mm Agrotech Sticker SVG (fits strictly on one 50mm label part) */
-export function agroStickerSingleSvg(data: AgroSticker, offsetX = 0, offsetY = 0): string {
+/** Single 44 mm × 25 mm Agrotech Sticker content with generous side safety insets */
+export function agroStickerSingleSvg(data: AgroSticker, offsetX = 3.5, offsetY = 0): string {
   const comp = (data.company || 'TAMRAKAR AGROTECH BORI').trim().toUpperCase();
   const name = (data.name || 'PRODUCT').trim().toUpperCase();
   const batch = (data.batch || '-').trim().toUpperCase();
@@ -59,36 +59,36 @@ export function agroStickerSingleSvg(data: AgroSticker, offsetX = 0, offsetY = 0
   const rate = String(data.rate ?? '0').trim();
   const code = (data.code || 'ZC000001').trim().toUpperCase();
   const qrText = encodeAgroQr(data);
-  // QR placed at x: 29.5 to 48.5 mm (19 mm wide). Safely inside 50 mm without crossing boundary.
-  const qr = agroQrSvg(qrText, offsetX + 29.5, offsetY + 2.5, 19.0);
+  // Compact 15 mm QR code vertically centered at Y=5.0 mm. Placed safely inside label.
+  const qr = agroQrSvg(qrText, offsetX + 26.5, offsetY + 5.0, 15.0);
 
   return `
   <g class="agro-sticker" transform="translate(0, 0)">
     <!-- White background card with NO border line -->
-    <rect x="${offsetX.toFixed(2)}" y="${offsetY.toFixed(2)}" width="50" height="25" fill="#fff"/>
+    <rect x="${offsetX.toFixed(2)}" y="${offsetY.toFixed(2)}" width="44" height="25" fill="#fff"/>
 
-    <!-- Left side details (constrained to 26 mm width so it never touches QR) -->
+    <!-- Left side details (safe 24.5 mm width so it never touches QR or cuts off at margin) -->
     <!-- Line 1: Company Name -->
-    <text x="${(offsetX + 1.5).toFixed(2)}" y="${(offsetY + 3.8).toFixed(2)}" font-family="Arial, Helvetica, sans-serif" font-size="2.0" font-weight="900" fill="#000" ${comp.length > 16 ? `textLength="26.0" lengthAdjust="spacingAndGlyphs"` : ''}>${esc(comp)}</text>
+    <text x="${(offsetX + 1.2).toFixed(2)}" y="${(offsetY + 4.2).toFixed(2)}" font-family="Arial, Helvetica, sans-serif" font-size="1.95" font-weight="900" fill="#000" ${comp.length > 15 ? `textLength="24.5" lengthAdjust="spacingAndGlyphs"` : ''}>${esc(comp)}</text>
 
     <!-- Line 2: Product Name -->
-    <text x="${(offsetX + 1.5).toFixed(2)}" y="${(offsetY + 7.8).toFixed(2)}" font-family="'Arial Black', Arial, Helvetica, sans-serif" font-size="2.6" font-weight="900" fill="#000" ${name.length > 12 ? `textLength="26.0" lengthAdjust="spacingAndGlyphs"` : ''}>${esc(name)}</text>
+    <text x="${(offsetX + 1.2).toFixed(2)}" y="${(offsetY + 8.2).toFixed(2)}" font-family="'Arial Black', Arial, Helvetica, sans-serif" font-size="2.5" font-weight="900" fill="#000" ${name.length > 11 ? `textLength="24.5" lengthAdjust="spacingAndGlyphs"` : ''}>${esc(name)}</text>
 
     <!-- Line 3: BATCH & EXPIRY -->
-    <text x="${(offsetX + 1.5).toFixed(2)}" y="${(offsetY + 11.8).toFixed(2)}" font-family="Arial, Helvetica, sans-serif" font-size="1.85" font-weight="bold" fill="#000">BATCH: ${esc(batch)}  EXP: ${esc(exp)}</text>
+    <text x="${(offsetX + 1.2).toFixed(2)}" y="${(offsetY + 12.0).toFixed(2)}" font-family="Arial, Helvetica, sans-serif" font-size="1.8" font-weight="bold" fill="#000">BATCH: ${esc(batch)}  EXP: ${esc(exp)}</text>
 
     <!-- Line 4: RATE: ₹<amount> -->
-    <text x="${(offsetX + 1.5).toFixed(2)}" y="${(offsetY + 18.2).toFixed(2)}" font-family="'Arial Black', Arial, Helvetica, sans-serif" font-size="4.2" font-weight="900" fill="#000">RATE: &#8377;${esc(rate)}</text>
+    <text x="${(offsetX + 1.2).toFixed(2)}" y="${(offsetY + 18.2).toFixed(2)}" font-family="'Arial Black', Arial, Helvetica, sans-serif" font-size="4.2" font-weight="900" fill="#000">RATE: &#8377;${esc(rate)}</text>
 
     <!-- Line 5: Serial / Item Code -->
-    <text x="${(offsetX + 1.5).toFixed(2)}" y="${(offsetY + 22.8).toFixed(2)}" font-family="monospace, Courier" font-size="2.1" font-weight="bold" fill="#000" letter-spacing="0.2">${esc(code)}</text>
+    <text x="${(offsetX + 1.2).toFixed(2)}" y="${(offsetY + 22.8).toFixed(2)}" font-family="monospace, Courier" font-size="2.1" font-weight="bold" fill="#000" letter-spacing="0.2">${esc(code)}</text>
 
-    <!-- Right side: QR Code with product details -->
+    <!-- Right side: Compact QR Code (15 mm) with product details -->
     ${qr}
   </g>`;
 }
 
-/** 2-Up Side-by-Side Dual Label SVG (104 mm × 25 mm - One sticker on left part, one on right part) */
+/** 2-Up Side-by-Side Dual Label SVG (104 mm × 25 mm - Safe margins on both outer sides) */
 export function agroSticker2UpSvg(data1: AgroSticker, data2?: AgroSticker): string {
   // If data2 not provided, duplicate or increment code
   let d2 = data2;
@@ -97,14 +97,24 @@ export function agroSticker2UpSvg(data1: AgroSticker, data2?: AgroSticker): stri
     d2 = { ...data1, code: nextCode };
   }
 
-  // Left sticker starts at 0 mm (0..50 mm)
-  const s1 = agroStickerSingleSvg(data1, 0, 0);
-  // Right sticker starts at 53 mm (53..103 mm), respecting the physical gap of 2-up roll
-  const s2 = agroStickerSingleSvg(d2, 53, 0);
+  // Left sticker: starts at 3.5 mm (leaves 3.5 mm margin on left, ends at 47.5 mm)
+  const s1 = agroStickerSingleSvg(data1, 3.5, 0);
+  // Right sticker: starts at 55.5 mm (ends at 99.5 mm, leaving 4.5 mm margin on right)
+  const s2 = agroStickerSingleSvg(d2, 55.5, 0);
 
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 104 25" width="104mm" height="25mm" style="display:block; background:#fff;" shape-rendering="crispEdges">
     ${s1}
     ${s2}
+  </svg>`;
+}
+
+/** Single Sticker on 104 mm Roll SVG (Prints on 1 side only: Left part printed, Right part blank) */
+export function agroSticker1UpRollSvg(data: AgroSticker): string {
+  // Left sticker: starts at 3.5 mm (1 side only). Right side is blank so printer driver does NOT center!
+  const s1 = agroStickerSingleSvg(data, 3.5, 0);
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 104 25" width="104mm" height="25mm" style="display:block; background:#fff;" shape-rendering="crispEdges">
+    ${s1}
   </svg>`;
 }
 
@@ -145,22 +155,19 @@ export function agroTagOfItem(it: any, co?: any): AgroSticker {
   return { company, name, pack, batch, exp, rate, code };
 }
 
-const AGRO_PAGE_2UP_CSS = '@page { size: 104mm 25mm; margin: 0; }';
-const AGRO_PAGE_1UP_CSS = '@page { size: 50mm 25mm; margin: 0; }';
+const AGRO_PAGE_ROLL_CSS = '@page { size: 104mm 25mm; margin: 0; }';
 
 /** Opens the Agrotech Barcode & QR Sticker popup window */
 export function printAgroStickerWeb(data: AgroSticker, initialMode: '2up' | '1up' = '2up') {
   const svg2Up = agroSticker2UpSvg(data);
-  const svg1Up = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 25" width="50mm" height="25mm" style="display:block; background:#fff;" shape-rendering="crispEdges">
-    ${agroStickerSingleSvg(data, 0, 0)}
-  </svg>`;
+  const svg1Up = agroSticker1UpRollSvg(data);
 
   const html = `<!doctype html>
 <html>
 <head>
   <meta charset="utf-8"/>
   <title>Agrotech Sticker - ${esc(data.code)}</title>
-  <style id="page-size">${initialMode === '2up' ? AGRO_PAGE_2UP_CSS : AGRO_PAGE_1UP_CSS}</style>
+  <style id="page-size">${AGRO_PAGE_ROLL_CSS}</style>
   <style>
     body {
       margin: 0; padding: 12px;
@@ -184,8 +191,8 @@ export function printAgroStickerWeb(data: AgroSticker, initialMode: '2up' | '1up
 </head>
 <body>
   <div class="no-print" style="margin-bottom: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: #fff; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
-    <button onclick="showMode('2up')" id="btn-2up" style="padding: 6px 12px; font-size: 12px; font-weight: bold; background: ${initialMode === '2up' ? '#0284c7' : '#fff'}; color: ${initialMode === '2up' ? '#fff' : '#333'}; border: 1px solid #cbd5e1; border-radius: 4px; cursor: pointer;">🏷️ 2-Up Stickers (104 × 25 mm)</button>
-    <button onclick="showMode('1up')" id="btn-1up" style="padding: 6px 12px; font-size: 12px; font-weight: bold; background: ${initialMode === '1up' ? '#0284c7' : '#fff'}; color: ${initialMode === '1up' ? '#fff' : '#333'}; border: 1px solid #cbd5e1; border-radius: 4px; cursor: pointer;">📦 Single Sticker (50 × 25 mm)</button>
+    <button onclick="showMode('2up')" id="btn-2up" style="padding: 6px 12px; font-size: 12px; font-weight: bold; background: ${initialMode === '2up' ? '#0284c7' : '#fff'}; color: ${initialMode === '2up' ? '#fff' : '#333'}; border: 1px solid #cbd5e1; border-radius: 4px; cursor: pointer;">🏷️ 2-Up Stickers (Both Parts)</button>
+    <button onclick="showMode('1up')" id="btn-1up" style="padding: 6px 12px; font-size: 12px; font-weight: bold; background: ${initialMode === '1up' ? '#0284c7' : '#fff'}; color: ${initialMode === '1up' ? '#fff' : '#333'}; border: 1px solid #cbd5e1; border-radius: 4px; cursor: pointer;">📦 Single Sticker (1 Side Only)</button>
     <div style="font-size: 11px; color: #1e3a8a; background: #dbeafe; padding: 4px 8px; border-radius: 4px; font-weight: 600;">
       TSC TE244 &middot; Direct Label Printer
     </div>
@@ -204,7 +211,6 @@ export function printAgroStickerWeb(data: AgroSticker, initialMode: '2up' | '1up
     let currentMode = '${initialMode}';
     function showMode(mode) {
       currentMode = mode;
-      document.getElementById('page-size').textContent = mode === '2up' ? ${JSON.stringify(AGRO_PAGE_2UP_CSS)} : ${JSON.stringify(AGRO_PAGE_1UP_CSS)};
       document.getElementById('view-2up').style.display = mode === '2up' ? 'block' : 'none';
       document.getElementById('view-1up').style.display = mode === '1up' ? 'block' : 'none';
       document.getElementById('btn-2up').style.background = mode === '2up' ? '#0284c7' : '#fff';
@@ -251,10 +257,10 @@ export function printAgroStickerWeb(data: AgroSticker, initialMode: '2up' | '1up
       btn.disabled = true;
       btn.textContent = '⏳ Printing…';
       try {
-        const is2Up = currentMode === '2up';
-        const wMm = is2Up ? 104 : 50;
+        // Always 104 mm page width so printer driver never centers onto the roll!
+        const wMm = 104;
         const hMm = 25;
-        const containerId = is2Up ? 'view-2up' : 'view-1up';
+        const containerId = currentMode === '2up' ? 'view-2up' : 'view-1up';
         const svgEl = document.getElementById(containerId).querySelector('svg');
         const png = await rasterizeSvgToPng(svgEl, wMm, hMm);
 
