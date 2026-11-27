@@ -167,7 +167,7 @@ function barcode128Elements(rawText: string, xCenter: number, y: number, height:
     for (let j = 0; j < pat.length; j++) totalModules += parseInt(pat[j], 10);
   }
   totalModules += 20; // quiet zones
-  const moduleW = Math.min(0.20, maxW / totalModules);
+  const moduleW = Math.min(0.15, maxW / totalModules);
   const barW = totalModules * moduleW;
   let curX = xCenter - (barW / 2) + (10 * moduleW);
   const bars: string[] = [];
@@ -228,8 +228,8 @@ const TAG_PRINT_CSS = `
  *  [ details face 30 mm: GW / LESS / NW / MKG + QR | barcode face 30 mm: code · barcode · name ] + tail 24 mm */
 function tagSvgInner(data: JewelTag, guides: boolean): string {
   const fmt3 = (n: number) => (Number(n) || 0).toFixed(3);
-  const qrRects = qrSvgElements(data.code, 19.5, 1.4, 9.2);
-  const barcodeRects = barcode128Elements(data.code, 45, 3.4, 3.7, 27);
+  const qrRects = qrSvgElements(data.code, 19.5, 0.9, 8.6);
+  const barcodeRects = barcode128Elements(data.code, 44.5, 3.0, 3.4, 21);
 
   return `
     ${guides ? `<!-- Screen Outline Guides (hidden in print) -->
@@ -239,28 +239,28 @@ function tagSvgInner(data: JewelTag, guides: boolean): string {
 
     <!-- DETAILS FACE (0 to 30 mm): Weights + QR -->
     <g id="face-details">
-      <text x="1.5" y="2.6" font-family="'Courier New', Courier, monospace" font-size="2.1" font-weight="bold" fill="#000">GW</text>
-      <text x="18.5" y="2.6" font-family="'Courier New', Courier, monospace" font-size="2.1" font-weight="bold" text-anchor="end" fill="#000">${fmt3(data.gw)}</text>
+      <text x="1.5" y="2.2" font-family="'Courier New', Courier, monospace" font-size="2.05" font-weight="bold" fill="#000">GW</text>
+      <text x="18.5" y="2.2" font-family="'Courier New', Courier, monospace" font-size="2.05" font-weight="bold" text-anchor="end" fill="#000">${fmt3(data.gw)}</text>
 
-      <text x="1.5" y="5.0" font-family="'Courier New', Courier, monospace" font-size="2.1" font-weight="bold" fill="#000">LESS</text>
-      <text x="18.5" y="5.0" font-family="'Courier New', Courier, monospace" font-size="2.1" font-weight="bold" text-anchor="end" fill="#000">${fmt3(data.less)}</text>
+      <text x="1.5" y="4.4" font-family="'Courier New', Courier, monospace" font-size="2.05" font-weight="bold" fill="#000">LESS</text>
+      <text x="18.5" y="4.4" font-family="'Courier New', Courier, monospace" font-size="2.05" font-weight="bold" text-anchor="end" fill="#000">${fmt3(data.less)}</text>
 
-      <text x="1.5" y="7.4" font-family="'Courier New', Courier, monospace" font-size="2.1" font-weight="bold" fill="#000">NW</text>
-      <text x="18.5" y="7.4" font-family="'Courier New', Courier, monospace" font-size="2.1" font-weight="bold" text-anchor="end" fill="#000">${fmt3(data.nw)}</text>
+      <text x="1.5" y="6.6" font-family="'Courier New', Courier, monospace" font-size="2.05" font-weight="bold" fill="#000">NW</text>
+      <text x="18.5" y="6.6" font-family="'Courier New', Courier, monospace" font-size="2.05" font-weight="bold" text-anchor="end" fill="#000">${fmt3(data.nw)}</text>
 
-      <text x="1.5" y="9.8" font-family="'Courier New', Courier, monospace" font-size="2.1" font-weight="bold" fill="#000">MKG</text>
-      <text x="18.5" y="9.8" font-family="'Courier New', Courier, monospace" font-size="2.1" font-weight="bold" text-anchor="end" fill="#000">${esc(data.mkg)}</text>
+      <text x="1.5" y="8.8" font-family="'Courier New', Courier, monospace" font-size="2.05" font-weight="bold" fill="#000">MKG</text>
+      <text x="18.5" y="8.8" font-family="'Courier New', Courier, monospace" font-size="2.05" font-weight="bold" text-anchor="end" fill="#000">${esc(data.mkg)}</text>
 
-      <!-- 2D QR Code (9.2 x 9.2 mm) -->
+      <!-- 2D QR Code (8.6 x 8.6 mm) -->
       ${qrRects}
     </g>
 
     <!-- BARCODE FACE (30 to 60 mm): Tag Code · 1D Barcode · Product Name -->
     <g id="face-barcode">
-      <text x="45" y="2.7" font-family="monospace" font-size="2.3" font-weight="900" letter-spacing="0.2" text-anchor="middle" fill="#000">${esc(data.code)}</text>
+      <text x="45" y="2.3" font-family="monospace" font-size="2.2" font-weight="900" letter-spacing="0.2" text-anchor="middle" fill="#000"${data.code.length > 14 ? ' textLength="25" lengthAdjust="spacingAndGlyphs"' : ''}>${esc(data.code)}</text>
       <!-- 1D Barcode Code 128 -->
       ${barcodeRects}
-      <text x="45" y="10.1" font-family="Arial, Helvetica, sans-serif" font-size="2.1" font-weight="bold" text-anchor="middle" fill="#000">${esc(data.name)}</text>
+      <text x="45" y="9.2" font-family="Arial, Helvetica, sans-serif" font-size="2.05" font-weight="bold" text-anchor="middle" fill="#000"${data.name.length > 16 ? ' textLength="26" lengthAdjust="spacingAndGlyphs"' : ''}>${esc(data.name)}</text>
     </g>
     <!-- Blank Tail (60 to 84 mm) -->
   `;
@@ -291,11 +291,13 @@ export function jewelTagCardHtml(data: JewelTag, rotated = false): string {
 // ------------------------------------------------------------------ direct print (no dialog)
 /** Label printer resolution: TSC TE244 and most desktop label printers are 203 dpi (8 dots/mm). */
 const TAG_DPI = 203;
+const TAG_PRINT_H_MM = 12;
 
 /** One tag as a 1-bit PNG at the printer's own resolution (84 x 12 mm -> 671 x 96 px): every
  *  pixel is one printer dot, pure black or white, so the driver has nothing to scale or grey. */
 export async function jewelTagPng(data: JewelTag): Promise<string> {
-  const { w, h } = TAG_STOCK;
+  const w = TAG_STOCK.w;
+  const h = TAG_PRINT_H_MM;
   const pxW = Math.round((w / 25.4) * TAG_DPI);
   const pxH = Math.round((h / 25.4) * TAG_DPI);
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${pxW}" height="${pxH}" viewBox="0 0 ${w} ${h}" shape-rendering="crispEdges">`
@@ -324,23 +326,28 @@ export async function jewelTagPng(data: JewelTag): Promise<string> {
 /** Send tags straight to the label printer: first try local print agent on the client machine (http://127.0.0.1:3211),
  *  then fallback to server API. */
 export async function printJewelTagsDirect(tags: JewelTag[]): Promise<{ printed: number; printer: string }> {
-  // 1. Try local print agent on the client PC where the TSC TE244 printer is connected via USB
-  try {
-    const res = await fetch('http://127.0.0.1:3211/print-tags', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tags }),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data && data.ok) return data;
-    }
-  } catch {}
-
-  // 2. Fallback to server API (if server is running on Windows)
+  // Same bitmap as the preview, so v2+ agents keep the on-screen layout; also pass `tags` for v1 agents.
   const pngs: string[] = [];
   for (const t of tags) pngs.push(await jewelTagPng(t));
-  return api('/print-tags', { method: 'POST', body: { pngs, widthMm: TAG_STOCK.w, heightMm: TAG_STOCK.h } });
+  const body = { pngs, tags, widthMm: TAG_STOCK.w, heightMm: TAG_PRINT_H_MM };
+
+  // 1. Local print agent on the PC the label printer is plugged into
+  let res: Response | null = null;
+  try {
+    res = await fetch('http://127.0.0.1:3211/print-tags', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch {}
+  if (res) {
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.ok) return data;
+    throw new Error(data.error || `Print agent error ${res.status}`);
+  }
+
+  // 2. No agent running: server API (works only if the server itself runs on that Windows PC)
+  return api('/print-tags', { method: 'POST', body });
 }
 
 /** Wire a tag preview window's Print button: tags go straight to the label printer; the barcode

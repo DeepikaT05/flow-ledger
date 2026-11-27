@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const PS_SCRIPT = String.raw`
-param([string]$Dir, [string]$Printer, [int]$WidthMm = 84, [int]$HeightMm = 12)
+param([string]$Dir, [string]$Printer, [double]$WidthMm = 84, [double]$HeightMm = 12)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
 if (-not $Printer) {

@@ -1,5 +1,8 @@
-// Flow Ledger - Local Direct Print Agent for TSC TE244 / Windows Label Printers
-// Runs locally on 127.0.0.1:3211 to accept direct 1-click print commands from the web ERP.
+// Flow Ledger - Local Direct Print Agent (TSC TE244 / any Windows label printer)
+// Listens on 127.0.0.1:3211. The web ERP posts each tag as a 1-bit PNG drawn at the printer's own
+// resolution (same picture as the on-screen preview), and this agent prints it through the Windows
+// driver on an exact 84 x 12 mm page — so the printed tag keeps the preview layout.
+// Same print path as server/tagprint.ts.
 const http = require('http');
 const { spawn } = require('child_process');
 const fs = require('fs');
@@ -7,171 +10,166 @@ const path = require('path');
 const os = require('os');
 
 const PORT = 3211;
-const DEFAULT_PRINTER = 'TSC TE244';
+const VERSION = '2.0';
 
-// C# helper for raw printing to winspool.drv
-const PS_RAW_PRINTER = `
-$csharp = @'
-using System;
-using System.Runtime.InteropServices;
+// Printer name and all data go in as arguments / files, never pasted into the script text.
+const PS_SCRIPT = String.raw`
+param([string]$Dir, [string]$Printer, [double]$WidthMm = 84, [double]$HeightMm = 12, [string]$Raw)
+$ErrorActionPreference = 'Stop'
+if (-not $Printer) {
+  $all = Get-CimInstance Win32_Printer
+  $p = $all | Where-Object { $_.Name -match 'TSC|TE2|TTP|label' } | Select-Object -First 1
+  if (-not $p) { $p = $all | Where-Object { $_.Default } | Select-Object -First 1 }
+  if (-not $p) { throw 'No printer installed' }
+  $Printer = $p.Name
+}
+if ($Raw) {
+  # Old ERP pages send tag fields only: print them as TSPL text straight to the printer.
+  Add-Type -TypeDefinition @'
+using System; using System.Runtime.InteropServices;
 public class RawPrinter {
-    [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Ansi)]
-    public class DOCINFOA {
-        [MarshalAs(UnmanagedType.LPStr)] public string pDocName;
-        [MarshalAs(UnmanagedType.LPStr)] public string pOutputFile;
-        [MarshalAs(UnmanagedType.LPStr)] public string pDataType;
-    }
-    [DllImport("winspool.drv", EntryPoint="OpenPrinterA", SetLastError=true, CharSet=CharSet.Ansi, ExactSpelling=true, CallingConvention=CallingConvention.StdCall)]
-    public static extern bool OpenPrinter([MarshalAs(UnmanagedType.LPStr)] string szPrinter, out IntPtr hPrinter, IntPtr pd);
-    [DllImport("winspool.drv", EntryPoint="ClosePrinter", SetLastError=true, ExactSpelling=true, CallingConvention=CallingConvention.StdCall)]
-    public static extern bool ClosePrinter(IntPtr hPrinter);
-    [DllImport("winspool.drv", EntryPoint="StartDocPrinterA", SetLastError=true, CharSet=CharSet.Ansi, ExactSpelling=true, CallingConvention=CallingConvention.StdCall)]
-    public static extern bool StartDocPrinter(IntPtr hPrinter, int level, [In, MarshalAs(UnmanagedType.LPStruct)] DOCINFOA di);
-    [DllImport("winspool.drv", EntryPoint="EndDocPrinter", SetLastError=true, ExactSpelling=true, CallingConvention=CallingConvention.StdCall)]
-    public static extern bool EndDocPrinter(IntPtr hPrinter);
-    [DllImport("winspool.drv", EntryPoint="StartPagePrinter", SetLastError=true, ExactSpelling=true, CallingConvention=CallingConvention.StdCall)]
-    public static extern bool StartPagePrinter(IntPtr hPrinter);
-    [DllImport("winspool.drv", EntryPoint="EndPagePrinter", SetLastError=true, ExactSpelling=true, CallingConvention=CallingConvention.StdCall)]
-    public static extern bool EndPagePrinter(IntPtr hPrinter);
-    [DllImport("winspool.drv", EntryPoint="WritePrinter", SetLastError=true, ExactSpelling=true, CallingConvention=CallingConvention.StdCall)]
-    public static extern bool WritePrinter(IntPtr hPrinter, IntPtr pBytes, int dwCount, out int dwWritten);
-    public static bool SendString(string printerName, string data) {
-        byte[] bytes = System.Text.Encoding.ASCII.GetBytes(data);
-        IntPtr hPrinter;
-        if (!OpenPrinter(printerName, out hPrinter, IntPtr.Zero)) return false;
-        DOCINFOA di = new DOCINFOA();
-        di.pDocName = "Jewellery Dumbbell Tag";
-        di.pDataType = "RAW";
-        bool success = false;
-        if (StartDocPrinter(hPrinter, 1, di)) {
-            if (StartPagePrinter(hPrinter)) {
-                IntPtr pBytes = Marshal.AllocHGlobal(bytes.Length);
-                Marshal.Copy(bytes, 0, pBytes, bytes.Length);
-                int written = 0;
-                success = WritePrinter(hPrinter, pBytes, bytes.Length, out written);
-                Marshal.FreeHGlobal(pBytes);
-                EndPagePrinter(hPrinter);
-            }
-            EndDocPrinter(hPrinter);
-        }
-        ClosePrinter(hPrinter);
-        return success;
-    }
+  [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Ansi)] public class DOCINFOA {
+    [MarshalAs(UnmanagedType.LPStr)] public string pDocName;
+    [MarshalAs(UnmanagedType.LPStr)] public string pOutputFile;
+    [MarshalAs(UnmanagedType.LPStr)] public string pDataType; }
+  [DllImport("winspool.drv", EntryPoint="OpenPrinterA", CharSet=CharSet.Ansi, ExactSpelling=true)] public static extern bool OpenPrinter(string n, out IntPtr h, IntPtr d);
+  [DllImport("winspool.drv", ExactSpelling=true)] public static extern bool ClosePrinter(IntPtr h);
+  [DllImport("winspool.drv", EntryPoint="StartDocPrinterA", CharSet=CharSet.Ansi, ExactSpelling=true)] public static extern bool StartDocPrinter(IntPtr h, int l, [In, MarshalAs(UnmanagedType.LPStruct)] DOCINFOA di);
+  [DllImport("winspool.drv", ExactSpelling=true)] public static extern bool EndDocPrinter(IntPtr h);
+  [DllImport("winspool.drv", ExactSpelling=true)] public static extern bool StartPagePrinter(IntPtr h);
+  [DllImport("winspool.drv", ExactSpelling=true)] public static extern bool EndPagePrinter(IntPtr h);
+  [DllImport("winspool.drv", ExactSpelling=true)] public static extern bool WritePrinter(IntPtr h, byte[] b, int n, out int w);
+  public static bool Send(string printer, byte[] bytes) {
+    IntPtr h; if (!OpenPrinter(printer, out h, IntPtr.Zero)) return false;
+    DOCINFOA di = new DOCINFOA(); di.pDocName = "Jewellery Tags"; di.pDataType = "RAW";
+    bool ok = false; int w;
+    if (StartDocPrinter(h, 1, di)) { if (StartPagePrinter(h)) { ok = WritePrinter(h, bytes, bytes.Length, out w); EndPagePrinter(h); } EndDocPrinter(h); }
+    ClosePrinter(h); return ok; }
 }
 '@
-if (-not ([System.Management.Automation.PSTypeName]'RawPrinter').Type) {
-    Add-Type -TypeDefinition $csharp
+  if (-not [RawPrinter]::Send($Printer, [IO.File]::ReadAllBytes($Raw))) { throw "Could not send to printer: $Printer" }
+  Write-Output "OK|0|$Printer"
+  exit 0
 }
+Add-Type -AssemblyName System.Drawing
+$files = Get-ChildItem -Path $Dir -Filter 'tag*.png' | Sort-Object Name
+if (-not $files) { throw 'No tags to print' }
+$imgs = @($files | ForEach-Object { [System.Drawing.Image]::FromFile($_.FullName) })
+$doc = New-Object System.Drawing.Printing.PrintDocument
+$doc.PrinterSettings.PrinterName = $Printer
+if (-not $doc.PrinterSettings.IsValid) { throw "Printer not found: $Printer" }
+$doc.DocumentName = 'Jewellery Tags'
+$doc.OriginAtMargins = $false
+$w = [int][Math]::Round($WidthMm / 25.4 * 100)
+$h = [int][Math]::Round($HeightMm / 25.4 * 100)
+$sz = New-Object System.Drawing.Printing.PaperSize('Tag', $w, $h)
+$sz.RawKind = 256
+$doc.DefaultPageSettings.PaperSize = $sz
+$doc.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margins(0,0,0,0)
+$doc.DefaultPageSettings.Landscape = $false
+$script:i = 0
+$doc.add_PrintPage({
+  param($s, $e)
+  $e.Graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::NearestNeighbor
+  $e.Graphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::Half
+  $e.Graphics.DrawImage($imgs[$script:i], (New-Object System.Drawing.Rectangle(0, 0, $w, $h)))
+  $script:i++
+  $e.HasMorePages = $script:i -lt $imgs.Count
+})
+try { $doc.Print() } finally { $imgs | ForEach-Object { $_.Dispose() }; $doc.Dispose() }
+Write-Output "OK|$($imgs.Count)|$Printer"
 `;
 
+// TSPL for old clients that send fields only. Quotes are stripped so a value can't break the command.
 function buildTspl(t) {
-  const code = String(t.code || '').trim().toUpperCase();
-  const name = String(t.name || '').trim().toUpperCase();
-  const gw = (Number(t.gw) || 0).toFixed(3);
-  const less = (Number(t.less) || 0).toFixed(3);
-  const nw = (Number(t.nw) || 0).toFixed(3);
-  const mkg = String(t.mkg || '5.00 %').trim();
-
-  return `SIZE 84 mm, 12 mm
-GAP 2 mm, 0 mm
-DIRECTION 1
-CLS
-TEXT 16,8,"1",0,1,1,"GW    ${gw}"
-TEXT 16,28,"1",0,1,1,"LESS   ${less}"
-TEXT 16,48,"1",0,1,1,"NW    ${nw}"
-TEXT 16,68,"1",0,1,1,"MKG   ${mkg}"
-QRCODE 152,8,H,3,A,0,"${code}"
-TEXT 300,8,"1",0,1,1,"${code}"
-BARCODE 260,26,"128",32,0,0,2,2,"${code}"
-TEXT 280,68,"1",0,1,1,"${name}"
+  const s = (v) => String(v ?? '').replace(/["\r\n]/g, '').trim().toUpperCase();
+  const n = (v) => (Number(v) || 0).toFixed(3);
+  const code = s(t.code);
+  return `CLS
+TEXT 16,10,"1",0,1,1,"GW    ${n(t.gw)}"
+TEXT 16,29,"1",0,1,1,"LESS  ${n(t.less)}"
+TEXT 16,48,"1",0,1,1,"NW    ${n(t.nw)}"
+TEXT 16,67,"1",0,1,1,"MKG   ${s(t.mkg || '5.00 %')}"
+QRCODE 152,10,H,3,A,0,"${code}"
+TEXT 300,10,"1",0,1,1,"${code}"
+BARCODE 252,28,"128",30,0,0,1,1,"${code}"
+TEXT 280,68,"1",0,1,1,"${s(t.name)}"
 PRINT 1,1
 `;
 }
 
-function sendRawToPrinter(printerName, rawData) {
-  return new Promise((resolve, reject) => {
-    const tmp = path.join(os.tmpdir(), `tag_${Date.now()}_${Math.random().toString(36).slice(2)}.ps1`);
-    const script = `${PS_RAW_PRINTER}
-$data = @'
-${rawData}
-'@
-$res = [RawPrinter]::SendString("${printerName}", $data)
-if ($res) { Write-Output "OK" } else { Write-Output "FAIL" }
-`;
-    fs.writeFileSync(tmp, script, 'utf8');
+function buildTsplJob(tags) {
+  return `SIZE 84 mm, 12 mm\nGAP 3 mm, 0 mm\nDIRECTION 1\nOFFSET 0 mm\n` + tags.map(buildTspl).join('');
+}
 
-    const ps = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', tmp], { windowsHide: true });
-    let stdout = '';
-    let stderr = '';
-    ps.stdout.on('data', d => stdout += d);
-    ps.stderr.on('data', d => stderr += d);
-    ps.on('close', code => {
-      try { fs.unlinkSync(tmp); } catch {}
-      if (code === 0 && stdout.includes('OK')) {
-        resolve(true);
-      } else {
-        reject(new Error(stderr || stdout || `Failed to print to ${printerName}`));
+function runPrint(payload) {
+  return new Promise((resolve, reject) => {
+    const pngs = Array.isArray(payload.pngs) ? payload.pngs : [];
+    const tags = Array.isArray(payload.tags) ? payload.tags : [];
+    if (!pngs.length && !tags.length) return reject(new Error('No tags to print'));
+    if (pngs.length > 500 || tags.length > 500) return reject(new Error('Too many tags in one job (max 500)'));
+
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fl-tags-'));
+    const done = (fn, v) => { fs.rmSync(dir, { recursive: true, force: true }); fn(v); };
+    const script = path.join(dir, 'print.ps1');
+    fs.writeFileSync(script, '﻿' + PS_SCRIPT, 'utf8');
+    const args = ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, '-Dir', dir,
+      '-WidthMm', String(Number(payload.widthMm) || 84), '-HeightMm', String(Number(payload.heightMm) || 12)];
+    const printer = String(payload.printer || process.env.TAG_PRINTER || '').trim();
+    if (printer) args.push('-Printer', printer);
+
+    if (pngs.length) {
+      pngs.forEach((p, i) => fs.writeFileSync(path.join(dir, `tag${String(i).padStart(4, '0')}.png`),
+        Buffer.from(String(p).replace(/^data:image\/png;base64,/, ''), 'base64')));
+    } else {
+      const raw = path.join(dir, 'job.tspl');
+      fs.writeFileSync(raw, buildTsplJob(tags), 'ascii');
+      args.push('-Raw', raw);
+    }
+
+    const ps = spawn('powershell.exe', args, { windowsHide: true });
+    let out = '', err = '';
+    ps.stdout.on('data', (d) => { out += d; });
+    ps.stderr.on('data', (d) => { err += d; });
+    const timer = setTimeout(() => { ps.kill(); err += 'Timed out talking to the printer'; }, 60000);
+    ps.on('error', (e) => { clearTimeout(timer); done(reject, e); });
+    ps.on('close', (code) => {
+      clearTimeout(timer);
+      const ok = out.split(/\r?\n/).find((l) => l.startsWith('OK|'));
+      if (code !== 0 || !ok) {
+        const msg = (err || out).split(/\r?\n/).find((l) => l.trim() && !/^At |^\s*\+|CategoryInfo|FullyQualifiedErrorId/.test(l));
+        return done(reject, new Error((msg || 'Print failed').trim()));
       }
-    });
-    ps.on('error', err => {
-      try { fs.unlinkSync(tmp); } catch {}
-      reject(err);
+      const [, count, name] = ok.trim().split('|');
+      done(resolve, { ok: true, printed: Number(count) || tags.length, printer: name });
     });
   });
 }
 
-const server = http.createServer(async (req, res) => {
-  // CORS & Private Network Access headers
+const server = http.createServer((req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.setHeader('Access-Control-Allow-Private-Network', 'true');
+  const send = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
 
-  if (req.method === 'OPTIONS') {
-    res.writeHead(204);
-    res.end();
-    return;
-  }
-
-  if (req.method === 'GET' && req.url === '/status') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: true, printer: DEFAULT_PRINTER, version: '1.0' }));
-    return;
-  }
-
+  if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
+  if (req.method === 'GET' && req.url === '/status') { send(200, { ok: true, version: VERSION }); return; }
   if (req.method === 'POST' && req.url === '/print-tags') {
     let body = '';
-    req.on('data', chunk => body += chunk);
+    req.on('data', (c) => { body += c; });
     req.on('end', async () => {
-      try {
-        const payload = JSON.parse(body || '{}');
-        const tags = Array.isArray(payload.tags) ? payload.tags : [];
-        const printer = payload.printer || DEFAULT_PRINTER;
-
-        if (!tags.length) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'No tags provided' }));
-          return;
-        }
-
-        // Combine all tags into one TSPL job
-        const fullTspl = tags.map(t => buildTspl(t)).join('\n');
-        await sendRawToPrinter(printer, fullTspl);
-
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, printed: tags.length, printer }));
-      } catch (err) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: err.message }));
-      }
+      try { send(200, await runPrint(JSON.parse(body || '{}'))); }
+      catch (e) { send(500, { error: e.message }); }
     });
     return;
   }
-
-  res.writeHead(404);
-  res.end('Not Found');
+  res.writeHead(404); res.end('Not Found');
 });
 
-server.listen(PORT, '127.0.0.1', () => {
-  console.log(`Flow Ledger Print Agent running on http://127.0.0.1:${PORT}`);
+server.on('error', (e) => {
+  // Another copy is already running: nothing to do.
+  if (e.code === 'EADDRINUSE') { console.log(`Port ${PORT} already in use - agent already running.`); process.exit(0); }
+  throw e;
 });
+server.listen(PORT, '127.0.0.1', () => console.log(`Flow Ledger Print Agent ${VERSION} running on http://127.0.0.1:${PORT}`));
