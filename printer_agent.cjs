@@ -121,11 +121,12 @@ function buildAgroTspl(t1, t2, isSingle = false) {
     // Only 1 side (Left sticker). Right side is blank, keeping exact 104mm roll alignment.
     return `CLS
 TEXT 28,12,"2",0,1,1,"${c1}"
-TEXT 28,38,"3",0,1,1,"${n1}"
-TEXT 28,76,"1",0,1,1,"BATCH: ${b1}  EXP: ${e1}"
-TEXT 28,110,"4",0,1,1,"RATE: Rs.${r1}"
-TEXT 28,150,"2",0,1,1,"${cd1}"
-QRCODE 256,76,M,3,A,0,"${qr1}"
+TEXT 28,36,"3",0,1,1,"${n1}"
+TEXT 28,66,"1",0,1,1,"BATCH: ${b1}"
+TEXT 28,88,"1",0,1,1,"EXP: ${e1}"
+TEXT 28,114,"4",0,1,1,"RATE: Rs.${r1}"
+TEXT 28,150,"3",0,1,1,"${cd1}"
+QRCODE 256,70,M,3,A,0,"${qr1}"
 PRINT 1,1
 `;
   }
@@ -141,18 +142,12 @@ PRINT 1,1
 
   return `CLS
 TEXT 28,12,"2",0,1,1,"${c1}"
-TEXT 28,38,"3",0,1,1,"${n1}"
-TEXT 28,76,"1",0,1,1,"BATCH: ${b1}  EXP: ${e1}"
-TEXT 28,110,"4",0,1,1,"RATE: Rs.${r1}"
-TEXT 28,150,"2",0,1,1,"${cd1}"
-QRCODE 256,76,M,3,A,0,"${qr1}"
-
-TEXT 452,12,"2",0,1,1,"${c2}"
-TEXT 452,38,"3",0,1,1,"${n2}"
-TEXT 452,76,"1",0,1,1,"BATCH: ${b2}  EXP: ${e2}"
-TEXT 452,110,"4",0,1,1,"RATE: Rs.${r2}"
-TEXT 452,150,"2",0,1,1,"${cd2}"
-QRCODE 680,76,M,3,A,0,"${qr2}"
+TEXT 28,36,"3",0,1,1,"${n1}"
+TEXT 28,66,"1",0,1,1,"BATCH: ${b1}"
+TEXT 28,88,"1",0,1,1,"EXP: ${e1}"
+TEXT 28,114,"4",0,1,1,"RATE: Rs.${r1}"
+TEXT 28,150,"3",0,1,1,"${cd2}"
+QRCODE 680,70,M,3,A,0,"${qr2}"
 PRINT 1,1
 `;
 }

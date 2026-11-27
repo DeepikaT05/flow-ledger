@@ -84,17 +84,20 @@ export function agroStickerSingleSvg(data: AgroSticker, offsetX = 3.5, offsetY =
     <!-- Line 2: Product Name (FULL 41 mm WIDTH above QR code - fits long names easily!) -->
     <text x="${(offsetX + 1.2).toFixed(2)}" y="${(offsetY + 7.6).toFixed(2)}" font-family="'Arial Black', Arial, Helvetica, sans-serif" font-size="${nameFontSize}" font-weight="900" fill="#000" ${nameAttrs}>${esc(name)}</text>
 
-    <!-- Details below Product Name (Left side: Batch, Rate, Serial; Right side: Compact QR) -->
-    <!-- Line 3: BATCH & EXPIRY -->
-    <text x="${(offsetX + 1.2).toFixed(2)}" y="${(offsetY + 11.8).toFixed(2)}" font-family="Arial, Helvetica, sans-serif" font-size="1.8" font-weight="bold" fill="#000">BATCH: ${esc(batch)}  EXP: ${esc(exp)}</text>
+    <!-- Details below Product Name -->
+    <!-- Line 3: BATCH (Separate Line) -->
+    <text x="${(offsetX + 1.2).toFixed(2)}" y="${(offsetY + 10.5).toFixed(2)}" font-family="Arial, Helvetica, sans-serif" font-size="1.85" font-weight="bold" fill="#000">BATCH: ${esc(batch)}</text>
 
-    <!-- Line 4: RATE: ₹<amount> (Prominent Heavy Font) -->
-    <text x="${(offsetX + 1.2).toFixed(2)}" y="${(offsetY + 16.5).toFixed(2)}" font-family="'Arial Black', Arial, Helvetica, sans-serif" font-size="4.2" font-weight="900" fill="#000">RATE: &#8377;${esc(rate)}</text>
+    <!-- Line 4: EXPIRY (Below Batch, Not Side-by-Side) -->
+    <text x="${(offsetX + 1.2).toFixed(2)}" y="${(offsetY + 13.6).toFixed(2)}" font-family="Arial, Helvetica, sans-serif" font-size="1.85" font-weight="bold" fill="#000">EXP: ${esc(exp)}</text>
 
-    <!-- Line 5: Serial / Item Code (Moved up to 20.8 mm, safely off the bottom edge) -->
-    <text x="${(offsetX + 1.2).toFixed(2)}" y="${(offsetY + 20.8).toFixed(2)}" font-family="monospace, Courier" font-size="2.2" font-weight="bold" fill="#000" letter-spacing="0.2">${esc(code)}</text>
+    <!-- Line 5: RATE: ₹<amount> (Prominent Heavy Font) -->
+    <text x="${(offsetX + 1.2).toFixed(2)}" y="${(offsetY + 17.5).toFixed(2)}" font-family="'Arial Black', Arial, Helvetica, sans-serif" font-size="4.0" font-weight="900" fill="#000">RATE: &#8377;${esc(rate)}</text>
 
-    <!-- Right side lower: Compact 13 mm QR Code placed at Y=9.8 mm -->
+    <!-- Line 6: Serial Code (BADA Monospace Font, prominent & clear) -->
+    <text x="${(offsetX + 1.2).toFixed(2)}" y="${(offsetY + 21.8).toFixed(2)}" font-family="monospace, Courier" font-size="2.9" font-weight="900" fill="#000" letter-spacing="0.3">${esc(code)}</text>
+
+    <!-- Right side lower: Compact 13 mm QR Code placed at Y=9.6 mm -->
     ${qr}
   </g>`;
 }
