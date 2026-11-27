@@ -98,30 +98,59 @@ PRINT 1,1
 `;
 }
 
-function buildAgroTspl(t) {
+function nextCode(c) {
+  const m = String(c || '').match(/^(.*?)(\d+)$/);
+  if (m) {
+    const num = parseInt(m[2], 10) + 1;
+    return `${m[1]}${String(num).padStart(m[2].length, '0')}`;
+  }
+  return `${c || 'ZC000001'}-2`;
+}
+
+function buildAgroTspl(t1, t2) {
   const s = (v) => String(v ?? '').replace(/["\r\n]/g, '').trim().toUpperCase();
-  const comp = s(t.company || 'TAMRAKAR AGROTECH BORI');
-  const name = s(t.name || 'PRODUCT');
-  const batch = s(t.batch || '-');
-  const exp = s(t.exp || '-');
-  const rate = s(t.rate ?? '0');
-  const code = s(t.code || 'ZC000001');
-  const qr = t.qrData || `${comp}\nITEM:${name}\nBATCH:${batch}\nEXP:${exp}\nRATE:Rs.${rate}\nCODE:${code}`;
+  const c1 = s(t1.company || 'TAMRAKAR AGROTECH BORI');
+  const n1 = s(t1.name || 'PRODUCT');
+  const b1 = s(t1.batch || '-');
+  const e1 = s(t1.exp || '-');
+  const r1 = s(t1.rate ?? '0');
+  const cd1 = s(t1.code || 'ZC000001');
+  const qr1 = t1.qrData || `${c1}\nITEM:${n1}\nBATCH:${b1}\nEXP:${e1}\nRATE:Rs.${r1}\nCODE:${cd1}`;
+
+  const rightT = t2 || { ...t1, code: nextCode(cd1) };
+  const c2 = s(rightT.company || c1);
+  const n2 = s(rightT.name || n1);
+  const b2 = s(rightT.batch || b1);
+  const e2 = s(rightT.exp || e1);
+  const r2 = s(rightT.rate ?? r1);
+  const cd2 = s(rightT.code || nextCode(cd1));
+  const qr2 = rightT.qrData || `${c2}\nITEM:${n2}\nBATCH:${b2}\nEXP:${e2}\nRATE:Rs.${r2}\nCODE:${cd2}`;
 
   return `CLS
-TEXT 16,16,"2",0,1,1,"${comp}"
-TEXT 16,48,"3",0,1,1,"${name}"
-TEXT 16,84,"1",0,1,1,"BATCH: ${batch}  EXP: ${exp}"
-TEXT 16,120,"4",0,1,1,"RATE: Rs.${rate}"
-TEXT 16,160,"2",0,1,1,"${code}"
-QRCODE 230,16,H,4,A,0,"${qr}"
+TEXT 12,16,"2",0,1,1,"${c1}"
+TEXT 12,46,"3",0,1,1,"${n1}"
+TEXT 12,82,"1",0,1,1,"BATCH: ${b1}  EXP: ${e1}"
+TEXT 12,118,"4",0,1,1,"RATE: Rs.${r1}"
+TEXT 12,162,"2",0,1,1,"${cd1}"
+QRCODE 236,18,M,3,A,0,"${qr1}"
+
+TEXT 436,16,"2",0,1,1,"${c2}"
+TEXT 436,46,"3",0,1,1,"${n2}"
+TEXT 436,82,"1",0,1,1,"BATCH: ${b2}  EXP: ${e2}"
+TEXT 436,118,"4",0,1,1,"RATE: Rs.${r2}"
+TEXT 436,162,"2",0,1,1,"${cd2}"
+QRCODE 660,18,M,3,A,0,"${qr2}"
 PRINT 1,1
 `;
 }
 
 function buildTsplJob(tags, isAgro = false) {
   if (isAgro) {
-    return `SIZE 100 mm, 25 mm\nGAP 2 mm, 0 mm\nDIRECTION 1\nOFFSET 0 mm\n` + tags.map(buildAgroTspl).join('');
+    const jobs = [];
+    for (let i = 0; i < tags.length; i += 2) {
+      jobs.push(buildAgroTspl(tags[i], tags[i + 1]));
+    }
+    return `SIZE 104 mm, 25 mm\nGAP 3 mm, 0 mm\nDIRECTION 1\nOFFSET 0 mm\n` + jobs.join('');
   }
   return `SIZE 84 mm, 12 mm\nGAP 3 mm, 0 mm\nDIRECTION 1\nOFFSET 0 mm\n` + tags.map(buildTspl).join('');
 }
@@ -138,7 +167,7 @@ function runPrint(payload) {
     const script = path.join(dir, 'print.ps1');
     fs.writeFileSync(script, '﻿' + PS_SCRIPT, 'utf8');
     const isAgro = payload.type === 'agro' || (tags[0] && tags[0].type === 'agro');
-    const defW = isAgro ? (payload.mode === '1up' ? 50 : 100) : 84;
+    const defW = isAgro ? (payload.mode === '1up' ? 50 : 104) : 84;
     const defH = isAgro ? 25 : 12;
     const args = ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, '-Dir', dir,
       '-WidthMm', String(Number(payload.widthMm) || defW), '-HeightMm', String(Number(payload.heightMm) || defH)];
