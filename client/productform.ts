@@ -230,7 +230,7 @@ export async function productScreen(existing?: Partial<Item> & { details?: strin
         import('./agrotag.ts').then((m) => {
           qrBox!.innerHTML = `
             <div style="font-size: 8.5px; font-weight: 800; color: #0f766e; text-transform: uppercase; margin-bottom: 2px;">📦 AGROTECH STICKER (QR WITH DETAILS)</div>
-            <div style="width: 250px; height: 125px; border: 1px solid #000; box-shadow: 0 1px 3px rgba(0,0,0,0.1); background: #fff;">
+            <div style="width: 250px; height: 125px; border: 1px solid #cbd5e1; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); background: #fff;">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 25" width="100%" height="100%" shape-rendering="crispEdges">
                 ${m.agroStickerSingleSvg({ company: companyStr, name: pack && !pName.toLowerCase().includes(pack.toLowerCase()) ? `${pName} ${pack}` : pName, batch, exp, rate, code: bCode }, 0, 0)}
               </svg>

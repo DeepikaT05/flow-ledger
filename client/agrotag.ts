@@ -60,35 +60,35 @@ export function agroStickerSingleSvg(data: AgroSticker, offsetX = 0, offsetY = 0
   const rate = String(data.rate ?? '0').trim();
   const code = (data.code || 'ZC000001').trim().toUpperCase();
   const qrText = encodeAgroQr(data);
-  const qr = agroQrSvg(qrText, offsetX + 27.2, offsetY + 2.0, 21.0);
+  const qr = agroQrSvg(qrText, offsetX + 28.5, offsetY + 2.0, 20.5);
 
   return `
   <g class="agro-sticker" transform="translate(0, 0)">
-    <!-- White background card with crisp border -->
-    <rect x="${offsetX.toFixed(2)}" y="${offsetY.toFixed(2)}" width="50" height="25" fill="#fff" stroke="#000" stroke-width="0.3"/>
+    <!-- White background card with NO border line -->
+    <rect x="${offsetX.toFixed(2)}" y="${offsetY.toFixed(2)}" width="50" height="25" fill="#fff"/>
 
     <!-- Left side details -->
-    <!-- Line 1: Company Name -->
-    <text x="${(offsetX + 1.8).toFixed(2)}" y="${(offsetY + 3.8).toFixed(2)}" font-family="'Arial Black', Arial, Helvetica, sans-serif" font-size="2.2" font-weight="900" fill="#000" letter-spacing="0.1">${esc(comp)}</text>
+    <!-- Line 1: Company Name (auto-fit width so it never touches QR) -->
+    <text x="${(offsetX + 1.5).toFixed(2)}" y="${(offsetY + 3.8).toFixed(2)}" font-family="'Arial Black', Arial, Helvetica, sans-serif" font-size="2.0" font-weight="900" fill="#000" ${comp.length > 15 ? `textLength="25.5" lengthAdjust="spacingAndGlyphs"` : ''}>${esc(comp)}</text>
 
-    <!-- Line 2: Product Name (Bold Large) -->
-    <text x="${(offsetX + 1.8).toFixed(2)}" y="${(offsetY + 7.8).toFixed(2)}" font-family="'Arial Black', Arial, Helvetica, sans-serif" font-size="2.65" font-weight="900" fill="#000" ${name.length > 16 ? `textLength="24.5" lengthAdjust="spacingAndGlyphs"` : ''}>${esc(name)}</text>
+    <!-- Line 2: Product Name (Bold Large, auto-fit width) -->
+    <text x="${(offsetX + 1.5).toFixed(2)}" y="${(offsetY + 7.8).toFixed(2)}" font-family="'Arial Black', Arial, Helvetica, sans-serif" font-size="2.6" font-weight="900" fill="#000" ${name.length > 13 ? `textLength="25.5" lengthAdjust="spacingAndGlyphs"` : ''}>${esc(name)}</text>
 
     <!-- Line 3: BATCH & EXPIRY -->
-    <text x="${(offsetX + 1.8).toFixed(2)}" y="${(offsetY + 11.8).toFixed(2)}" font-family="Arial, Helvetica, sans-serif" font-size="1.95" font-weight="bold" fill="#000">BATCH: ${esc(batch)}  EXP: ${esc(exp)}</text>
+    <text x="${(offsetX + 1.5).toFixed(2)}" y="${(offsetY + 11.8).toFixed(2)}" font-family="Arial, Helvetica, sans-serif" font-size="1.9" font-weight="bold" fill="#000">BATCH: ${esc(batch)}  EXP: ${esc(exp)}</text>
 
     <!-- Line 4: RATE: ₹<amount> (Prominent Heavy Font) -->
-    <text x="${(offsetX + 1.8).toFixed(2)}" y="${(offsetY + 18.2).toFixed(2)}" font-family="'Arial Black', Arial, Helvetica, sans-serif" font-size="4.3" font-weight="900" fill="#000">RATE: &#8377;${esc(rate)}</text>
+    <text x="${(offsetX + 1.5).toFixed(2)}" y="${(offsetY + 18.2).toFixed(2)}" font-family="'Arial Black', Arial, Helvetica, sans-serif" font-size="4.2" font-weight="900" fill="#000">RATE: &#8377;${esc(rate)}</text>
 
     <!-- Line 5: Serial / Item Code (Monospace) -->
-    <text x="${(offsetX + 1.8).toFixed(2)}" y="${(offsetY + 22.8).toFixed(2)}" font-family="monospace, Courier" font-size="2.1" font-weight="bold" fill="#000" letter-spacing="0.2">${esc(code)}</text>
+    <text x="${(offsetX + 1.5).toFixed(2)}" y="${(offsetY + 22.8).toFixed(2)}" font-family="monospace, Courier" font-size="2.1" font-weight="bold" fill="#000" letter-spacing="0.2">${esc(code)}</text>
 
     <!-- Right side: QR Code with product details -->
     ${qr}
   </g>`;
 }
 
-/** 2-Up Side-by-Side Dual Label SVG (104 mm × 25 mm - Exactly matching Screenshot 2) */
+/** 2-Up Side-by-Side Dual Label SVG (100 mm × 25 mm - Zero Gap between stickers) */
 export function agroSticker2UpSvg(data1: AgroSticker, data2?: AgroSticker): string {
   // If data2 not provided, duplicate or increment code
   let d2 = data2;
@@ -98,9 +98,9 @@ export function agroSticker2UpSvg(data1: AgroSticker, data2?: AgroSticker): stri
   }
 
   const s1 = agroStickerSingleSvg(data1, 0, 0);
-  const s2 = agroStickerSingleSvg(d2, 54, 0);
+  const s2 = agroStickerSingleSvg(d2, 50, 0); // No gap: second sticker starts exactly at 50mm
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 104 25" width="104mm" height="25mm" style="display:block; background:#fff;" shape-rendering="crispEdges">
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 25" width="100mm" height="25mm" style="display:block; background:#fff;" shape-rendering="crispEdges">
     ${s1}
     ${s2}
   </svg>`;
@@ -143,7 +143,7 @@ export function agroTagOfItem(it: any, co?: any): AgroSticker {
   return { company, name, pack, batch, exp, rate, code };
 }
 
-const AGRO_PAGE_2UP_CSS = '@page { size: 104mm 25mm; margin: 0; }';
+const AGRO_PAGE_2UP_CSS = '@page { size: 100mm 25mm; margin: 0; }';
 const AGRO_PAGE_1UP_CSS = '@page { size: 50mm 25mm; margin: 0; }';
 
 /** Prints direct to local printer agent (127.0.0.1:3211) */
@@ -207,7 +207,7 @@ export function printAgroStickerWeb(data: AgroSticker, initialMode: '2up' | '1up
 </head>
 <body>
   <div class="no-print" style="margin-bottom: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: #fff; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
-    <button onclick="showMode('2up')" id="btn-2up" style="padding: 6px 12px; font-size: 12px; font-weight: bold; background: ${initialMode === '2up' ? '#0284c7' : '#fff'}; color: ${initialMode === '2up' ? '#fff' : '#333'}; border: 1px solid #cbd5e1; border-radius: 4px; cursor: pointer;">🏷️ 2-Up Sticker (104 × 25 mm)</button>
+    <button onclick="showMode('2up')" id="btn-2up" style="padding: 6px 12px; font-size: 12px; font-weight: bold; background: ${initialMode === '2up' ? '#0284c7' : '#fff'}; color: ${initialMode === '2up' ? '#fff' : '#333'}; border: 1px solid #cbd5e1; border-radius: 4px; cursor: pointer;">🏷️ 2-Up Sticker (100 × 25 mm)</button>
     <button onclick="showMode('1up')" id="btn-1up" style="padding: 6px 12px; font-size: 12px; font-weight: bold; background: ${initialMode === '1up' ? '#0284c7' : '#fff'}; color: ${initialMode === '1up' ? '#fff' : '#333'}; border: 1px solid #cbd5e1; border-radius: 4px; cursor: pointer;">📦 Single Sticker (50 × 25 mm)</button>
     <div style="font-size: 11px; color: #1e3a8a; background: #dbeafe; padding: 4px 8px; border-radius: 4px; font-weight: 600;">
       Agrotech Product Sticker (QR contains details) &middot; TSC TE244

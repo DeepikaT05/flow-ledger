@@ -121,7 +121,7 @@ PRINT 1,1
 
 function buildTsplJob(tags, isAgro = false) {
   if (isAgro) {
-    return `SIZE 50 mm, 25 mm\nGAP 2 mm, 0 mm\nDIRECTION 1\nOFFSET 0 mm\n` + tags.map(buildAgroTspl).join('');
+    return `SIZE 100 mm, 25 mm\nGAP 2 mm, 0 mm\nDIRECTION 1\nOFFSET 0 mm\n` + tags.map(buildAgroTspl).join('');
   }
   return `SIZE 84 mm, 12 mm\nGAP 3 mm, 0 mm\nDIRECTION 1\nOFFSET 0 mm\n` + tags.map(buildTspl).join('');
 }
@@ -138,7 +138,7 @@ function runPrint(payload) {
     const script = path.join(dir, 'print.ps1');
     fs.writeFileSync(script, '﻿' + PS_SCRIPT, 'utf8');
     const isAgro = payload.type === 'agro' || (tags[0] && tags[0].type === 'agro');
-    const defW = isAgro ? (payload.mode === '1up' ? 50 : 104) : 84;
+    const defW = isAgro ? (payload.mode === '1up' ? 50 : 100) : 84;
     const defH = isAgro ? 25 : 12;
     const args = ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, '-Dir', dir,
       '-WidthMm', String(Number(payload.widthMm) || defW), '-HeightMm', String(Number(payload.heightMm) || defH)];

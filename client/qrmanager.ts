@@ -292,7 +292,7 @@ export async function qrManagerScreen(jewelOnly = false) {
 
         <div style="width:100%; display:flex; flex-direction:column; gap:6px; margin-top:12px;">
           <button type="button" class="btn-prev-print-2up" style="width:100%; background:#15803d; color:#fff; font-weight:700; font-size:12px; padding:8px 4px; border:none; border-radius:4px; cursor:pointer;">
-            🏷️ Print 2-Up Stickers (104 × 25 mm)
+            🏷️ Print 2-Up Stickers (100 × 25 mm)
           </button>
           <button type="button" class="btn-prev-print-1up" style="width:100%; background:#0284c7; color:#fff; font-weight:700; font-size:12px; padding:8px 4px; border:none; border-radius:4px; cursor:pointer;">
             📦 Print Single Sticker (50 × 25 mm)
