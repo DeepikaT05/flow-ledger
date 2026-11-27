@@ -98,14 +98,38 @@ PRINT 1,1
 `;
 }
 
-function buildTsplJob(tags) {
+function buildAgroTspl(t) {
+  const s = (v) => String(v ?? '').replace(/["\r\n]/g, '').trim().toUpperCase();
+  const comp = s(t.company || 'TAMRAKAR AGROTECH BORI');
+  const name = s(t.name || 'PRODUCT');
+  const batch = s(t.batch || '-');
+  const exp = s(t.exp || '-');
+  const rate = s(t.rate ?? '0');
+  const code = s(t.code || 'ZC000001');
+  const qr = t.qrData || `${comp}\nITEM:${name}\nBATCH:${batch}\nEXP:${exp}\nRATE:Rs.${rate}\nCODE:${code}`;
+
+  return `CLS
+TEXT 16,16,"2",0,1,1,"${comp}"
+TEXT 16,48,"3",0,1,1,"${name}"
+TEXT 16,84,"1",0,1,1,"BATCH: ${batch}  EXP: ${exp}"
+TEXT 16,120,"4",0,1,1,"RATE: Rs.${rate}"
+TEXT 16,160,"2",0,1,1,"${code}"
+QRCODE 230,16,H,4,A,0,"${qr}"
+PRINT 1,1
+`;
+}
+
+function buildTsplJob(tags, isAgro = false) {
+  if (isAgro) {
+    return `SIZE 50 mm, 25 mm\nGAP 2 mm, 0 mm\nDIRECTION 1\nOFFSET 0 mm\n` + tags.map(buildAgroTspl).join('');
+  }
   return `SIZE 84 mm, 12 mm\nGAP 3 mm, 0 mm\nDIRECTION 1\nOFFSET 0 mm\n` + tags.map(buildTspl).join('');
 }
 
 function runPrint(payload) {
   return new Promise((resolve, reject) => {
     const pngs = Array.isArray(payload.pngs) ? payload.pngs : [];
-    const tags = Array.isArray(payload.tags) ? payload.tags : [];
+    const tags = Array.isArray(payload.tags) ? payload.tags : (Array.isArray(payload.stickers) ? payload.stickers : []);
     if (!pngs.length && !tags.length) return reject(new Error('No tags to print'));
     if (pngs.length > 500 || tags.length > 500) return reject(new Error('Too many tags in one job (max 500)'));
 
@@ -113,8 +137,11 @@ function runPrint(payload) {
     const done = (fn, v) => { fs.rmSync(dir, { recursive: true, force: true }); fn(v); };
     const script = path.join(dir, 'print.ps1');
     fs.writeFileSync(script, '﻿' + PS_SCRIPT, 'utf8');
+    const isAgro = payload.type === 'agro' || (tags[0] && tags[0].type === 'agro');
+    const defW = isAgro ? (payload.mode === '1up' ? 50 : 104) : 84;
+    const defH = isAgro ? 25 : 12;
     const args = ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, '-Dir', dir,
-      '-WidthMm', String(Number(payload.widthMm) || 84), '-HeightMm', String(Number(payload.heightMm) || 12)];
+      '-WidthMm', String(Number(payload.widthMm) || defW), '-HeightMm', String(Number(payload.heightMm) || defH)];
     const printer = String(payload.printer || process.env.TAG_PRINTER || '').trim();
     if (printer) args.push('-Printer', printer);
 
@@ -123,7 +150,7 @@ function runPrint(payload) {
         Buffer.from(String(p).replace(/^data:image\/png;base64,/, ''), 'base64')));
     } else {
       const raw = path.join(dir, 'job.tspl');
-      fs.writeFileSync(raw, buildTsplJob(tags), 'ascii');
+      fs.writeFileSync(raw, buildTsplJob(tags, isAgro), 'ascii');
       args.push('-Raw', raw);
     }
 

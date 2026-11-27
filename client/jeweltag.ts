@@ -1,5 +1,6 @@
 import qrcode from 'qrcode-generator';
 import { esc, api } from './ui.ts';
+import { isJewellery } from './jewellery.ts';
 
 export interface JewelTag {
   code: string;
@@ -101,8 +102,14 @@ export function tagOfItem(it: any): JewelTag {
   return { code, name: it?.name || 'PRODUCT', gw, less, nw, mkg, metal };
 }
 
-export function printItemTag(it: any) {
-  printJewelTagWeb(tagOfItem(it));
+export async function printItemTag(it: any) {
+  const co = await api<any>('/company').catch(() => ({}));
+  if (isJewellery(co?.business_type)) {
+    printJewelTagWeb(tagOfItem(it));
+  } else {
+    const { printAgroStickerWeb, agroTagOfItem } = await import('./agrotag.ts');
+    printAgroStickerWeb(agroTagOfItem(it, co));
+  }
 }
 
 /** 1D Barcode Sticker (Screenshot 2 style: Serial No + 1D Barcode + Product Name) */

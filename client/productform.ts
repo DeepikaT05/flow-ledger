@@ -138,16 +138,35 @@ export async function productScreen(existing?: Partial<Item> & { details?: strin
     bottom.innerHTML = COLS.map((c) => `<div class="pf-col">${c.map((f) => cell(f)).join('')}</div>`).join('');
     p.body.append(top, bottom);
 
-    const printCurrentTag = (mode: 'dual' | 'sticker' = 'dual') => {
+    const printCurrentTag = (mode: 'dual' | 'sticker' | '2up' | '1up' = jewel ? 'dual' : '2up') => {
       const rawName = (byKey('name') as HTMLInputElement)?.value.trim();
       const pName = (rawName && rawName !== '0') ? rawName : 'PRODUCT';
-      const bCode = (byKey('barcode') as HTMLInputElement)?.value.trim() || (byKey('code') as HTMLInputElement)?.value.trim() || (existing?.id ? `PA${String(existing.id).padStart(6, '0')}` : 'PA000001');
-      const gw = Number((byKey('jw_gw') as HTMLInputElement)?.value) || 0;
-      const less = Number((byKey('jw_less') as HTMLInputElement)?.value) || 0;
-      const nw = Number((byKey('jw_nw') as HTMLInputElement)?.value) || Math.max(0, gw - less);
-      const mkg = (byKey('jw_mkg') as HTMLInputElement)?.value.trim() || '5.00 %';
-      const metal = (byKey('jw_metal') as HTMLSelectElement)?.value || 'SILVER';
-      printJewelTagWeb({ code: bCode, name: pName, gw, less, nw, mkg, metal }, mode);
+      if (jewel) {
+        const bCode = (byKey('barcode') as HTMLInputElement)?.value.trim() || (byKey('code') as HTMLInputElement)?.value.trim() || (existing?.id ? `PA${String(existing.id).padStart(6, '0')}` : 'PA000001');
+        const gw = Number((byKey('jw_gw') as HTMLInputElement)?.value) || 0;
+        const less = Number((byKey('jw_less') as HTMLInputElement)?.value) || 0;
+        const nw = Number((byKey('jw_nw') as HTMLInputElement)?.value) || Math.max(0, gw - less);
+        const mkg = (byKey('jw_mkg') as HTMLInputElement)?.value.trim() || '5.00 %';
+        const metal = (byKey('jw_metal') as HTMLSelectElement)?.value || 'SILVER';
+        printJewelTagWeb({ code: bCode, name: pName, gw, less, nw, mkg, metal }, mode as 'dual' | 'sticker');
+      } else {
+        const bCode = (byKey('barcode') as HTMLInputElement)?.value.trim() || (byKey('code') as HTMLInputElement)?.value.trim() || (existing?.id ? `ZC${String(existing.id).padStart(6, '0')}` : 'ZC000003');
+        const pack = (byKey('pack') as HTMLInputElement)?.value.trim() || '';
+        const batch = (byKey('batch') as HTMLInputElement)?.value.trim() || '8/2';
+        const exp = (byKey('expiry') as HTMLInputElement)?.value.trim() || '11/2028';
+        const rate = (byKey('sale_rate') as HTMLInputElement)?.value.trim() || (byKey('mrp') as HTMLInputElement)?.value.trim() || '99';
+        const compName = (company as any)?.name || 'TAMRAKAR AGROTECH';
+        const station = (company as any)?.station || '';
+        const companyStr = station && !compName.includes(station) ? `${compName} ${station}` : compName;
+        import('./agrotag.ts').then((m) => m.printAgroStickerWeb({
+          company: companyStr,
+          name: pack && !pName.toLowerCase().includes(pack.toLowerCase()) ? `${pName} ${pack}` : pName,
+          batch,
+          exp,
+          rate,
+          code: bCode,
+        }, mode === '1up' ? '1up' : '2up'));
+      }
     };
 
     let qrBox: HTMLElement | null = null;
@@ -179,17 +198,17 @@ export async function productScreen(existing?: Partial<Item> & { details?: strin
         type: 'button',
         class: 'btn sm',
         style: 'float: right; margin-top: -3px; background: #0f766e; color: #fff; font-weight: 700; font-size: 11px; padding: 3px 12px; cursor: pointer; border: none; border-radius: 3px;'
-      }, '📦 Print Barcode Sticker (Alt+P)');
-      tagBtn.onclick = () => printCurrentTag('sticker');
+      }, '📦 Print Product Sticker (Alt+P)');
+      tagBtn.onclick = () => printCurrentTag('2up');
 
-      const stHead = h('div', { class: 'pf-jw-h' }, 'BARCODE & STICKER (1D BARCODE · CODE · PRODUCT NAME)');
+      const stHead = h('div', { class: 'pf-jw-h' }, 'PRODUCT STICKER & QR (COMPANY · NAME · BATCH/EXP · RATE · QR DETAILS)');
       stHead.append(tagBtn);
 
       const stWrap = h('div', { style: 'display: flex; gap: 14px; padding: 6px 14px; background: #f8fafc; align-items: center; justify-content: space-between;' });
-      const stNotice = h('div', { style: 'font-size: 11.5px; color: #475569; flex: 1;' }, 'Physical barcode sticker for TSC TE244 printer. Press Alt+P or click button to print barcode label.');
+      const stNotice = h('div', { style: 'font-size: 11.5px; color: #475569; flex: 1;' }, 'Product barcode sticker with scannable QR details for TSC TE244 printer. Press Alt+P or click button to print.');
       qrBox = h('div', {
         class: 'pf-qr-preview',
-        style: 'width: 240px; background: #fff; border: 1.5px solid #0f172a; border-radius: 6px; padding: 6px 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: 0 1px 4px rgba(0,0,0,0.15); flex-shrink: 0;'
+        style: 'width: 260px; background: #fff; border: 1.5px solid #0f172a; border-radius: 6px; padding: 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: 0 1px 4px rgba(0,0,0,0.15); flex-shrink: 0;'
       });
       stWrap.append(stNotice, qrBox);
       const stBox = h('div', { class: 'pf-jw' });
@@ -200,17 +219,31 @@ export async function productScreen(existing?: Partial<Item> & { details?: strin
         if (!qrBox) return;
         const rawName = (byKey('name') as HTMLInputElement)?.value.trim();
         const pName = (rawName && rawName !== '0') ? rawName : 'PRODUCT';
-        const bCode = (byKey('barcode') as HTMLInputElement)?.value.trim() || (byKey('code') as HTMLInputElement)?.value.trim() || (existing?.id ? `PA${String(existing.id).padStart(6, '0')}` : 'PA000001');
-        const bSvg = barcode128Svg(bCode, 24, 1.1);
-        qrBox.innerHTML = `
-          <div style="font-size: 8.5px; font-weight: 800; color: #475569; text-transform: uppercase; margin-bottom: 1px;">📦 PHYSICAL STICKER (1D)</div>
-          <div style="font-family: monospace; font-size: 13px; font-weight: 900; color: #000; letter-spacing: 0.8px;">${esc(bCode)}</div>
-          <div style="width: 100%; height: 24px; margin: 2px 0;">${bSvg}</div>
-          <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #000; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${esc(pName)}</div>
-        `;
+        const bCode = (byKey('barcode') as HTMLInputElement)?.value.trim() || (byKey('code') as HTMLInputElement)?.value.trim() || (existing?.id ? `ZC${String(existing.id).padStart(6, '0')}` : 'ZC000003');
+        const pack = (byKey('pack') as HTMLInputElement)?.value.trim() || '';
+        const batch = (byKey('batch') as HTMLInputElement)?.value.trim() || '8/2';
+        const exp = (byKey('expiry') as HTMLInputElement)?.value.trim() || '11/2028';
+        const rate = (byKey('sale_rate') as HTMLInputElement)?.value.trim() || (byKey('mrp') as HTMLInputElement)?.value.trim() || '99';
+        const compName = (company as any)?.name || 'TAMRAKAR AGROTECH';
+        const station = (company as any)?.station || '';
+        const companyStr = station && !compName.includes(station) ? `${compName} ${station}` : compName;
+        import('./agrotag.ts').then((m) => {
+          qrBox!.innerHTML = `
+            <div style="font-size: 8.5px; font-weight: 800; color: #0f766e; text-transform: uppercase; margin-bottom: 2px;">📦 AGROTECH STICKER (QR WITH DETAILS)</div>
+            <div style="width: 250px; height: 125px; border: 1px solid #000; box-shadow: 0 1px 3px rgba(0,0,0,0.1); background: #fff;">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 25" width="100%" height="100%" shape-rendering="crispEdges">
+                ${m.agroStickerSingleSvg({ company: companyStr, name: pack && !pName.toLowerCase().includes(pack.toLowerCase()) ? `${pName} ${pack}` : pName, batch, exp, rate, code: bCode }, 0, 0)}
+              </svg>
+            </div>
+          `;
+        });
       };
       (byKey('name') as HTMLInputElement | null)?.addEventListener('input', updateSticker);
       (byKey('barcode') as HTMLInputElement | null)?.addEventListener('input', updateSticker);
+      (byKey('pack') as HTMLInputElement | null)?.addEventListener('input', updateSticker);
+      (byKey('batch') as HTMLInputElement | null)?.addEventListener('input', updateSticker);
+      (byKey('expiry') as HTMLInputElement | null)?.addEventListener('input', updateSticker);
+      (byKey('sale_rate') as HTMLInputElement | null)?.addEventListener('input', updateSticker);
       setTimeout(updateSticker, 0);
     }
 
@@ -397,7 +430,7 @@ export async function productScreen(existing?: Partial<Item> & { details?: strin
         const savedItem = await api<Item>(`/items/${id}`);
         const printNow = await confirmBox(jewel ? 'Print QR Tag now ?' : 'Print Barcode Sticker now ?');
         if (printNow) {
-          printCurrentTag(jewel ? 'dual' : 'sticker');
+          printCurrentTag(jewel ? 'dual' : '2up');
         }
         finish(savedItem);
       } catch (e) { toast((e as Error).message, true); }
