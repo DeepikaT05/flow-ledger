@@ -120,12 +120,12 @@ function buildAgroTspl(t1, t2, isSingle = false) {
   if (isSingle) {
     // Only 1 side (Left sticker). Right side is blank, keeping exact 104mm roll alignment.
     return `CLS
-TEXT 28,16,"2",0,1,1,"${c1}"
-TEXT 28,46,"3",0,1,1,"${n1}"
-TEXT 28,82,"1",0,1,1,"BATCH: ${b1}  EXP: ${e1}"
-TEXT 28,118,"4",0,1,1,"RATE: Rs.${r1}"
-TEXT 28,162,"2",0,1,1,"${cd1}"
-QRCODE 248,36,M,3,A,0,"${qr1}"
+TEXT 28,12,"2",0,1,1,"${c1}"
+TEXT 28,38,"3",0,1,1,"${n1}"
+TEXT 28,76,"1",0,1,1,"BATCH: ${b1}  EXP: ${e1}"
+TEXT 28,110,"4",0,1,1,"RATE: Rs.${r1}"
+TEXT 28,150,"2",0,1,1,"${cd1}"
+QRCODE 256,76,M,3,A,0,"${qr1}"
 PRINT 1,1
 `;
   }
@@ -140,19 +140,19 @@ PRINT 1,1
   const qr2 = rightT.qrData || `${c2}\nITEM:${n2}\nBATCH:${b2}\nEXP:${e2}\nRATE:Rs.${r2}\nCODE:${cd2}`;
 
   return `CLS
-TEXT 28,16,"2",0,1,1,"${c1}"
-TEXT 28,46,"3",0,1,1,"${n1}"
-TEXT 28,82,"1",0,1,1,"BATCH: ${b1}  EXP: ${e1}"
-TEXT 28,118,"4",0,1,1,"RATE: Rs.${r1}"
-TEXT 28,162,"2",0,1,1,"${cd1}"
-QRCODE 248,36,M,3,A,0,"${qr1}"
+TEXT 28,12,"2",0,1,1,"${c1}"
+TEXT 28,38,"3",0,1,1,"${n1}"
+TEXT 28,76,"1",0,1,1,"BATCH: ${b1}  EXP: ${e1}"
+TEXT 28,110,"4",0,1,1,"RATE: Rs.${r1}"
+TEXT 28,150,"2",0,1,1,"${cd1}"
+QRCODE 256,76,M,3,A,0,"${qr1}"
 
-TEXT 452,16,"2",0,1,1,"${c2}"
-TEXT 452,46,"3",0,1,1,"${n2}"
-TEXT 452,82,"1",0,1,1,"BATCH: ${b2}  EXP: ${e2}"
-TEXT 452,118,"4",0,1,1,"RATE: Rs.${r2}"
-TEXT 452,162,"2",0,1,1,"${cd2}"
-QRCODE 668,36,M,3,A,0,"${qr2}"
+TEXT 452,12,"2",0,1,1,"${c2}"
+TEXT 452,38,"3",0,1,1,"${n2}"
+TEXT 452,76,"1",0,1,1,"BATCH: ${b2}  EXP: ${e2}"
+TEXT 452,110,"4",0,1,1,"RATE: Rs.${r2}"
+TEXT 452,150,"2",0,1,1,"${cd2}"
+QRCODE 680,76,M,3,A,0,"${qr2}"
 PRINT 1,1
 `;
 }

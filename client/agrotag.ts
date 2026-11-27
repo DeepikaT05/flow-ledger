@@ -50,7 +50,7 @@ export function agroQrSvg(text: string, x: number, y: number, size: number): str
   </g>`;
 }
 
-/** Single 44 mm × 25 mm Agrotech Sticker content with generous side safety insets */
+/** Single 44 mm × 25 mm Agrotech Sticker content with generous space for long product names */
 export function agroStickerSingleSvg(data: AgroSticker, offsetX = 3.5, offsetY = 0): string {
   const comp = (data.company || 'TAMRAKAR AGROTECH BORI').trim().toUpperCase();
   const name = (data.name || 'PRODUCT').trim().toUpperCase();
@@ -59,31 +59,42 @@ export function agroStickerSingleSvg(data: AgroSticker, offsetX = 3.5, offsetY =
   const rate = String(data.rate ?? '0').trim();
   const code = (data.code || 'ZC000001').trim().toUpperCase();
   const qrText = encodeAgroQr(data);
-  // Compact 15 mm QR code vertically centered at Y=5.0 mm. Placed safely inside label.
-  const qr = agroQrSvg(qrText, offsetX + 26.5, offsetY + 5.0, 15.0);
+  // Compact 13 mm QR code placed lower down at Y=9.8 mm, freeing full 41 mm width across top for product name!
+  const qr = agroQrSvg(qrText, offsetX + 29.0, offsetY + 9.8, 13.0);
+
+  // Dynamic font sizing for long product names
+  let nameFontSize = '2.7';
+  let nameAttrs = '';
+  if (name.length > 25) {
+    nameFontSize = '2.0';
+    nameAttrs = 'textLength="41.0" lengthAdjust="spacingAndGlyphs"';
+  } else if (name.length > 15) {
+    nameFontSize = '2.35';
+    nameAttrs = 'textLength="41.0" lengthAdjust="spacingAndGlyphs"';
+  }
 
   return `
   <g class="agro-sticker" transform="translate(0, 0)">
     <!-- White background card with NO border line -->
     <rect x="${offsetX.toFixed(2)}" y="${offsetY.toFixed(2)}" width="44" height="25" fill="#fff"/>
 
-    <!-- Left side details (safe 24.5 mm width so it never touches QR or cuts off at margin) -->
-    <!-- Line 1: Company Name -->
-    <text x="${(offsetX + 1.2).toFixed(2)}" y="${(offsetY + 4.2).toFixed(2)}" font-family="Arial, Helvetica, sans-serif" font-size="1.95" font-weight="900" fill="#000" ${comp.length > 15 ? `textLength="24.5" lengthAdjust="spacingAndGlyphs"` : ''}>${esc(comp)}</text>
+    <!-- Line 1: Company Name (spans full top width up to 41 mm) -->
+    <text x="${(offsetX + 1.2).toFixed(2)}" y="${(offsetY + 3.6).toFixed(2)}" font-family="Arial, Helvetica, sans-serif" font-size="1.95" font-weight="900" fill="#000" ${comp.length > 22 ? 'textLength="41.0" lengthAdjust="spacingAndGlyphs"' : ''}>${esc(comp)}</text>
 
-    <!-- Line 2: Product Name -->
-    <text x="${(offsetX + 1.2).toFixed(2)}" y="${(offsetY + 8.2).toFixed(2)}" font-family="'Arial Black', Arial, Helvetica, sans-serif" font-size="2.5" font-weight="900" fill="#000" ${name.length > 11 ? `textLength="24.5" lengthAdjust="spacingAndGlyphs"` : ''}>${esc(name)}</text>
+    <!-- Line 2: Product Name (FULL 41 mm WIDTH above QR code - fits long names easily!) -->
+    <text x="${(offsetX + 1.2).toFixed(2)}" y="${(offsetY + 7.6).toFixed(2)}" font-family="'Arial Black', Arial, Helvetica, sans-serif" font-size="${nameFontSize}" font-weight="900" fill="#000" ${nameAttrs}>${esc(name)}</text>
 
+    <!-- Details below Product Name (Left side: Batch, Rate, Serial; Right side: Compact QR) -->
     <!-- Line 3: BATCH & EXPIRY -->
-    <text x="${(offsetX + 1.2).toFixed(2)}" y="${(offsetY + 12.0).toFixed(2)}" font-family="Arial, Helvetica, sans-serif" font-size="1.8" font-weight="bold" fill="#000">BATCH: ${esc(batch)}  EXP: ${esc(exp)}</text>
+    <text x="${(offsetX + 1.2).toFixed(2)}" y="${(offsetY + 11.8).toFixed(2)}" font-family="Arial, Helvetica, sans-serif" font-size="1.8" font-weight="bold" fill="#000">BATCH: ${esc(batch)}  EXP: ${esc(exp)}</text>
 
-    <!-- Line 4: RATE: ₹<amount> -->
-    <text x="${(offsetX + 1.2).toFixed(2)}" y="${(offsetY + 18.2).toFixed(2)}" font-family="'Arial Black', Arial, Helvetica, sans-serif" font-size="4.2" font-weight="900" fill="#000">RATE: &#8377;${esc(rate)}</text>
+    <!-- Line 4: RATE: ₹<amount> (Prominent Heavy Font) -->
+    <text x="${(offsetX + 1.2).toFixed(2)}" y="${(offsetY + 16.5).toFixed(2)}" font-family="'Arial Black', Arial, Helvetica, sans-serif" font-size="4.2" font-weight="900" fill="#000">RATE: &#8377;${esc(rate)}</text>
 
-    <!-- Line 5: Serial / Item Code -->
-    <text x="${(offsetX + 1.2).toFixed(2)}" y="${(offsetY + 22.8).toFixed(2)}" font-family="monospace, Courier" font-size="2.1" font-weight="bold" fill="#000" letter-spacing="0.2">${esc(code)}</text>
+    <!-- Line 5: Serial / Item Code (Moved up to 20.8 mm, safely off the bottom edge) -->
+    <text x="${(offsetX + 1.2).toFixed(2)}" y="${(offsetY + 20.8).toFixed(2)}" font-family="monospace, Courier" font-size="2.2" font-weight="bold" fill="#000" letter-spacing="0.2">${esc(code)}</text>
 
-    <!-- Right side: Compact QR Code (15 mm) with product details -->
+    <!-- Right side lower: Compact 13 mm QR Code placed at Y=9.8 mm -->
     ${qr}
   </g>`;
 }
