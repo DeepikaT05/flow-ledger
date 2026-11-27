@@ -41,7 +41,12 @@ export function keyName(e: KeyboardEvent): string {
   if (e.code?.startsWith('Key') && (e.altKey || e.ctrlKey)) k = e.code.slice(3);
   if (e.code?.startsWith('Digit') && (e.altKey || e.ctrlKey)) k = e.code.slice(5);
   if (['Control', 'Alt', 'Shift', 'Meta'].includes(k)) return k;
-  const mods = [e.ctrlKey && 'Ctrl', e.altKey && 'Alt', e.shiftKey && k.length > 1 && 'Shift'].filter(Boolean);
+  const isPrintableChar = k.length === 1 && !e.ctrlKey && !e.altKey;
+  const mods = [
+    e.ctrlKey && 'Ctrl',
+    e.altKey && 'Alt',
+    e.shiftKey && (!isPrintableChar || k.length > 1) && 'Shift',
+  ].filter(Boolean);
   return [...mods, k].join('+');
 }
 

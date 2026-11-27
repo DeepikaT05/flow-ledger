@@ -675,6 +675,12 @@ function shortcutsHelp() {
 // ------------------------------------------------------------------ global keyboard
 let altAlone = false;
 document.addEventListener('keydown', async (e) => {
+  // Allow browser hard refresh (Ctrl+Shift+R, Ctrl+F5) and dev tools (Ctrl+Shift+I/J/C)
+  const isHardRefresh = (e.ctrlKey && e.shiftKey && (e.key === 'r' || e.key === 'R' || e.code === 'KeyR'))
+                     || (e.ctrlKey && (e.key === 'F5' || e.code === 'F5'));
+  const isDevTools = e.ctrlKey && e.shiftKey && ['I', 'J', 'C'].includes((e.key || '').toUpperCase());
+  if (isHardRefresh || isDevTools) return;
+
   const k = keyName(e);
   altAlone = k === 'Alt';
   if (k === 'Alt' || k === 'Control' || k === 'Shift') { if (k === 'Alt') e.preventDefault(); return; }
