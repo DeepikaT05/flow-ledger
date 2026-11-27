@@ -304,7 +304,7 @@ export async function closingStock(initialStores: string[] = ['MAIN STORE'], opt
     rowsBox.innerHTML = view.map((it, i) => `<div class="r${i === sel ? ' sel' : ''}" data-i="${i}">
       <span style="display:flex;align-items:center;gap:6px;overflow:hidden;text-overflow:ellipsis;">
         <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(it.name.toUpperCase())}</span>
-        ${isJewel ? `<button type="button" class="btn-item-qr" data-i="${i}" title="Print QR Tag (Alt+P)" style="margin-left:auto;padding:1px 6px;font-size:10px;font-weight:800;background:#0284c7;color:#fff;border:none;border-radius:3px;cursor:pointer;flex-shrink:0;">🖨️ QR</button>` : ''}
+        <button type="button" class="btn-item-qr" data-i="${i}" title="Print Barcode / QR Sticker (Alt+P)" style="margin-left:auto;padding:1px 6px;font-size:10px;font-weight:800;background:#0284c7;color:#fff;border:none;border-radius:3px;cursor:pointer;flex-shrink:0;">🖨️ ${isJewel ? 'QR' : 'Sticker'}</button>
       </span>
       <span>${esc((it.pack ?? '').toUpperCase())}</span><span class="n">${f2(it.mrp)}</span><span class="n">${qty(stockOf(it))}</span><span>${esc(it.unit ?? '')}</span></div>`).join('')
       || '<div class="empty">No items</div>';
@@ -524,7 +524,7 @@ export async function closingStock(initialStores: string[] = ['MAIN STORE'], opt
     }
     if (k === '*') { shortage = !shortage; applyFilter(); return true; }
     if (k === 'Alt+X') { exportExcel(); return true; }
-    if ((k === 'Alt+P' || k === 'Alt+p') && isJewel) {
+    if (k === 'Alt+P' || k === 'Alt+p') {
       if (view[sel]) {
         import('./jeweltag.ts').then((m) => m.printItemTag(view[sel]));
         return true;
@@ -1804,7 +1804,7 @@ export async function batchStock(initialStores: string[] = ['MAIN STORE']) {
       return true;
     }
     if (k === 'Alt+X') { exportExcel(); return true; }
-    if ((k === 'Alt+P' || k === 'Alt+p') && isJewel) {
+    if (k === 'Alt+P' || k === 'Alt+p') {
       const curRow = displayRows[sel];
       if (curRow && curRow.type === 'batch') {
         import('./jeweltag.ts').then((m) => m.printItemTag({ id: curRow.product.item_id, name: curRow.product.name, pack: curRow.product.pack, unit: curRow.product.unit, sale_rate: curRow.product.sale_rate, purchase_rate: curRow.product.purchase_rate, mrp: curRow.product.mrp, gst_rate: curRow.product.gst_rate, hsn: curRow.product.hsn, barcode: curRow.batch.batch }));

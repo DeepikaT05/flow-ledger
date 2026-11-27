@@ -84,15 +84,13 @@ const ACTIONS: Record<string, (arg?: string) => unknown> = {
   'print': () => window.print(),
   'shortcuts': () => shortcutsHelp(),
   'qr.list': () => {
-    if (!currentCompanyJewel) { toast('QR & Jewellery Tag Master is only available for Jewellery companies', true); return; }
     import('./qrmanager.ts').then((m) => m.qrManagerScreen(false));
   },
   'qr.jewel': () => {
-    if (!currentCompanyJewel) { toast('QR & Jewellery Tag Master is only available for Jewellery companies', true); return; }
+    if (!currentCompanyJewel) { toast('Jewellery Tag Master is only available for Jewellery companies', true); return; }
     import('./qrmanager.ts').then((m) => m.qrManagerScreen(true));
   },
   'qr.print': () => {
-    if (!currentCompanyJewel) { toast('QR & Jewellery Tag Master is only available for Jewellery companies', true); return; }
     import('./qrmanager.ts').then((m) => m.qrManagerScreen(false));
   },
   // Quit: end the server session and start again from the login box.
@@ -261,7 +259,7 @@ let TREE: MenuItem[] = LIVE_MENU;
 function applyRole() {
   simpleMenu = isUserRole();
   const rawTree = simpleMenu ? (filterTree(LIVE_USER_MENU) as MenuItem[]) : isSuper() ? LIVE_MENU : (filterTree(LIVE_MENU) as MenuItem[]);
-  TREE = rawTree.filter((m) => currentCompanyJewel || (m.label !== 'QR' && !m.action?.startsWith('qr.')));
+  TREE = rawTree;
   closeMenu();
   renderQuick();
   renderSeen();

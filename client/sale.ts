@@ -265,7 +265,7 @@ async function pickProduct(initial: string, isJewel = false): Promise<Item | nul
     onKey: (k, cur, pop) => {
       if (k === 'F2') { if (!allowed('item.add', 'New Item')) return true; itemForm({ name: initial.toUpperCase() }).then(async (i) => { if (i) pop.setRows(await api('/items')); }); return true; }
       if (k === 'F3' && cur) { if (!allowed('item.list', 'Edit Item')) return true; itemForm(cur).then(async (i) => { if (i) pop.setRows(await api('/items')); }); return true; }
-      if ((k === 'Alt+P' || k === 'Alt+p') && cur && isJewel) { import('./jeweltag.ts').then((m) => m.printItemTag(cur)); return true; }
+      if ((k === 'Alt+P' || k === 'Alt+p') && cur) { import('./jeweltag.ts').then((m) => m.printItemTag(cur)); return true; }
       if (k === 'F4' && cur) { if (allowed('item.register', 'Item Register')) import('./masters.ts').then((m) => m.itemRegister(cur)).catch((e) => toast((e as Error).message, true)); return true; }
       return false;
     },

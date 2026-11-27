@@ -6,8 +6,8 @@ import { isJewellery } from './jewellery.ts';
 
 export async function qrManagerScreen(jewelOnly = false) {
   const co = await api<any>('/company').catch(() => ({}));
-  if (!isJewellery(co.business_type)) {
-    toast('QR & Jewellery Tag Master is only available for Jewellery companies', true);
+  if (jewelOnly && !isJewellery(co.business_type)) {
+    toast('Jewellery Tag Master is only available for Jewellery companies', true);
     return;
   }
   const w = margWin('SAVED QR MASTER (ALL TAGS)');

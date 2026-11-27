@@ -158,7 +158,7 @@ export async function productScreen(existing?: Partial<Item> & { details?: strin
         class: 'btn sm',
         style: 'float: right; margin-top: -3px; background: #0284c7; color: #fff; font-weight: 700; font-size: 11px; padding: 3px 12px; cursor: pointer; border: none; border-radius: 3px;'
       }, '🖨️ Print Jewellery Tag (Alt+P)');
-      tagBtn.onclick = () => printCurrentTag();
+      tagBtn.onclick = () => printCurrentTag('dual');
 
       const jwHead = h('div', { class: 'pf-jw-h' }, 'JEWELLERY DETAIL (GW · LESS · NW · MKG · SCANNABLE QR)');
       jwHead.append(tagBtn);
@@ -174,6 +174,44 @@ export async function productScreen(existing?: Partial<Item> & { details?: strin
       jwWrap.append(jwCols, qrBox);
       jw.append(jwHead, jwWrap);
       p.body.append(jw);
+    } else {
+      const tagBtn = h('button', {
+        type: 'button',
+        class: 'btn sm',
+        style: 'float: right; margin-top: -3px; background: #0f766e; color: #fff; font-weight: 700; font-size: 11px; padding: 3px 12px; cursor: pointer; border: none; border-radius: 3px;'
+      }, '📦 Print Barcode Sticker (Alt+P)');
+      tagBtn.onclick = () => printCurrentTag('sticker');
+
+      const stHead = h('div', { class: 'pf-jw-h' }, 'BARCODE & STICKER (1D BARCODE · CODE · PRODUCT NAME)');
+      stHead.append(tagBtn);
+
+      const stWrap = h('div', { style: 'display: flex; gap: 14px; padding: 6px 14px; background: #f8fafc; align-items: center; justify-content: space-between;' });
+      const stNotice = h('div', { style: 'font-size: 11.5px; color: #475569; flex: 1;' }, 'Physical barcode sticker for TSC TE244 printer. Press Alt+P or click button to print barcode label.');
+      qrBox = h('div', {
+        class: 'pf-qr-preview',
+        style: 'width: 240px; background: #fff; border: 1.5px solid #0f172a; border-radius: 6px; padding: 6px 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: 0 1px 4px rgba(0,0,0,0.15); flex-shrink: 0;'
+      });
+      stWrap.append(stNotice, qrBox);
+      const stBox = h('div', { class: 'pf-jw' });
+      stBox.append(stHead, stWrap);
+      p.body.append(stBox);
+
+      const updateSticker = () => {
+        if (!qrBox) return;
+        const rawName = (byKey('name') as HTMLInputElement)?.value.trim();
+        const pName = (rawName && rawName !== '0') ? rawName : 'PRODUCT';
+        const bCode = (byKey('barcode') as HTMLInputElement)?.value.trim() || (byKey('code') as HTMLInputElement)?.value.trim() || (existing?.id ? `PA${String(existing.id).padStart(6, '0')}` : 'PA000001');
+        const bSvg = barcode128Svg(bCode, 24, 1.1);
+        qrBox.innerHTML = `
+          <div style="font-size: 8.5px; font-weight: 800; color: #475569; text-transform: uppercase; margin-bottom: 1px;">📦 PHYSICAL STICKER (1D)</div>
+          <div style="font-family: monospace; font-size: 13px; font-weight: 900; color: #000; letter-spacing: 0.8px;">${esc(bCode)}</div>
+          <div style="width: 100%; height: 24px; margin: 2px 0;">${bSvg}</div>
+          <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #000; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${esc(pName)}</div>
+        `;
+      };
+      (byKey('name') as HTMLInputElement | null)?.addEventListener('input', updateSticker);
+      (byKey('barcode') as HTMLInputElement | null)?.addEventListener('input', updateSticker);
+      setTimeout(updateSticker, 0);
     }
 
     const inputs = [...p.body.querySelectorAll('input:not([readonly]), select')] as (HTMLInputElement | HTMLSelectElement)[];
@@ -357,9 +395,9 @@ export async function productScreen(existing?: Partial<Item> & { details?: strin
 
         toast(isNew ? 'Product saved (QR code created)' : 'Product updated');
         const savedItem = await api<Item>(`/items/${id}`);
-        const printNow = await confirmBox('Print QR Tag now ?');
+        const printNow = await confirmBox(jewel ? 'Print QR Tag now ?' : 'Print Barcode Sticker now ?');
         if (printNow) {
-          printCurrentTag();
+          printCurrentTag(jewel ? 'dual' : 'sticker');
         }
         finish(savedItem);
       } catch (e) { toast((e as Error).message, true); }
@@ -389,7 +427,7 @@ export async function productScreen(existing?: Partial<Item> & { details?: strin
         const n = inputs[Math.max(0, i - 1)]; n.focus(); if (n instanceof HTMLInputElement) n.select();
         return true;
       }
-      if ((k === 'Alt+P' || k === 'Alt+p') && jewel) { printCurrentTag(); return true; }
+      if (k === 'Alt+P' || k === 'Alt+p') { printCurrentTag(jewel ? 'dual' : 'sticker'); return true; }
       if (k === 'Ctrl+W' || k === 'Ctrl+S' || k === 'PageDown') { save(); return true; }   // MARG saves with Ctrl+W → "Yes"
       return false;
     };
