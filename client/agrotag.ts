@@ -32,21 +32,29 @@ export function agroQrSvg(text: string, x: number, y: number, size: number): str
   qr.make();
   const count = qr.getModuleCount();
   const cellSize = size / count;
-  const rects: string[] = [];
+  const pathParts: string[] = [];
 
   for (let r = 0; r < count; r++) {
-    for (let c = 0; c < count; c++) {
+    let c = 0;
+    while (c < count) {
       if (qr.isDark(r, c)) {
-        const px = x + c * cellSize;
-        const py = y + r * cellSize;
-        rects.push(`<rect x="${px.toFixed(2)}" y="${py.toFixed(2)}" width="${cellSize.toFixed(2)}" height="${cellSize.toFixed(2)}" fill="#000"/>`);
+        const startC = c;
+        while (c < count && qr.isDark(r, c)) c++;
+        const runLen = c - startC;
+        const px = (x + startC * cellSize).toFixed(2);
+        const py = (y + r * cellSize).toFixed(2);
+        const w = (runLen * cellSize).toFixed(2);
+        const h = cellSize.toFixed(2);
+        pathParts.push(`M${px},${py}h${w}v${h}h-${w}z`);
+      } else {
+        c++;
       }
     }
   }
 
   return `<g class="qr-code">
     <rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${size.toFixed(2)}" height="${size.toFixed(2)}" fill="#fff"/>
-    ${rects.join('')}
+    <path d="${pathParts.join('')}" fill="#000"/>
   </g>`;
 }
 
@@ -320,19 +328,11 @@ export function printAgroStickerWeb(data: AgroSticker, initialMode: '2up' | '1up
 export function printMultipleAgroStickersWeb(stickers: AgroSticker[], initialMode: '2up' | '1up' = '2up') {
   if (!stickers || !stickers.length) return;
 
-  const cards2Up = stickers.map((s, i) => `
-    <div class="sticker-card" data-idx="${i}">
-      <div class="sticker-header-label">#${i + 1} &middot; ${esc(s.name)} &middot; ₹${esc(String(s.rate))} (${esc(s.code)})</div>
-      <div class="sticker-svg-wrap">${agroSticker2UpSvg(s)}</div>
-    </div>
-  `).join('');
-
-  const cards1Up = stickers.map((s, i) => `
-    <div class="sticker-card" data-idx="${i}">
-      <div class="sticker-header-label">#${i + 1} &middot; ${esc(s.name)} &middot; ₹${esc(String(s.rate))} (${esc(s.code)})</div>
-      <div class="sticker-svg-wrap">${agroSticker1UpRollSvg(s)}</div>
-    </div>
-  `).join('');
+  const w = window.open('', '_blank', 'width=840,height=700');
+  if (!w) {
+    alert('Popup blocked by browser. Please allow popups for this site.');
+    return;
+  }
 
   const html = `<!doctype html>
 <html>
@@ -367,6 +367,9 @@ export function printMultipleAgroStickersWeb(stickers: AgroSticker[], initialMod
       font-size: 11px; font-weight: 700; color: #475569; margin-bottom: 4px;
       font-family: monospace;
     }
+    .loading-banner {
+      padding: 16px; font-weight: 700; color: #0284c7; text-align: center;
+    }
     @media print {
       body { padding: 0 !important; margin: 0 !important; background: #fff !important; }
       .no-print { display: none !important; }
@@ -390,35 +393,61 @@ export function printMultipleAgroStickersWeb(stickers: AgroSticker[], initialMod
 </head>
 <body>
   <div class="no-print top-toolbar">
-    <button onclick="showMode('2up')" id="btn-2up" style="padding: 6px 12px; font-size: 12px; font-weight: bold; background: ${initialMode === '2up' ? '#0284c7' : '#fff'}; color: ${initialMode === '2up' ? '#fff' : '#333'}; border: 1px solid #cbd5e1; border-radius: 4px; cursor: pointer;">🏷️ 2-Up Stickers (Both Parts)</button>
-    <button onclick="showMode('1up')" id="btn-1up" style="padding: 6px 12px; font-size: 12px; font-weight: bold; background: ${initialMode === '1up' ? '#0284c7' : '#fff'}; color: ${initialMode === '1up' ? '#fff' : '#333'}; border: 1px solid #cbd5e1; border-radius: 4px; cursor: pointer;">📦 Single Sticker (1 Side Only)</button>
-    <div style="font-size: 11px; color: #1e3a8a; background: #dbeafe; padding: 4px 8px; border-radius: 4px; font-weight: 700;">
-      TSC TE244 &middot; Direct Label Printer &middot; ${stickers.length} Stickers
+    <button onclick="switchMode('2up')" id="btn-2up" style="padding: 6px 12px; font-size: 12px; font-weight: bold; background: ${initialMode === '2up' ? '#0284c7' : '#fff'}; color: ${initialMode === '2up' ? '#fff' : '#333'}; border: 1px solid #cbd5e1; border-radius: 4px; cursor: pointer;">🏷️ 2-Up Stickers (Both Parts)</button>
+    <button onclick="switchMode('1up')" id="btn-1up" style="padding: 6px 12px; font-size: 12px; font-weight: bold; background: ${initialMode === '1up' ? '#0284c7' : '#fff'}; color: ${initialMode === '1up' ? '#fff' : '#333'}; border: 1px solid #cbd5e1; border-radius: 4px; cursor: pointer;">📦 Single Sticker (1 Side Only)</button>
+    <div id="status-badge" style="font-size: 11px; color: #1e3a8a; background: #dbeafe; padding: 4px 8px; border-radius: 4px; font-weight: 700;">
+      TSC TE244 &middot; Direct Label Printer &middot; <span id="ready-count">0</span> / ${stickers.length} Ready
     </div>
-    <button onclick="directPrintAll(this)" style="margin-left: auto; padding: 6px 18px; font-size: 12px; font-weight: 800; background: #15803d; color: #fff; border: none; border-radius: 4px; cursor: pointer; box-shadow:0 1px 3px rgba(0,0,0,0.15);">
+    <button id="btn-print" onclick="directPrintAll(this)" style="margin-left: auto; padding: 6px 18px; font-size: 12px; font-weight: 800; background: #15803d; color: #fff; border: none; border-radius: 4px; cursor: pointer; box-shadow:0 1px 3px rgba(0,0,0,0.15);">
       🖨️ Bulk Print All (${stickers.length})
     </button>
     <button onclick="window.close()" style="padding: 6px 12px; font-size: 12px; border: 1px solid #ccc; background: #fff; border-radius: 4px; cursor: pointer;">Close</button>
   </div>
 
-  <div id="view-2up" class="stickers-list" style="${initialMode === '2up' ? 'display:flex;' : 'display:none;'}">
-    ${cards2Up}
-  </div>
-  <div id="view-1up" class="stickers-list" style="${initialMode === '1up' ? 'display:flex;' : 'display:none;'}">
-    ${cards1Up}
-  </div>
+  <div id="stickers-container" class="stickers-list"></div>
+  <div id="loading-indicator" class="no-print loading-banner">Rendering stickers...</div>
 
   <script>
     let currentMode = '${initialMode}';
+    let renderedCount = 0;
     const totalCount = ${stickers.length};
-    function showMode(mode) {
+    const stickersData = window.__stickers || [];
+    const container = document.getElementById('stickers-container');
+    const loadingEl = document.getElementById('loading-indicator');
+    const readyCountEl = document.getElementById('ready-count');
+
+    function renderNextChunk(chunkSize = 25) {
+      if (!window.__renderCard) return;
+      const end = Math.min(renderedCount + chunkSize, totalCount);
+      const frag = document.createDocumentFragment();
+      for (let i = renderedCount; i < end; i++) {
+        const div = document.createElement('div');
+        div.className = 'sticker-card';
+        div.dataset.idx = String(i);
+        div.innerHTML = window.__renderCard(stickersData[i], i, currentMode);
+        frag.appendChild(div);
+      }
+      container.appendChild(frag);
+      renderedCount = end;
+      readyCountEl.textContent = String(renderedCount);
+      if (renderedCount < totalCount) {
+        setTimeout(() => renderNextChunk(chunkSize), 10);
+      } else {
+        loadingEl.style.display = 'none';
+      }
+    }
+
+    function switchMode(mode) {
+      if (currentMode === mode) return;
       currentMode = mode;
-      document.getElementById('view-2up').style.display = mode === '2up' ? 'flex' : 'none';
-      document.getElementById('view-1up').style.display = mode === '1up' ? 'flex' : 'none';
       document.getElementById('btn-2up').style.background = mode === '2up' ? '#0284c7' : '#fff';
       document.getElementById('btn-2up').style.color = mode === '2up' ? '#fff' : '#333';
       document.getElementById('btn-1up').style.background = mode === '1up' ? '#0284c7' : '#fff';
       document.getElementById('btn-1up').style.color = mode === '1up' ? '#fff' : '#333';
+      container.innerHTML = '';
+      renderedCount = 0;
+      loadingEl.style.display = 'block';
+      renderNextChunk(30);
     }
 
     async function rasterizeSvgToPng(svgEl, wMm, hMm) {
@@ -458,10 +487,14 @@ export function printMultipleAgroStickersWeb(stickers: AgroSticker[], initialMod
       const origText = btn.textContent;
       btn.disabled = true;
       try {
+        if (renderedCount < totalCount) {
+          btn.textContent = '⏳ Completing render…';
+          renderNextChunk(totalCount - renderedCount);
+        }
+
         const wMm = 104;
         const hMm = 25;
-        const containerId = currentMode === '2up' ? 'view-2up' : 'view-1up';
-        const svgEls = Array.from(document.getElementById(containerId).querySelectorAll('.sticker-svg-wrap svg'));
+        const svgEls = Array.from(container.querySelectorAll('.sticker-svg-wrap svg'));
         if (!svgEls.length) throw new Error('No stickers found to print');
 
         const allPngs = [];
@@ -507,10 +540,17 @@ export function printMultipleAgroStickersWeb(stickers: AgroSticker[], initialMod
 </body>
 </html>`;
 
-  const w = window.open('', '_blank', 'width=840,height=700');
-  if (w) {
-    w.document.open();
-    w.document.write(html);
-    w.document.close();
-  }
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
+
+  (w as any).__stickers = stickers;
+  (w as any).__renderCard = (s: AgroSticker, i: number, mode: '2up' | '1up') => {
+    const svg = mode === '2up' ? agroSticker2UpSvg(s) : agroSticker1UpRollSvg(s);
+    return `
+      <div class="sticker-header-label">#${i + 1} &middot; ${esc(s.name)} &middot; ₹${esc(String(s.rate))} (${esc(s.code)})</div>
+      <div class="sticker-svg-wrap">${svg}</div>
+    `;
+  };
+  (w as any).renderNextChunk(30);
 }
