@@ -2246,6 +2246,7 @@ export const HOTKEYS: Record<string, string> = {
   'Alt+G': 'menu.open:G',
   'Alt+F': 'menu.open:F',
   'Alt+N': 'bill.new:SALE',
+  'Ctrl+N': 'bill.new:SALE',
   'Alt+C': 'bill.new:SALE_CHALLAN',
   'Alt+Insert': 'bill.new:SALE_CHALLAN',
   'Alt+A': 'bill.new:COUNTER_SALE',

@@ -36,6 +36,7 @@ export function h<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<s
 /** Normalised key name, e.g. "Ctrl+W", "Alt+N", "Shift+F12", "Enter". */
 export function keyName(e: KeyboardEvent): string {
   let k = e.key;
+  if (k === 'Return' || e.code === 'NumpadEnter') k = 'Enter';
   if (k === ' ') k = 'Space';
   if (k.length === 1) k = k.toUpperCase();
   if (e.code?.startsWith('Key') && (e.altKey || e.ctrlKey)) k = e.code.slice(3);

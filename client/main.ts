@@ -431,7 +431,7 @@ bar.addEventListener('mouseover', (e) => {
 });
 // Capture phase: the menu re-renders on click, so by the bubble phase the clicked
 // element is already detached and would look like an outside click.
-document.addEventListener('mousedown', (e) => { if (path.length && !bar.contains(e.target as Node)) closeMenu(); }, true);
+document.addEventListener('mousedown', (e) => { if ((menuActive || path.length > 0) && !bar.contains(e.target as Node)) closeMenu(); }, true);
 
 // ------------------------------------------------------------------ right panel
 const rp = document.getElementById('rightpanel')!;
@@ -444,7 +444,10 @@ const quickKey = () => `quick:${session()?.name ?? ''}`;
 function savedQuick(): Quick[] {
   try {
     const s = JSON.parse(localStorage.getItem(quickKey()) ?? 'null');
-    if (Array.isArray(s)) return s.filter((q) => typeof q?.label === 'string' && typeof q?.action === 'string');
+    if (Array.isArray(s) && s.length > 0) {
+      const list = s.filter((q) => typeof q?.label === 'string' && typeof q?.action === 'string');
+      if (list.length > 0) return list;
+    }
   } catch { /* storage unavailable or bad data */ }
   return QUICK;
 }
@@ -457,7 +460,8 @@ const sameQuick = (a: Quick, b: Quick) => a.action === b.action && (a.action !==
 function renderQuick() {
   const all = savedQuick();
   quick = all.filter((q) => works(q.action) && (!session() || shortcutAllowed(q.label, q.action)));
-  rpSel = Math.max(0, Math.min(rpSel, quick.length - 1));
+  if (!quick.length) quick = QUICK.filter((q) => works(q.action));
+  rpSel = Math.max(0, Math.min(rpSel, Math.max(0, quick.length - 1)));
   rp.innerHTML = quick.map((q, i) => `<div class="rp-btn${i === rpSel ? ' focus' : ''}" data-i="${i}"><span class="rp-no">${i + 1}</span>${esc(q.label)}</div>`).join('');
 }
 
@@ -692,23 +696,38 @@ document.addEventListener('keydown', async (e) => {
   // Ctrl+C/V/X/A/Z stay native so text editing still works.
   if (e.altKey || /F\d+$/.test(k) || (e.ctrlKey && !['C', 'V', 'X', 'A', 'Z', 'Y', 'ArrowLeft', 'ArrowRight', 'Backspace'].includes(k.split('+').pop()!))) e.preventDefault();
 
-  // When a menu or submenu is active/open, menuKey gets first priority on keys (especially Escape)
-  if (menuActive || path.length > 0) {
-    if (menuKey(k)) { e.preventDefault(); e.stopPropagation(); return; }
-  }
-
+  // Active windows/dialogs get first priority over keys
   if (winCount()) {
     if (await handleWinKey(e, k)) return;
     // Global Marg hotkeys still work over windows when the window didn't use them.
-    if ((e.altKey || e.ctrlKey || k === 'F12' || k === 'Shift+F12') && HOTKEYS[k]) { run(HOTKEYS[k]); }
+    if ((e.altKey || e.ctrlKey || k === 'F12' || k === 'Shift+F12') && HOTKEYS[k]) {
+      e.preventDefault();
+      run(HOTKEYS[k]);
+    }
     return;
+  }
+
+  // When a menu or submenu is active/open, menuKey gets first priority on keys (especially Escape)
+  if (menuActive || path.length > 0) {
+    if (menuKey(k)) { e.preventDefault(); e.stopPropagation(); return; }
   }
 
   if (HOTKEYS[k]) { e.preventDefault(); run(HOTKEYS[k], undefined); return; }
   if (k === 'F10') { e.preventDefault(); menuActive = true; barFocus = 0; renderMenu(); return; }
   // Main screen: arrows walk the quick panel, letters open menus.
   if (k === 'ArrowDown' || k === 'ArrowUp') { rpSel = (rpSel + (k === 'ArrowDown' ? 1 : -1) + quick.length) % quick.length; renderQuick(); e.preventDefault(); return; }
-  if (k === 'Enter' && quick[rpSel]) { run(quick[rpSel].action, quick[rpSel].label); return; }
+  if (k === 'Enter' && quick[rpSel]) { e.preventDefault(); run(quick[rpSel].action, quick[rpSel].label); return; }
+  // Allow digit keys 1-9 to trigger right panel shortcuts directly (Marg standard)
+  if (/^[1-9]$/.test(k)) {
+    const idx = Number(k) - 1;
+    if (quick[idx]) {
+      e.preventDefault();
+      rpSel = idx;
+      renderQuick();
+      run(quick[idx].action, quick[idx].label);
+      return;
+    }
+  }
   if (k.length === 1) {
     const hit = topMenuIndex(k);
     if (hit >= 0) { e.preventDefault(); openTop(hit); }
@@ -733,8 +752,10 @@ document.getElementById('titlebar')!.textContent = 'Flow Ledger|Web|MAIN COMPUTE
 (async () => {
   const started = boot();
   renderMenu();          // isBooting() is set now: just "Flow Ledger"
+  renderQuick();
   const u = await started;
   user = u.name;
   renderMenu();
   refreshInfo();
+  renderQuick();
 })();
