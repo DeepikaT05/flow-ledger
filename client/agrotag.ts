@@ -111,18 +111,14 @@ export function agroStickerSingleSvg(data: AgroSticker, offsetX = 3.5, offsetY =
 }
 
 /** 2-Up Side-by-Side Dual Label SVG (104 mm × 25 mm - Safe margins on both outer sides) */
-export function agroSticker2UpSvg(data1: AgroSticker, data2?: AgroSticker | null, allowDuplicate = false): string {
+export function agroSticker2UpSvg(data1: AgroSticker, data2?: AgroSticker | null): string {
+  // Both sides print the exact same data if data2 is not passed, with the same code
+  const d2 = data2 || data1;
+
   // Left sticker: starts at 3.5 mm (leaves 3.5 mm margin on left, ends at 47.5 mm)
   const s1 = agroStickerSingleSvg(data1, 3.5, 0);
-
-  let s2 = '';
-  if (data2) {
-    s2 = agroStickerSingleSvg(data2, 55.5, 0);
-  } else if (allowDuplicate) {
-    const nextCode = nextSerialCode(data1.code);
-    const d2 = { ...data1, code: nextCode };
-    s2 = agroStickerSingleSvg(d2, 55.5, 0);
-  }
+  // Right sticker: starts at 55.5 mm (ends at 99.5 mm, leaving 4.5 mm margin on right)
+  const s2 = agroStickerSingleSvg(d2, 55.5, 0);
 
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 104 25" width="104mm" height="25mm" style="display:block; background:#fff;" shape-rendering="crispEdges">
     ${s1}
@@ -130,10 +126,11 @@ export function agroSticker2UpSvg(data1: AgroSticker, data2?: AgroSticker | null
   </svg>`;
 }
 
-/** Single Sticker on 104 mm Roll SVG (Prints on 1 side only: Left part printed, Right part blank) */
-export function agroSticker1UpRollSvg(data: AgroSticker): string {
-  // Left sticker: starts at 3.5 mm (1 side only). Right side is blank so printer driver does NOT center!
-  const s1 = agroStickerSingleSvg(data, 3.5, 0);
+/** Single Sticker on 104 mm Roll SVG (Prints on 1 side only: Left or Right part printed, opposite part blank) */
+export function agroSticker1UpRollSvg(data: AgroSticker, side: 'left' | 'right' = 'left'): string {
+  // Left: starts at 3.5 mm. Right: starts at 55.5 mm.
+  const offsetX = side === 'right' ? 55.5 : 3.5;
+  const s1 = agroStickerSingleSvg(data, offsetX, 0);
 
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 104 25" width="104mm" height="25mm" style="display:block; background:#fff;" shape-rendering="crispEdges">
     ${s1}
@@ -154,7 +151,7 @@ function nextSerialCode(code: string): string {
 /** Converts Item + Company row to an AgroSticker object */
 export function agroTagOfItem(it: any, co?: any): AgroSticker {
   let d: Record<string, any> = {};
-  try { d = JSON.parse(it?.details || '{}'); } catch {}
+  try { d = JSON.parse(it?.details || '{}'); } catch { }
 
   const compName = co?.name || it?.company_name || 'TAMRAKAR AGROTECH';
   const station = co?.station || '';
@@ -182,7 +179,7 @@ const AGRO_PAGE_ROLL_CSS = '@page { size: 104mm 25mm; margin: 0; }';
 /** Opens the Agrotech Barcode & QR Sticker popup window */
 export function printAgroStickerWeb(data: AgroSticker, initialMode: '2up' | '1up-left' | '1up-right' | '1up' = '2up') {
   const normMode = initialMode === '1up' ? '1up-left' : initialMode;
-  const svg2Up = agroSticker2UpSvg(data, null, true);
+  const svg2Up = agroSticker2UpSvg(data);
   const svg1UpLeft = agroSticker1UpRollSvg(data, 'left');
   const svg1UpRight = agroSticker1UpRollSvg(data, 'right');
 
@@ -325,7 +322,7 @@ export function printAgroStickerWeb(data: AgroSticker, initialMode: '2up' | '1up
 </body>
 </html>`;
 
-  const w = window.open('', '_blank', 'width=620,height=360');
+  const w = window.open('', '_blank', 'width=880,height=420');
   if (w) {
     w.document.open();
     w.document.write(html);
@@ -338,9 +335,9 @@ export function printMultipleAgroStickersWeb(stickers: AgroSticker[], initialMod
   if (!stickers || !stickers.length) return;
 
   const normMode = initialMode === '1up' ? '1up-left' : initialMode;
-  const initialTotalCards = normMode === '2up' ? Math.ceil(stickers.length / 2) : stickers.length;
+  const totalCount = stickers.length;
 
-  const w = window.open('', '_blank', 'width=840,height=700');
+  const w = window.open('', '_blank', 'width=880,height=720');
   if (!w) {
     alert('Popup blocked by browser. Please allow popups for this site.');
     return;
@@ -350,7 +347,7 @@ export function printMultipleAgroStickersWeb(stickers: AgroSticker[], initialMod
 <html>
 <head>
   <meta charset="utf-8"/>
-  <title>Bulk Print Agrotech Stickers (${stickers.length} Items)</title>
+  <title>Bulk Print Agrotech Stickers (${totalCount} Stickers)</title>
   <style id="page-size">${AGRO_PAGE_ROLL_CSS}</style>
   <style>
     body {
@@ -365,19 +362,16 @@ export function printMultipleAgroStickersWeb(stickers: AgroSticker[], initialMod
       box-shadow: 0 2px 6px rgba(0,0,0,0.1);
     }
     .stickers-list {
-      display: flex; flex-direction: column; gap: 10px; align-items: center;
+      display: flex; flex-direction: column; gap: 12px; align-items: center;
     }
     .sticker-card {
       background: #fff;
-      padding: 8px 12px 10px;
+      padding: 10px;
       border: 1px solid #cbd5e1;
       border-radius: 6px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
       display: inline-block;
-    }
-    .sticker-header-label {
-      font-size: 11px; font-weight: 700; color: #475569; margin-bottom: 4px;
-      font-family: monospace;
+      width: fit-content;
     }
     .loading-banner {
       padding: 16px; font-weight: 700; color: #0284c7; text-align: center;
@@ -385,7 +379,6 @@ export function printMultipleAgroStickersWeb(stickers: AgroSticker[], initialMod
     @media print {
       body { padding: 0 !important; margin: 0 !important; background: #fff !important; }
       .no-print { display: none !important; }
-      .sticker-header-label { display: none !important; }
       .stickers-list { display: block !important; }
       .sticker-card {
         border: none !important;
@@ -409,10 +402,10 @@ export function printMultipleAgroStickersWeb(stickers: AgroSticker[], initialMod
     <button onclick="switchMode('1up-left')" id="btn-1up-left" style="padding: 6px 12px; font-size: 12px; font-weight: bold; background: ${normMode === '1up-left' ? '#0284c7' : '#fff'}; color: ${normMode === '1up-left' ? '#fff' : '#333'}; border: 1px solid #cbd5e1; border-radius: 4px; cursor: pointer;">📦 Single Sticker (Left Side Only)</button>
     <button onclick="switchMode('1up-right')" id="btn-1up-right" style="padding: 6px 12px; font-size: 12px; font-weight: bold; background: ${normMode === '1up-right' ? '#0284c7' : '#fff'}; color: ${normMode === '1up-right' ? '#fff' : '#333'}; border: 1px solid #cbd5e1; border-radius: 4px; cursor: pointer;">📦 Single Sticker (Right Side Only)</button>
     <div id="status-badge" style="font-size: 11px; color: #1e3a8a; background: #dbeafe; padding: 4px 8px; border-radius: 4px; font-weight: 700;">
-      TSC TE244 &middot; Direct Label Printer &middot; <span id="ready-count">0</span> / <span id="total-cards-label">${initialTotalCards}</span> Labels (${stickers.length} Items) Ready
+      TSC TE244 &middot; Direct Label Printer &middot; <span id="ready-count">0</span> / ${totalCount} Ready
     </div>
     <button id="btn-print" onclick="directPrintAll(this)" style="margin-left: auto; padding: 6px 18px; font-size: 12px; font-weight: 800; background: #15803d; color: #fff; border: none; border-radius: 4px; cursor: pointer; box-shadow:0 1px 3px rgba(0,0,0,0.15);">
-      🖨️ Bulk Print All (<span id="btn-labels-count">${initialTotalCards}</span> Labels)
+      🖨️ Bulk Print All (<span id="btn-labels-count">${totalCount}</span> Stickers)
     </button>
     <button onclick="window.close()" style="padding: 6px 12px; font-size: 12px; border: 1px solid #ccc; background: #fff; border-radius: 4px; cursor: pointer;">Close</button>
   </div>
@@ -427,19 +420,13 @@ export function printMultipleAgroStickersWeb(stickers: AgroSticker[], initialMod
     const container = document.getElementById('stickers-container');
     const loadingEl = document.getElementById('loading-indicator');
     const readyCountEl = document.getElementById('ready-count');
-    const totalCardsLabelEl = document.getElementById('total-cards-label');
-    const btnLabelsCountEl = document.getElementById('btn-labels-count');
-
-    function getTotalCards() {
-      return currentMode === '2up' ? Math.ceil(stickersData.length / 2) : stickersData.length;
-    }
+    const totalCount = stickersData.length;
 
     function renderNextChunk(chunkSize = 35) {
       if (!window.__renderCard) {
         setTimeout(() => renderNextChunk(chunkSize), 16);
         return;
       }
-      const totalCount = getTotalCards();
       const end = Math.min(renderedCount + chunkSize, totalCount);
       const frag = document.createDocumentFragment();
       for (let i = renderedCount; i < end; i++) {
@@ -463,14 +450,13 @@ export function printMultipleAgroStickersWeb(stickers: AgroSticker[], initialMod
         if (badge) {
           badge.style.background = '#dcfce7';
           badge.style.color = '#15803d';
-          badge.innerHTML = 'TSC TE244 &middot; Direct Label Printer &middot; <strong>' + totalCount + ' / ' + totalCount + ' Labels (' + stickersData.length + ' Items) Ready</strong>';
+          badge.innerHTML = 'TSC TE244 &middot; Direct Label Printer &middot; <strong>' + totalCount + ' / ' + totalCount + ' Ready</strong>';
         }
       }
     }
 
     function renderAllNow() {
       if (!window.__renderCard) return;
-      const totalCount = getTotalCards();
       if (renderedCount >= totalCount) return;
       const frag = document.createDocumentFragment();
       for (let i = renderedCount; i < totalCount; i++) {
@@ -490,7 +476,7 @@ export function printMultipleAgroStickersWeb(stickers: AgroSticker[], initialMod
       if (badge) {
         badge.style.background = '#dcfce7';
         badge.style.color = '#15803d';
-        badge.innerHTML = 'TSC TE244 &middot; Direct Label Printer &middot; <strong>' + totalCount + ' / ' + totalCount + ' Labels (' + stickersData.length + ' Items) Ready</strong>';
+        badge.innerHTML = 'TSC TE244 &middot; Direct Label Printer &middot; <strong>' + totalCount + ' / ' + totalCount + ' Ready</strong>';
       }
     }
 
@@ -508,15 +494,12 @@ export function printMultipleAgroStickersWeb(stickers: AgroSticker[], initialMod
       document.getElementById('btn-1up-right').style.color = mode === '1up-right' ? '#fff' : '#333';
       container.innerHTML = '';
       renderedCount = 0;
-      const totalCount = getTotalCards();
-      if (totalCardsLabelEl) totalCardsLabelEl.textContent = String(totalCount);
-      if (btnLabelsCountEl) btnLabelsCountEl.textContent = String(totalCount);
       if (loadingEl) loadingEl.style.display = 'block';
       const badge = document.getElementById('status-badge');
       if (badge) {
         badge.style.background = '#dbeafe';
         badge.style.color = '#1e3a8a';
-        badge.innerHTML = 'TSC TE244 &middot; Direct Label Printer &middot; <span id="ready-count">0</span> / <span id="total-cards-label">' + totalCount + '</span> Labels (' + stickersData.length + ' Items) Ready';
+        badge.innerHTML = 'TSC TE244 &middot; Direct Label Printer &middot; <span id="ready-count">0</span> / ' + totalCount + ' Ready';
       }
       renderNextChunk(35);
     }
@@ -554,7 +537,6 @@ export function printMultipleAgroStickersWeb(stickers: AgroSticker[], initialMod
       const origText = btn.textContent;
       btn.disabled = true;
       try {
-        const totalCount = getTotalCards();
         if (renderedCount < totalCount) {
           btn.textContent = '⏳ Completing render…';
           renderAllNow();
@@ -622,37 +604,17 @@ export function printMultipleAgroStickersWeb(stickers: AgroSticker[], initialMod
 
   (w as any).__stickers = stickers;
   (w as any).__renderCard = (cIdx: number, mode: '2up' | '1up-left' | '1up-right') => {
+    const s = stickers[cIdx];
+    if (!s) return '';
+    let svg = '';
     if (mode === '2up') {
-      const idx1 = cIdx * 2;
-      const idx2 = idx1 + 1;
-      const s1 = stickers[idx1];
-      if (!s1) return '';
-      const s2 = idx2 < stickers.length ? stickers[idx2] : null;
-      const svg = agroSticker2UpSvg(s1, s2, false);
-      const rightLabel = s2
-        ? `Right: [${idx2 + 1}] ${esc(s2.name || '')} &middot; ₹${esc(String(s2.rate ?? '0'))} (${esc(s2.code || '')})`
-        : `Right: (Blank)`;
-      return `
-        <div class="sticker-header-label">
-          <strong>Label #${cIdx + 1}</strong> &nbsp;&middot;&nbsp; 
-          Left: [${idx1 + 1}] ${esc(s1.name || '')} &middot; ₹${esc(String(s1.rate ?? '0'))} (${esc(s1.code || '')}) &nbsp;|&nbsp; 
-          ${rightLabel}
-        </div>
-        <div class="sticker-svg-wrap">${svg}</div>
-      `;
+      svg = agroSticker2UpSvg(s);
+    } else if (mode === '1up-right') {
+      svg = agroSticker1UpRollSvg(s, 'right');
     } else {
-      const s = stickers[cIdx];
-      if (!s) return '';
-      const side = mode === '1up-right' ? 'right' : 'left';
-      const sideText = mode === '1up-right' ? 'RIGHT SIDE ONLY' : 'LEFT SIDE ONLY';
-      const svg = agroSticker1UpRollSvg(s, side);
-      return `
-        <div class="sticker-header-label">
-          <strong>Label #${cIdx + 1} (${sideText})</strong> &nbsp;&middot;&nbsp; [${cIdx + 1}/${stickers.length}] ${esc(s.name || '')} &middot; ₹${esc(String(s.rate ?? '0'))} (${esc(s.code || '')})
-        </div>
-        <div class="sticker-svg-wrap">${svg}</div>
-      `;
+      svg = agroSticker1UpRollSvg(s, 'left');
     }
+    return `<div class="sticker-svg-wrap">${svg}</div>`;
   };
   if (typeof (w as any).renderNextChunk === 'function') {
     (w as any).renderNextChunk(35);
