@@ -138,6 +138,8 @@ export async function productScreen(existing?: Partial<Item> & { details?: strin
     bottom.innerHTML = COLS.map((c) => `<div class="pf-col">${c.map((f) => cell(f)).join('')}</div>`).join('');
     p.body.append(top, bottom);
 
+    const byKey = (k: string) => p.body.querySelector(`[data-k="${k}"]`) as HTMLInputElement | HTMLSelectElement;
+
     const printCurrentTag = (mode: 'dual' | 'sticker' | '2up' | '1up' = jewel ? 'dual' : '2up') => {
       const rawName = (byKey('name') as HTMLInputElement)?.value.trim();
       const pName = (rawName && rawName !== '0') ? rawName : 'PRODUCT';
@@ -248,7 +250,6 @@ export async function productScreen(existing?: Partial<Item> & { details?: strin
     }
 
     const inputs = [...p.body.querySelectorAll('input:not([readonly]), select')] as (HTMLInputElement | HTMLSelectElement)[];
-    const byKey = (k: string) => p.body.querySelector(`[data-k="${k}"]`) as HTMLInputElement | HTMLSelectElement;
 
     if (jewel) {
       const gwEl = byKey('jw_gw') as HTMLInputElement | null;
@@ -444,8 +445,9 @@ export async function productScreen(existing?: Partial<Item> & { details?: strin
     };
 
     p.onKey = (e, k) => {
+      const allInputs = [...p.body.querySelectorAll('input:not([readonly]), select')] as (HTMLInputElement | HTMLSelectElement)[];
       const t = e.target as HTMLElement;
-      const i = inputs.indexOf(t as HTMLInputElement);
+      const i = allInputs.indexOf(t as HTMLInputElement);
       if (k === 'Escape') {
         p.beforeEsc!();
         return true;
@@ -453,11 +455,11 @@ export async function productScreen(existing?: Partial<Item> & { details?: strin
       if (i < 0) return false;
       const isSel = t.tagName === 'SELECT';
       if (k === 'Enter' || k === 'Tab' || (k === 'ArrowDown' && !isSel)) {
-        if (i === inputs.length - 1) save(); else { const n = inputs[i + 1]; n.focus(); if (n instanceof HTMLInputElement) n.select(); }
+        if (i === allInputs.length - 1) save(); else { const n = allInputs[i + 1]; n.focus(); if (n instanceof HTMLInputElement) n.select(); }
         return true;
       }
       if (k === 'Shift+Tab' || (k === 'ArrowUp' && !isSel)) {
-        const n = inputs[Math.max(0, i - 1)]; n.focus(); if (n instanceof HTMLInputElement) n.select();
+        const n = allInputs[Math.max(0, i - 1)]; n.focus(); if (n instanceof HTMLInputElement) n.select();
         return true;
       }
       if (k === 'Alt+P' || k === 'Alt+p') { printCurrentTag(jewel ? 'dual' : 'sticker'); return true; }
