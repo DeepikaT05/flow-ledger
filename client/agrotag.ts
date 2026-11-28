@@ -411,31 +411,70 @@ export function printMultipleAgroStickersWeb(stickers: AgroSticker[], initialMod
     let currentMode = '${initialMode}';
     let renderedCount = 0;
     const totalCount = ${stickers.length};
-    const stickersData = window.__stickers || [];
+    const stickersData = ${JSON.stringify(stickers).replace(/<\/script/gi, '<\\/script')};
     const container = document.getElementById('stickers-container');
     const loadingEl = document.getElementById('loading-indicator');
     const readyCountEl = document.getElementById('ready-count');
 
-    function renderNextChunk(chunkSize = 25) {
-      if (!window.__renderCard) return;
+    function renderNextChunk(chunkSize = 35) {
+      if (!window.__renderCard) {
+        setTimeout(() => renderNextChunk(chunkSize), 16);
+        return;
+      }
       const end = Math.min(renderedCount + chunkSize, totalCount);
       const frag = document.createDocumentFragment();
       for (let i = renderedCount; i < end; i++) {
+        const item = stickersData[i];
+        if (!item) continue;
         const div = document.createElement('div');
         div.className = 'sticker-card';
         div.dataset.idx = String(i);
-        div.innerHTML = window.__renderCard(stickersData[i], i, currentMode);
+        div.innerHTML = window.__renderCard(item, i, currentMode);
         frag.appendChild(div);
       }
       container.appendChild(frag);
       renderedCount = end;
-      readyCountEl.textContent = String(renderedCount);
+      if (readyCountEl) readyCountEl.textContent = String(renderedCount);
+
       if (renderedCount < totalCount) {
         setTimeout(() => renderNextChunk(chunkSize), 10);
       } else {
-        loadingEl.style.display = 'none';
+        if (loadingEl) loadingEl.style.display = 'none';
+        const badge = document.getElementById('status-badge');
+        if (badge) {
+          badge.style.background = '#dcfce7';
+          badge.style.color = '#15803d';
+          badge.innerHTML = 'TSC TE244 &middot; Direct Label Printer &middot; <strong>' + totalCount + ' / ' + totalCount + ' Ready</strong>';
+        }
       }
     }
+
+    function renderAllNow() {
+      if (!window.__renderCard || renderedCount >= totalCount) return;
+      const frag = document.createDocumentFragment();
+      for (let i = renderedCount; i < totalCount; i++) {
+        const item = stickersData[i];
+        if (!item) continue;
+        const div = document.createElement('div');
+        div.className = 'sticker-card';
+        div.dataset.idx = String(i);
+        div.innerHTML = window.__renderCard(item, i, currentMode);
+        frag.appendChild(div);
+      }
+      container.appendChild(frag);
+      renderedCount = totalCount;
+      if (readyCountEl) readyCountEl.textContent = String(totalCount);
+      if (loadingEl) loadingEl.style.display = 'none';
+      const badge = document.getElementById('status-badge');
+      if (badge) {
+        badge.style.background = '#dcfce7';
+        badge.style.color = '#15803d';
+        badge.innerHTML = 'TSC TE244 &middot; Direct Label Printer &middot; <strong>' + totalCount + ' / ' + totalCount + ' Ready</strong>';
+      }
+    }
+
+    window.onbeforeprint = renderAllNow;
+    setTimeout(() => renderNextChunk(35), 10);
 
     function switchMode(mode) {
       if (currentMode === mode) return;
@@ -446,11 +485,17 @@ export function printMultipleAgroStickersWeb(stickers: AgroSticker[], initialMod
       document.getElementById('btn-1up').style.color = mode === '1up' ? '#fff' : '#333';
       container.innerHTML = '';
       renderedCount = 0;
-      loadingEl.style.display = 'block';
-      renderNextChunk(30);
+      if (loadingEl) loadingEl.style.display = 'block';
+      const badge = document.getElementById('status-badge');
+      if (badge) {
+        badge.style.background = '#dbeafe';
+        badge.style.color = '#1e3a8a';
+        badge.innerHTML = 'TSC TE244 &middot; Direct Label Printer &middot; <span id="ready-count">0</span> / ' + totalCount + ' Ready';
+      }
+      renderNextChunk(35);
     }
 
-    async function rasterizeSvgToPng(svgEl, wMm, hMm) {
+    async function rasterizeSvgToPng(svgEl, wMm, hMm, canvas, ctx) {
       const dpi = 203;
       const pxW = Math.round((wMm / 25.4) * dpi);
       const pxH = Math.round((hMm / 25.4) * dpi);
@@ -463,10 +508,6 @@ export function printMultipleAgroStickersWeb(stickers: AgroSticker[], initialMod
       img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(xml);
       await loadPromise;
 
-      const c = document.createElement('canvas');
-      c.width = pxW;
-      c.height = pxH;
-      const ctx = c.getContext('2d');
       ctx.fillStyle = '#fff';
       ctx.fillRect(0, 0, pxW, pxH);
       ctx.drawImage(img, 0, 0, pxW, pxH);
@@ -480,7 +521,7 @@ export function printMultipleAgroStickersWeb(stickers: AgroSticker[], initialMod
         d[i + 3] = 255;
       }
       ctx.putImageData(imgData, 0, 0);
-      return c.toDataURL('image/png');
+      return canvas.toDataURL('image/png');
     }
 
     async function directPrintAll(btn) {
@@ -489,7 +530,7 @@ export function printMultipleAgroStickersWeb(stickers: AgroSticker[], initialMod
       try {
         if (renderedCount < totalCount) {
           btn.textContent = '⏳ Completing render…';
-          renderNextChunk(totalCount - renderedCount);
+          renderAllNow();
         }
 
         const wMm = 104;
@@ -497,10 +538,18 @@ export function printMultipleAgroStickersWeb(stickers: AgroSticker[], initialMod
         const svgEls = Array.from(container.querySelectorAll('.sticker-svg-wrap svg'));
         if (!svgEls.length) throw new Error('No stickers found to print');
 
+        const dpi = 203;
+        const pxW = Math.round((wMm / 25.4) * dpi);
+        const pxH = Math.round((hMm / 25.4) * dpi);
+        const canvas = document.createElement('canvas');
+        canvas.width = pxW;
+        canvas.height = pxH;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
         const allPngs = [];
         for (let i = 0; i < svgEls.length; i++) {
           btn.textContent = '⏳ Rasterizing ' + (i + 1) + '/' + svgEls.length + '…';
-          const png = await rasterizeSvgToPng(svgEls[i], wMm, hMm);
+          const png = await rasterizeSvgToPng(svgEls[i], wMm, hMm, canvas, ctx);
           allPngs.push(png);
         }
 
@@ -546,11 +595,14 @@ export function printMultipleAgroStickersWeb(stickers: AgroSticker[], initialMod
 
   (w as any).__stickers = stickers;
   (w as any).__renderCard = (s: AgroSticker, i: number, mode: '2up' | '1up') => {
+    if (!s) return '';
     const svg = mode === '2up' ? agroSticker2UpSvg(s) : agroSticker1UpRollSvg(s);
     return `
-      <div class="sticker-header-label">#${i + 1} &middot; ${esc(s.name)} &middot; ₹${esc(String(s.rate))} (${esc(s.code)})</div>
+      <div class="sticker-header-label">#${i + 1} &middot; ${esc(s.name || '')} &middot; ₹${esc(String(s.rate ?? '0'))} (${esc(s.code || '')})</div>
       <div class="sticker-svg-wrap">${svg}</div>
     `;
   };
-  (w as any).renderNextChunk(30);
+  if (typeof (w as any).renderNextChunk === 'function') {
+    (w as any).renderNextChunk(35);
+  }
 }
