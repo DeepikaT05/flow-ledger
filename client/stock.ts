@@ -239,8 +239,6 @@ export async function closingStock(initialStores: string[] = ['MAIN STORE'], opt
   let all: Item[] = [];
   let view: Item[] = [];
   let sel = 0;
-  let typed = '';
-  let typedAt = 0;
 
   /** Stock in the chosen stores — everything is held in MAIN STORE in this edition. */
   const stockOf = (it: Item) => (stores.includes('MAIN STORE') ? it.stock : 0);
@@ -336,7 +334,7 @@ export async function closingStock(initialStores: string[] = ['MAIN STORE'], opt
       <div><span>W/oDeal:</span><b>${c2(it.purchase_rate)}</b></div><div><span>CESS &nbsp;&nbsp;:</span><b></b></div><div><span>Mfr. &nbsp;&nbsp;:</span><b></b></div>
       <div><span>Margin%:</span><b>${margin(it.sale_rate, it.purchase_rate)}</b></div><div><span>F.Rate :</span><b>${f2(it.sale_rate)}</b></div><div><span>Barcode:</span><b></b></div>
       <div><span>Expiry &nbsp;:</span><b>${it.expiry ? (it.expiry.length >= 7 ? `${it.expiry.slice(5, 7)}/${it.expiry.slice(2, 4)}` : it.expiry) : ''}</b></div><div><span>Deal[F]:</span><b></b></div><div><span>Rack No:</span><b></b></div>
-      <div><span>PurDisc:</span><b></b></div><div><span>Excise :</span><b></b></div><div><b>${view.length} Items</b>${typed ? ` &nbsp; <span class="typed">Find: ${esc(typed)}</span>` : ''}${filterStatusBadge}</div>`;
+      <div><span>PurDisc:</span><b></b></div><div><span>Excise :</span><b></b></div><div><b>${view.length} Items</b>${filterStatusBadge}</div>`;
     const side = screen.querySelector('.cs-side .body') as HTMLElement;
     const seq = ++batchSeq;
     if (!it) { side.innerHTML = ''; return; }
@@ -349,17 +347,6 @@ export async function closingStock(initialStores: string[] = ['MAIN STORE'], opt
           ${filteredBs.map((b) => `<div class="g"><span>${esc(b.batch || '-')}</span><span>${qty(b.stock)}</span><span>${f2(b.mrp)}</span><span>${b.expiry ? `${b.expiry.slice(5, 7)}/${b.expiry.slice(2, 4)}` : ''}</span></div>`).join('')}` : '<div style="padding:10px;color:var(--marg-dim,#888);font-size:12px;">No active batches</div>';
       }).catch(() => {});
     }, 150);
-  }
-
-  /** Typing jumps to the first item starting with what was typed (as in MARG lists). */
-  function jump(ch: string) {
-    typed = Date.now() - typedAt > 1500 ? ch : typed + ch;
-    typedAt = Date.now();
-    const q = typed.toLowerCase();
-    const i = view.findIndex((it) => it.name.toLowerCase().startsWith(q));
-    const j = i >= 0 ? i : view.findIndex((it) => it.name.toLowerCase().includes(q));
-    if (j >= 0) sel = j;
-    draw();
   }
 
   function totals() {
@@ -462,7 +449,7 @@ export async function closingStock(initialStores: string[] = ['MAIN STORE'], opt
   w.onKey = (e, k) => {
     const page = Math.max(1, Math.floor(rowsBox.clientHeight / 24) - 1);
     const step: Record<string, number> = { ArrowDown: 1, ArrowUp: -1, PageDown: page, PageUp: -page };
-    if (k in step && view.length) { sel = Math.min(view.length - 1, Math.max(0, sel + step[k])); typed = ''; draw(); return true; }
+    if (k in step && view.length) { sel = Math.min(view.length - 1, Math.max(0, sel + step[k])); draw(); return true; }
     if (k === 'Home' || k === 'Ctrl+Home') { sel = 0; draw(); return true; }
     if (k === 'End' || k === 'Ctrl+End') { sel = Math.max(0, view.length - 1); draw(); return true; }
     if (k === 'Enter' && view[sel]) { itemDisplay(view[sel], stores); return true; }
@@ -536,12 +523,39 @@ export async function closingStock(initialStores: string[] = ['MAIN STORE'], opt
       applyFilter();
       return true;
     }
-    if (k === 'Backspace') { typed = typed.slice(0, -1); typedAt = Date.now(); draw(); return true; }
-    if (k.length === 1 && !e.ctrlKey && !e.altKey) { jump(k); return true; }
-    if (k === 'Space') { jump(' '); return true; }
+    if (k === 'Backspace') {
+      if (document.activeElement !== findInput) {
+        if (findInput.value) {
+          findInput.value = findInput.value.slice(0, -1);
+          applyFilter();
+          findInput.focus();
+          return true;
+        }
+      }
+      return false;
+    }
+    if (k.length === 1 && !e.ctrlKey && !e.altKey) {
+      if (document.activeElement !== findInput) {
+        findInput.focus();
+        findInput.value += e.key;
+        applyFilter();
+        return true;
+      }
+      return false;
+    }
+    if (k === 'Space') {
+      if (document.activeElement !== findInput) {
+        findInput.focus();
+        findInput.value += ' ';
+        applyFilter();
+        return true;
+      }
+      return false;
+    }
     return false;
   };
   await load();
+  findInput.focus();
 }
 
 
@@ -1371,8 +1385,6 @@ export async function batchStock(initialStores: string[] = ['MAIN STORE']) {
   let visibleProducts: ProductBatchGroup[] = [];
   let sel = 0;
   let inStockOnly = true; // Marg default: Available batches only (Stock > 0)
-  let typed = '';
-  let typedAt = 0;
 
   const setTitle = () => {
     const filterTag = inStockOnly ? ' : [Available Batches Only]' : ' : [Whole Batch Stock]';
@@ -1533,7 +1545,7 @@ export async function batchStock(initialStores: string[] = ['MAIN STORE']) {
 
         <div><span>Cost Val:</span><b>${seeCost() ? money(bValCost) : '****'}</b></div>
         <div><span>MRP Val :</span><b>${money(bValMrp)}</b></div>
-        <div><b>${visibleProducts.length} Products, ${displayRows.filter((r) => r.type === 'batch').length} Batches</b>${typed ? ` &nbsp; <span class="typed">Find: ${esc(typed)}</span>` : ''}${inStockOnly ? ' &nbsp;[Available Batches Only]' : ''}</div>
+        <div><b>${visibleProducts.length} Products, ${displayRows.filter((r) => r.type === 'batch').length} Batches</b>${inStockOnly ? ' &nbsp;[Available Batches Only]' : ''}</div>
       `;
     } else {
       const p = cur.product;
@@ -1554,24 +1566,9 @@ export async function batchStock(initialStores: string[] = ['MAIN STORE']) {
 
         <div><span>Cost Val:</span><b>${seeCost() ? money(pCost) : '****'}</b></div>
         <div><span>MRP Val :</span><b>${money(pMrp)}</b></div>
-        <div><b>${visibleProducts.length} Products, ${displayRows.filter((r) => r.type === 'batch').length} Batches</b>${typed ? ` &nbsp; <span class="typed">Find: ${esc(typed)}</span>` : ''}${inStockOnly ? ' &nbsp;[Available Batches Only]' : ''}</div>
+        <div><b>${visibleProducts.length} Products, ${displayRows.filter((r) => r.type === 'batch').length} Batches</b>${inStockOnly ? ' &nbsp;[Available Batches Only]' : ''}</div>
       `;
     }
-  }
-
-  function jump(ch: string) {
-    typed = Date.now() - typedAt > 1500 ? ch : typed + ch;
-    typedAt = Date.now();
-    const q = typed.toLowerCase();
-    const idx = displayRows.findIndex((r) => {
-      if (r.type === 'product') {
-        return r.product.name.toLowerCase().startsWith(q) || r.product.name.toLowerCase().includes(q);
-      } else {
-        return r.batch.batch.toLowerCase().startsWith(q) || r.product.name.toLowerCase().startsWith(q);
-      }
-    });
-    if (idx >= 0) sel = idx;
-    draw();
   }
 
   function totals() {
@@ -1770,7 +1767,6 @@ export async function batchStock(initialStores: string[] = ['MAIN STORE']) {
     const step: Record<string, number> = { ArrowDown: 1, ArrowUp: -1, PageDown: page, PageUp: -page };
     if (k in step && displayRows.length) {
       sel = Math.min(displayRows.length - 1, Math.max(0, sel + step[k]));
-      typed = '';
       draw();
       return true;
     }
@@ -1817,11 +1813,38 @@ export async function batchStock(initialStores: string[] = ['MAIN STORE']) {
       applyFilter();
       return true;
     }
-    if (k === 'Backspace') { typed = typed.slice(0, -1); typedAt = Date.now(); draw(); return true; }
-    if (k.length === 1 && !e.ctrlKey && !e.altKey) { jump(k); return true; }
-    if (k === 'Space') { jump(' '); return true; }
+    if (k === 'Backspace') {
+      if (document.activeElement !== findInput) {
+        if (findInput.value) {
+          findInput.value = findInput.value.slice(0, -1);
+          applyFilter();
+          findInput.focus();
+          return true;
+        }
+      }
+      return false;
+    }
+    if (k.length === 1 && !e.ctrlKey && !e.altKey) {
+      if (document.activeElement !== findInput) {
+        findInput.focus();
+        findInput.value += e.key;
+        applyFilter();
+        return true;
+      }
+      return false;
+    }
+    if (k === 'Space') {
+      if (document.activeElement !== findInput) {
+        findInput.focus();
+        findInput.value += ' ';
+        applyFilter();
+        return true;
+      }
+      return false;
+    }
     return false;
   };
 
   await load();
+  findInput.focus();
 }
