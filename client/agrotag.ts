@@ -315,3 +315,202 @@ export function printAgroStickerWeb(data: AgroSticker, initialMode: '2up' | '1up
     w.document.close();
   }
 }
+
+/** Opens bulk printing popup window for multiple Agrotech Barcode & QR Stickers */
+export function printMultipleAgroStickersWeb(stickers: AgroSticker[], initialMode: '2up' | '1up' = '2up') {
+  if (!stickers || !stickers.length) return;
+
+  const cards2Up = stickers.map((s, i) => `
+    <div class="sticker-card" data-idx="${i}">
+      <div class="sticker-header-label">#${i + 1} &middot; ${esc(s.name)} &middot; ₹${esc(String(s.rate))} (${esc(s.code)})</div>
+      <div class="sticker-svg-wrap">${agroSticker2UpSvg(s)}</div>
+    </div>
+  `).join('');
+
+  const cards1Up = stickers.map((s, i) => `
+    <div class="sticker-card" data-idx="${i}">
+      <div class="sticker-header-label">#${i + 1} &middot; ${esc(s.name)} &middot; ₹${esc(String(s.rate))} (${esc(s.code)})</div>
+      <div class="sticker-svg-wrap">${agroSticker1UpRollSvg(s)}</div>
+    </div>
+  `).join('');
+
+  const html = `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>Bulk Print Agrotech Stickers (${stickers.length} Items)</title>
+  <style id="page-size">${AGRO_PAGE_ROLL_CSS}</style>
+  <style>
+    body {
+      margin: 0; padding: 12px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #000; background: #f1f5f9;
+    }
+    .top-toolbar {
+      position: sticky; top: 0; z-index: 999;
+      margin-bottom: 14px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+      background: #fff; padding: 8px 12px; border: 1px solid #cbd5e1; border-radius: 6px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+    .stickers-list {
+      display: flex; flex-direction: column; gap: 10px; align-items: center;
+    }
+    .sticker-card {
+      background: #fff;
+      padding: 8px 12px 10px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      display: inline-block;
+    }
+    .sticker-header-label {
+      font-size: 11px; font-weight: 700; color: #475569; margin-bottom: 4px;
+      font-family: monospace;
+    }
+    @media print {
+      body { padding: 0 !important; margin: 0 !important; background: #fff !important; }
+      .no-print { display: none !important; }
+      .sticker-header-label { display: none !important; }
+      .stickers-list { display: block !important; }
+      .sticker-card {
+        border: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        box-shadow: none !important;
+        background: transparent !important;
+        page-break-after: always;
+        break-after: page;
+      }
+      .sticker-svg-wrap {
+        margin: 0 !important;
+        padding: 0 !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print top-toolbar">
+    <button onclick="showMode('2up')" id="btn-2up" style="padding: 6px 12px; font-size: 12px; font-weight: bold; background: ${initialMode === '2up' ? '#0284c7' : '#fff'}; color: ${initialMode === '2up' ? '#fff' : '#333'}; border: 1px solid #cbd5e1; border-radius: 4px; cursor: pointer;">🏷️ 2-Up Stickers (Both Parts)</button>
+    <button onclick="showMode('1up')" id="btn-1up" style="padding: 6px 12px; font-size: 12px; font-weight: bold; background: ${initialMode === '1up' ? '#0284c7' : '#fff'}; color: ${initialMode === '1up' ? '#fff' : '#333'}; border: 1px solid #cbd5e1; border-radius: 4px; cursor: pointer;">📦 Single Sticker (1 Side Only)</button>
+    <div style="font-size: 11px; color: #1e3a8a; background: #dbeafe; padding: 4px 8px; border-radius: 4px; font-weight: 700;">
+      TSC TE244 &middot; Direct Label Printer &middot; ${stickers.length} Stickers
+    </div>
+    <button onclick="directPrintAll(this)" style="margin-left: auto; padding: 6px 18px; font-size: 12px; font-weight: 800; background: #15803d; color: #fff; border: none; border-radius: 4px; cursor: pointer; box-shadow:0 1px 3px rgba(0,0,0,0.15);">
+      🖨️ Bulk Print All (${stickers.length})
+    </button>
+    <button onclick="window.close()" style="padding: 6px 12px; font-size: 12px; border: 1px solid #ccc; background: #fff; border-radius: 4px; cursor: pointer;">Close</button>
+  </div>
+
+  <div id="view-2up" class="stickers-list" style="${initialMode === '2up' ? 'display:flex;' : 'display:none;'}">
+    ${cards2Up}
+  </div>
+  <div id="view-1up" class="stickers-list" style="${initialMode === '1up' ? 'display:flex;' : 'display:none;'}">
+    ${cards1Up}
+  </div>
+
+  <script>
+    let currentMode = '${initialMode}';
+    const totalCount = ${stickers.length};
+    function showMode(mode) {
+      currentMode = mode;
+      document.getElementById('view-2up').style.display = mode === '2up' ? 'flex' : 'none';
+      document.getElementById('view-1up').style.display = mode === '1up' ? 'flex' : 'none';
+      document.getElementById('btn-2up').style.background = mode === '2up' ? '#0284c7' : '#fff';
+      document.getElementById('btn-2up').style.color = mode === '2up' ? '#fff' : '#333';
+      document.getElementById('btn-1up').style.background = mode === '1up' ? '#0284c7' : '#fff';
+      document.getElementById('btn-1up').style.color = mode === '1up' ? '#fff' : '#333';
+    }
+
+    async function rasterizeSvgToPng(svgEl, wMm, hMm) {
+      const dpi = 203;
+      const pxW = Math.round((wMm / 25.4) * dpi);
+      const pxH = Math.round((hMm / 25.4) * dpi);
+      const xml = new XMLSerializer().serializeToString(svgEl);
+      const img = new Image();
+      const loadPromise = new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+      });
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(xml);
+      await loadPromise;
+
+      const c = document.createElement('canvas');
+      c.width = pxW;
+      c.height = pxH;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, pxW, pxH);
+      ctx.drawImage(img, 0, 0, pxW, pxH);
+
+      const imgData = ctx.getImageData(0, 0, pxW, pxH);
+      const d = imgData.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const lum = d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114;
+        const v = lum < 160 ? 0 : 255;
+        d[i] = d[i + 1] = d[i + 2] = v;
+        d[i + 3] = 255;
+      }
+      ctx.putImageData(imgData, 0, 0);
+      return c.toDataURL('image/png');
+    }
+
+    async function directPrintAll(btn) {
+      const origText = btn.textContent;
+      btn.disabled = true;
+      try {
+        const wMm = 104;
+        const hMm = 25;
+        const containerId = currentMode === '2up' ? 'view-2up' : 'view-1up';
+        const svgEls = Array.from(document.getElementById(containerId).querySelectorAll('.sticker-svg-wrap svg'));
+        if (!svgEls.length) throw new Error('No stickers found to print');
+
+        const allPngs = [];
+        for (let i = 0; i < svgEls.length; i++) {
+          btn.textContent = '⏳ Rasterizing ' + (i + 1) + '/' + svgEls.length + '…';
+          const png = await rasterizeSvgToPng(svgEls[i], wMm, hMm);
+          allPngs.push(png);
+        }
+
+        const BATCH_SIZE = 50;
+        let totalSent = 0;
+        for (let i = 0; i < allPngs.length; i += BATCH_SIZE) {
+          const chunk = allPngs.slice(i, i + BATCH_SIZE);
+          btn.textContent = '⏳ Printing batch ' + (Math.floor(i / BATCH_SIZE) + 1) + '/' + Math.ceil(allPngs.length / BATCH_SIZE) + ' (' + chunk.length + ' labels)…';
+          const payload = {
+            type: 'agro',
+            mode: currentMode,
+            printer: 'TSC TE244',
+            pngs: chunk,
+            widthMm: wMm,
+            heightMm: hMm
+          };
+          const res = await fetch('http://127.0.0.1:3211/print-tags', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          if (!res.ok) throw new Error('Agent HTTP ' + res.status);
+          totalSent += chunk.length;
+        }
+
+        btn.textContent = '✓ Successfully printed ' + totalSent + ' labels!';
+        setTimeout(() => { btn.disabled = false; btn.textContent = origText; }, 3000);
+      } catch (e) {
+        if (confirm('Direct Print Agent error or not running on port 3211:\\n' + (e.message || e) + '\\n\\nWould you like to print using the browser print dialog instead?')) {
+          window.print();
+        }
+        btn.disabled = false;
+        btn.textContent = origText;
+      }
+    }
+  </script>
+</body>
+</html>`;
+
+  const w = window.open('', '_blank', 'width=840,height=700');
+  if (w) {
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+  }
+}

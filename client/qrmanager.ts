@@ -1,7 +1,7 @@
 import { api, esc, h, toast } from './ui.ts';
 import { margWin, margBar } from './margui.ts';
 import { printJewelTagWeb, printMultipleJewelTags, tagOfItem, jewelTagSvg, barcode128Svg, JewelTag } from './jeweltag.ts';
-import { printAgroStickerWeb, agroStickerSingleSvg, agroTagOfItem, AgroSticker } from './agrotag.ts';
+import { printAgroStickerWeb, printMultipleAgroStickersWeb, agroStickerSingleSvg, agroTagOfItem, AgroSticker } from './agrotag.ts';
 import { itemForm, type Item } from './masters.ts';
 import { isJewellery } from './jewellery.ts';
 
@@ -356,8 +356,7 @@ export async function qrManagerScreen(jewelOnly = false) {
     if (isJewel) {
       printMultipleJewelTags(visible.map((x) => x.tag));
     } else {
-      // Open 2-up preview of first item with instruction or print sequentially
-      printAgroStickerWeb(visible[0].agro, '2up');
+      printMultipleAgroStickersWeb(visible.map((x) => x.agro), '2up');
     }
   });
 
