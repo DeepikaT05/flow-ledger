@@ -91,8 +91,8 @@ export function agroStickerSingleSvg(data: AgroSticker, offsetX = 3.5, offsetY =
     <!-- Line 4: EXPIRY (Below Batch, Not Side-by-Side) -->
     <text x="${(offsetX + 1.2).toFixed(2)}" y="${(offsetY + 13.6).toFixed(2)}" font-family="Arial, Helvetica, sans-serif" font-size="1.85" font-weight="bold" fill="#000">EXP: ${esc(exp)}</text>
 
-    <!-- Line 5: RATE: ₹<amount> (Prominent Heavy Font) -->
-    <text x="${(offsetX + 1.2).toFixed(2)}" y="${(offsetY + 17.5).toFixed(2)}" font-family="'Arial Black', Arial, Helvetica, sans-serif" font-size="4.0" font-weight="900" fill="#000">RATE: &#8377;${esc(rate)}</text>
+    <!-- Line 5: RATE: ₹<amount> (Prominent Heavy Font, reduced by 0.5 to 3.5) -->
+    <text x="${(offsetX + 1.2).toFixed(2)}" y="${(offsetY + 17.3).toFixed(2)}" font-family="'Arial Black', Arial, Helvetica, sans-serif" font-size="3.5" font-weight="900" fill="#000">RATE: &#8377;${esc(rate)}</text>
 
     <!-- Line 6: Serial Code (BADA Monospace Font, prominent & clear) -->
     <text x="${(offsetX + 1.2).toFixed(2)}" y="${(offsetY + 21.8).toFixed(2)}" font-family="monospace, Courier" font-size="2.9" font-weight="900" fill="#000" letter-spacing="0.3">${esc(code)}</text>
